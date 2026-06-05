@@ -1,0 +1,46 @@
+<h2>迷宫的视觉风格，你更想要哪种？</h2>
+<p class="subtitle">这只是定基调。MVP 阶段所有风格都能做；不同风格只是材质/光照/色调不同。</p>
+
+<div class="cards">
+  <div class="card" data-choice="realistic" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:linear-gradient(135deg,#3a3a3a 0%,#1a1a1a 100%);display:flex;align-items:center;justify-content:center;height:140px;color:#ccc;font-family:monospace;font-size:14px;text-align:center;padding:20px">
+      [石墙 PBR 贴图]<br>[暖色点光源]<br>[正常亮度的走廊]
+    </div>
+    <div class="card-body">
+      <h3>A · 写实/经典 FPS</h3>
+      <p>带纹理的石墙/砖墙，普通亮度，温馨一点。像老式 Doom/Wolfenstein 的现代版。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="lowpoly" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:linear-gradient(135deg,#ffd89b 0%,#19547b 100%);display:flex;align-items:center;justify-content:center;height:140px;color:#fff;font-family:monospace;font-size:14px;text-align:center;padding:20px">
+      [纯色平面墙壁]<br>[无纹理 / 简单几何]<br>[明亮、扁平色调]
+    </div>
+    <div class="card-body">
+      <h3>B · Low-Poly / 风格化</h3>
+      <p>几何感强、纯色面块，明亮友好。参考 Monument Valley 或 Roblox 那种质感。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="dark" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:linear-gradient(135deg,#0f0f1a 0%,#2d1b4e 100%);display:flex;align-items:center;justify-content:center;height:140px;color:#a8a8d0;font-family:monospace;font-size:14px;text-align:center;padding:20px">
+      [浓雾 / 视线短]<br>[手电筒式光源]<br>[冷色、阴森]
+    </div>
+    <div class="card-body">
+      <h3>C · 黑暗 / 紧张 / 恐怖</h3>
+      <p>视线短、强雾、阴影浓厚，配合后续怪物的紧张感会很好。FPS + horror 路线。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="scifi" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:linear-gradient(135deg,#0a0a2e 0%,#ff006e 100%);display:flex;align-items:center;justify-content:center;height:140px;color:#0ff;font-family:monospace;font-size:14px;text-align:center;padding:20px">
+      [发光边线 / 霓虹色墙]<br>[暗色基底]<br>[赛博朋克]
+    </div>
+    <div class="card-body">
+      <h3>D · 赛博 / 霓虹</h3>
+      <p>黑底霓虹色发光墙，赛博朋克调子。视觉冲击强，但和"老式恐怖"反差大。</p>
+    </div>
+  </div>
+</div>
+
+<p class="subtitle" style="margin-top:24px">选完在终端告诉我 (A/B/C/D)。也欢迎描述混合风格（比如 A 基础 + C 的氛围）。</p>

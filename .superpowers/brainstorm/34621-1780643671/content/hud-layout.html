@@ -1,0 +1,52 @@
+<h2>HUD（屏幕上的 UI）布局，你更想要哪种？</h2>
+<p class="subtitle">倒计时是核心，所以"时间显示"在每种方案里都突出。差异在于是否要小地图、收集物计数、帮助/暂停的位置。</p>
+
+<div class="cards">
+  <div class="card" data-choice="minimal" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#222;position:relative;height:180px;color:#fff;font-family:monospace;font-size:11px">
+      <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#888">[第一人称 3D 画面]</div>
+      <div style="position:absolute;top:8px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.6);padding:4px 14px;border-radius:6px;color:#ff5252;font-weight:bold">⏱ 01:23</div>
+      <div style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.5);padding:2px 10px;border-radius:4px">WASD 移动 · 鼠标看 · ESC 暂停</div>
+    </div>
+    <div class="card-body">
+      <h3>A · 极简（推荐 MVP）</h3>
+      <p>顶部中央大号倒计时，底部中央一行操作提示。沉浸感最强，干扰最小。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="with-map" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#222;position:relative;height:180px;color:#fff;font-family:monospace;font-size:11px">
+      <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#888">[第一人称 3D 画面]</div>
+      <div style="position:absolute;top:8px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.6);padding:4px 14px;border-radius:6px;color:#ff5252;font-weight:bold">⏱ 01:23</div>
+      <div style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.7);padding:6px;width:90px;height:90px;display:flex;align-items:center;justify-content:center">
+        <div style="background:repeating-linear-gradient(0deg,#444 0 4px,transparent 4px 8px),repeating-linear-gradient(90deg,#444 0 4px,transparent 4px 8px);width:80px;height:80px"></div>
+      </div>
+      <div style="position:absolute;top:8px;left:8px;background:rgba(0,0,0,0.6);padding:4px 8px;border-radius:4px">🔑 2/5</div>
+      <div style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.5);padding:2px 10px;border-radius:4px">WASD 移动 · 鼠标看 · ESC 暂停</div>
+    </div>
+    <div class="card-body">
+      <h3>B · 加右上小地图</h3>
+      <p>A 的基础上加右上小地图（实时显示玩家位置 + 出口）。左上收集物计数。实用、不破坏沉浸感。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="rich" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#222;position:relative;height:180px;color:#fff;font-family:monospace;font-size:11px">
+      <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#888">[第一人称 3D 画面]</div>
+      <div style="position:absolute;top:8px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.6);padding:4px 14px;border-radius:6px;color:#ff5252;font-weight:bold">⏱ 01:23</div>
+      <div style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.7);padding:6px;width:90px;height:90px;display:flex;align-items:center;justify-content:center">
+        <div style="background:repeating-linear-gradient(0deg,#444 0 4px,transparent 4px 8px),repeating-linear-gradient(90deg,#444 0 4px,transparent 4px 8px);width:80px;height:80px"></div>
+      </div>
+      <div style="position:absolute;top:8px;left:8px;background:rgba(0,0,0,0.6);padding:4px 8px;border-radius:4px">🔑 2/5</div>
+      <div style="position:absolute;bottom:8px;left:8px;background:rgba(0,0,0,0.6);padding:4px 8px;border-radius:4px">❤️ ❤❤❤</div>
+      <div style="position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,0.6);padding:4px 8px;border-radius:4px">🏆 Best 0:48</div>
+      <div style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.5);padding:2px 10px;border-radius:4px">WASD 移动 · 鼠标看 · ESC 暂停</div>
+    </div>
+    <div class="card-body">
+      <h3>C · 完整 HUD</h3>
+      <p>时间 + 小地图 + 钥匙计数 + 血量 + 历史最佳 + 操作提示。信息量全，但屏幕被切成几块。</p>
+    </div>
+  </div>
+</div>
+
+<p class="subtitle" style="margin-top:24px">选 A/B/C，或描述你想要的。也可以说"哪些要、哪些不要"。</p>
