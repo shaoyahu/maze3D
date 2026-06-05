@@ -2,7 +2,8 @@ node_modules/
 dist/
 .vite/
 coverage/
-.superpowers/
+.superpowers/*
+!.superpowers/brainstorm/
 test-results/
 playwright-report/
 playwright/.cache/
