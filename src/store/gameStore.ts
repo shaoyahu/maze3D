@@ -70,11 +70,14 @@ export const useGameStore = create<GameState>((set, get) => ({
       });
     } else {
       const idx = inv.findIndex((slot) => slot === null);
-      if (idx >= 0) inv[idx] = p;
-      set({
-        inventory: inv,
-        pickupCount: { ...s.pickupCount, collected: s.pickupCount.collected + 1 },
-      });
+      if (idx >= 0) {
+        inv[idx] = p;
+        set({
+          inventory: inv,
+          pickupCount: { ...s.pickupCount, collected: s.pickupCount.collected + 1 },
+        });
+      }
+      // If inventory full, do nothing — the pickup is lost.
     }
   },
 

@@ -58,6 +58,16 @@ describe('gameStore', () => {
     expect(s.pickupCount.collected).toBe(1);
   });
 
+  it('does not increment collected when inventory is full', () => {
+    useGameStore.getState().startLevel(initialMaze);
+    useGameStore.setState({
+      inventory: [{ x: 0, z: 0, type: 'key', value: 1 }, { x: 0, z: 0, type: 'key', value: 1 }],
+    });
+    useGameStore.getState().pickup({ x: 1, z: 1, type: 'key', value: 1 });
+    expect(useGameStore.getState().pickupCount.collected).toBe(0);
+    expect(useGameStore.getState().inventory[0]).toEqual({ x: 0, z: 0, type: 'key', value: 1 });
+  });
+
   it('damage decrements health and triggers game-over at 0', () => {
     useGameStore.getState().startLevel(initialMaze);
     useGameStore.getState().damage(1);
