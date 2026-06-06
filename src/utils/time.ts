@@ -4,7 +4,3 @@ export function formatTime(seconds: number): string {
   const s = safe % 60;
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
-
-export function clampTime(value: number, max: number): number {
-  return Math.max(0, Math.min(max, value));
-}

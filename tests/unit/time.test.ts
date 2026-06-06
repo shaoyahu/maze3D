@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatTime, clampTime } from '../../src/utils/time';
+import { formatTime } from '../../src/utils/time';
 
 describe('formatTime', () => {
   it('formats whole minutes and seconds as mm:ss', () => {
@@ -15,17 +15,5 @@ describe('formatTime', () => {
   });
   it('handles values > 99 minutes without truncation', () => {
     expect(formatTime(60 * 60)).toBe('60:00');
-  });
-});
-
-describe('clampTime', () => {
-  it('clamps below 0', () => {
-    expect(clampTime(-5, 60)).toBe(0);
-  });
-  it('clamps above max', () => {
-    expect(clampTime(120, 60)).toBe(60);
-  });
-  it('passes through valid values', () => {
-    expect(clampTime(30, 60)).toBe(30);
   });
 });
