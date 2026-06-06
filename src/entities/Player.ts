@@ -10,7 +10,7 @@ export interface PlayerState {
 
 export function createPlayer(startCell: { x: number; z: number }, cellSize: number): PlayerState {
   return {
-    position: { x: startCell.x * cellSize, z: startCell.z * cellSize },
+    position: { x: startCell.x * cellSize + cellSize / 2, z: startCell.z * cellSize + cellSize / 2 },
     yaw: 0,
     pitch: 0,
     speed: 3,
