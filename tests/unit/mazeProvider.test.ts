@@ -60,4 +60,40 @@ describe('JsonMazeProvider', () => {
     const provider = new JsonMazeProvider({ 'm1': bad });
     await expect(provider.load('m1')).rejects.toThrow(LevelLoadError);
   });
+
+  it('throws LevelLoadError when start is out of bounds', async () => {
+    const bad = { ...validMaze, start: { x: 99, z: 0 } };
+    const provider = new JsonMazeProvider({ 'm1': bad });
+    await expect(provider.load('m1')).rejects.toThrow(LevelLoadError);
+  });
+
+  it('throws LevelLoadError when exit is out of bounds', async () => {
+    const bad = { ...validMaze, exit: { x: 0, z: -1 } };
+    const provider = new JsonMazeProvider({ 'm1': bad });
+    await expect(provider.load('m1')).rejects.toThrow(LevelLoadError);
+  });
+
+  it('throws LevelLoadError when pickup is on start cell', async () => {
+    const bad = { ...validMaze, pickups: [{ x: 0, z: 0, type: 'time', value: 10 }] };
+    const provider = new JsonMazeProvider({ 'm1': bad });
+    await expect(provider.load('m1')).rejects.toThrow(LevelLoadError);
+  });
+
+  it('throws LevelLoadError when pickup is out of bounds', async () => {
+    const bad = { ...validMaze, pickups: [{ x: 5, z: 5, type: 'time', value: 10 }] };
+    const provider = new JsonMazeProvider({ 'm1': bad });
+    await expect(provider.load('m1')).rejects.toThrow(LevelLoadError);
+  });
+
+  it('throws LevelLoadError when pickup.value is missing', async () => {
+    const bad = { ...validMaze, pickups: [{ x: 2, z: 0, type: 'time' }] };
+    const provider = new JsonMazeProvider({ 'm1': bad });
+    await expect(provider.load('m1')).rejects.toThrow(LevelLoadError);
+  });
+
+  it('throws LevelLoadError when cellSize is not a positive finite number', async () => {
+    const bad = { ...validMaze, cellSize: 0 };
+    const provider = new JsonMazeProvider({ 'm1': bad });
+    await expect(provider.load('m1')).rejects.toThrow(LevelLoadError);
+  });
 });

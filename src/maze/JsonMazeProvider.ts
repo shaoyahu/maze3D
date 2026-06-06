@@ -31,6 +31,9 @@ function validateMaze(raw: unknown, id: string): MazeData {
   requireNumber(size, 'width', `${id}.size`);
   requireNumber(size, 'depth', `${id}.size`);
   requireNumber(m, 'cellSize', id);
+  if (!Number.isFinite(m.cellSize as number) || (m.cellSize as number) <= 0) {
+    throw new LevelLoadError(`Maze '${id}': cellSize must be a finite positive number`);
+  }
 
   requireObject(m, 'start', id);
   const start = m.start as Record<string, unknown>;
@@ -65,6 +68,8 @@ function validateMaze(raw: unknown, id: string): MazeData {
     walls.push(cells);
   }
 
+  requireInBounds(start, 'x', 'z', `${id}.start`, width, depth);
+  requireInBounds(exit, 'x', 'z', `${id}.exit`, width, depth);
   if (walls[start.z as number][start.x as number] === 1) {
     throw new LevelLoadError(`Maze '${id}': start is on a wall`);
   }
@@ -78,11 +83,18 @@ function validateMaze(raw: unknown, id: string): MazeData {
       throw new LevelLoadError(`Maze '${id}': invalid pickup`);
     }
     const pp = p as Record<string, unknown>;
-    if (typeof pp.x !== 'number' || typeof pp.z !== 'number') {
-      throw new LevelLoadError(`Maze '${id}': pickup missing x/z`);
+    requireNumber(pp, 'x', `${id}.pickup`);
+    requireNumber(pp, 'z', `${id}.pickup`);
+    requireNumber(pp, 'value', `${id}.pickup`);
+    if (!Number.isFinite(pp.value as number)) {
+      throw new LevelLoadError(`Maze '${id}': pickup value must be a finite number`);
     }
+    requireInBounds(pp, 'x', 'z', `${id}.pickup`, width, depth);
     if (!VALID_PICKUP_TYPES.includes(pp.type as PickupType)) {
       throw new LevelLoadError(`Maze '${id}': invalid pickup type`);
+    }
+    if (pp.x === (m.start as Record<string, unknown>).x && pp.z === (m.start as Record<string, unknown>).z) {
+      throw new LevelLoadError(`Maze '${id}': pickup is on the start cell`);
     }
     if (walls[pp.z as number][pp.x as number] === 1) {
       throw new LevelLoadError(`Maze '${id}': pickup is on a wall`);
@@ -110,5 +122,12 @@ function requireNumber(o: Record<string, unknown>, key: string, ctx: string) {
 function requireObject(o: Record<string, unknown>, key: string, ctx: string) {
   if (typeof o[key] !== 'object' || o[key] === null) {
     throw new LevelLoadError(`Maze '${ctx}': missing object '${key}'`);
+  }
+}
+function requireInBounds(o: Record<string, unknown>, xKey: string, zKey: string, ctx: string, w: number, d: number) {
+  const x = o[xKey] as number;
+  const z = o[zKey] as number;
+  if (!(x >= 0 && x < w && z >= 0 && z < d)) {
+    throw new LevelLoadError(`Maze '${ctx}': (${xKey}=${x}, ${zKey}=${z}) out of bounds (width=${w}, depth=${d})`);
   }
 }
