@@ -5,12 +5,22 @@ export class InputManager {
   private keys = new Set<string>();
   private mouse = { x: 0, y: 0 };
   private togglePauseListener: (() => void) | null = null;
+  private paused = false;
 
   constructor(private sensitivity = 0.002) {
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('keyup', this.onKeyUp);
     document.addEventListener('mousemove', this.onMouseMove);
     document.addEventListener('pointerlockchange', this.onLockChange);
+  }
+
+  setPaused(paused: boolean) {
+    this.paused = paused;
+    if (paused) {
+      // Clear any pending delta so resume doesn't snap
+      this.mouse.x = 0;
+      this.mouse.y = 0;
+    }
   }
 
   dispose() {
@@ -40,7 +50,7 @@ export class InputManager {
 
   // Exposed for tests
   onMouseMove = (e: MouseEvent) => {
-    if (document.pointerLockElement) {
+    if (document.pointerLockElement && !this.paused) {
       this.mouse.x += e.movementX * this.sensitivity;
       this.mouse.y += e.movementY * this.sensitivity;
     }
@@ -48,7 +58,7 @@ export class InputManager {
 
   private onKeyDown = (e: KeyboardEvent) => {
     this.keys.add(e.code);
-    if (e.code === 'KeyP') this.togglePauseListener?.();
+    if (e.code === 'KeyP' && !e.repeat) this.togglePauseListener?.();
   };
   private onKeyUp = (e: KeyboardEvent) => { this.keys.delete(e.code); };
   private onLockChange = () => { /* host can subscribe via store */ };

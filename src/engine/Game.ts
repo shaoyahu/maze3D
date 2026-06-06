@@ -13,7 +13,7 @@ export interface GameBridge {
   onTick: (dt: number) => void;
   onPauseToggle: () => void;
   onPickupCollected: (p: Pickup) => void;
-  onReachExit: (timeUsed: number) => void;
+  onReachExit: () => void;
 }
 
 export class Game {
@@ -23,7 +23,6 @@ export class Game {
   private player?: PlayerState;
   private input?: InputManager;
   private loop?: Loop;
-  private startedAt = 0;
   private remainingPickups: Pickup[] = [];
   private currentMaze?: MazeData;
   private bridge: GameBridge;
@@ -49,7 +48,6 @@ export class Game {
     updatePlayerCamera(this.camera, this.player);
     this.currentMaze = maze;
     this.remainingPickups = [...maze.pickups];
-    this.startedAt = performance.now();
     if (this.loop) this.loop.stop();
     this.loop = new Loop((dt) => this.update(dt));
     this.loop.start();
@@ -60,6 +58,10 @@ export class Game {
     if (!this.loop) return;
     this.loop = new Loop((dt) => this.update(dt));
     this.loop.start();
+  }
+
+  setInputPaused(paused: boolean) {
+    this.input?.setPaused(paused);
   }
 
   resize() {
@@ -112,8 +114,7 @@ export class Game {
     }
 
     if (isAtExit(this.player.position, this.currentMaze)) {
-      const used = (performance.now() - this.startedAt) / 1000;
-      this.bridge.onReachExit(used);
+      this.bridge.onReachExit();
       this.pauseLoop();
     }
 

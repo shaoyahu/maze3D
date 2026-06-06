@@ -9,13 +9,23 @@ export function isStorageAvailable(): boolean {
   }
 }
 
-export function loadJSON<T>(key: string, fallback: T): T;
+export function loadJSON<T>(
+  key: string,
+  fallback: T,
+  validate?: (raw: unknown) => raw is T,
+): T;
 export function loadJSON<T>(key: string): T | undefined;
-export function loadJSON<T>(key: string, fallback?: T): T | undefined {
+export function loadJSON<T>(
+  key: string,
+  fallback?: T,
+  validate?: (raw: unknown) => raw is T,
+): T | undefined {
   try {
     const raw = localStorage.getItem(key);
     if (raw == null) return fallback as T | undefined;
-    return JSON.parse(raw) as T;
+    const parsed: unknown = JSON.parse(raw);
+    if (validate && !validate(parsed)) return fallback as T | undefined;
+    return parsed as T;
   } catch {
     return fallback as T | undefined;
   }

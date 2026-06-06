@@ -18,9 +18,20 @@ export function GameCanvas({ maze }: { maze: MazeData }) {
         else if (s.screen === 'paused') s.resume();
       },
       onPickupCollected: (p) => useGameStore.getState().pickup(p),
-      onReachExit: (timeUsed) => {
+      onReachExit: () => {
         const s = useGameStore.getState();
-        if (s.currentLevelId) {
+        if (!s.currentLevelId || !s.currentMaze) {
+          s.reachExit(false);
+          return;
+        }
+        // Compute timeUsed from the store (game time, excludes pause time).
+        const timeUsed = s.currentMaze.rules.initialTime - s.timeRemaining;
+        const cur = useLevelStore.getState().bestByLevel[s.currentLevelId];
+        const isNewRecord =
+          !cur ||
+          timeUsed < cur.timeUsed ||
+          (timeUsed === cur.timeUsed && s.pickupCount.collected > cur.collected);
+        if (isNewRecord) {
           useLevelStore.getState().record({
             levelId: s.currentLevelId,
             timeUsed,
@@ -29,7 +40,7 @@ export function GameCanvas({ maze }: { maze: MazeData }) {
             date: new Date().toISOString(),
           });
         }
-        s.reachExit();
+        s.reachExit(isNewRecord);
       },
     };
     const game = new Game(bridge);
@@ -52,8 +63,14 @@ export function GameCanvas({ maze }: { maze: MazeData }) {
 
   useEffect(() => {
     const unsub = useGameStore.subscribe((s, prev) => {
-      if (s.screen === 'paused' && prev && prev.screen !== 'paused') gameRef.current?.pauseLoop();
-      if (s.screen === 'playing' && prev && prev.screen === 'paused') gameRef.current?.resumeLoop();
+      if (s.screen === 'paused' && prev && prev.screen !== 'paused') {
+        gameRef.current?.pauseLoop();
+        gameRef.current?.setInputPaused(true);
+      }
+      if (s.screen === 'playing' && prev && prev.screen === 'paused') {
+        gameRef.current?.resumeLoop();
+        gameRef.current?.setInputPaused(false);
+      }
     });
     return unsub;
   }, []);
