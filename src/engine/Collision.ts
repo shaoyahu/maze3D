@@ -45,7 +45,7 @@ function collidesAt(
   for (let cz = minCellZ; cz <= maxCellZ; cz++) {
     for (let cx = minCellX; cx <= maxCellX; cx++) {
       if (cx < 0 || cz < 0 || cx >= grid.width || cz >= grid.depth) {
-        return true;
+        continue; // skip OOB cells (player body may extend outside grid edges)
       }
       if (grid.get(cx, cz) === 1) {
         return true;
