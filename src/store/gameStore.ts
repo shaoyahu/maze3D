@@ -11,6 +11,7 @@ export interface GameState {
   health: number;
   pickupCount: { collected: number; total: number };
   inventory: (Pickup | null)[];
+  lastWinIsNewRecord: boolean | null;
 
   startLevel: (maze: MazeData) => void;
   pause: () => void;
@@ -18,7 +19,7 @@ export interface GameState {
   tick: (dt: number) => void;
   pickup: (p: Pickup) => void;
   damage: (n: number) => void;
-  reachExit: () => void;
+  reachExit: (isNewRecord?: boolean) => void;
   goToMenu: () => void;
 }
 
@@ -32,6 +33,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   health: 0,
   pickupCount: { collected: 0, total: 0 },
   inventory: [null, null],
+  lastWinIsNewRecord: null,
 
   startLevel: (maze) =>
     set({
@@ -42,6 +44,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       health: maze.rules.maxHealth,
       pickupCount: { collected: 0, total: maze.pickups.length },
       inventory: Array(INVENTORY_SIZE).fill(null),
+      lastWinIsNewRecord: null,
     }),
 
   pause: () => {
@@ -89,8 +92,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     else set({ health: next });
   },
 
-  reachExit: () => {
-    if (get().screen === 'playing') set({ screen: 'win' });
+  reachExit: (isNewRecord) => {
+    if (get().screen === 'playing') set({ screen: 'win', lastWinIsNewRecord: isNewRecord ?? null });
   },
 
   goToMenu: () => set({ screen: 'menu', currentLevelId: null, currentMaze: null }),

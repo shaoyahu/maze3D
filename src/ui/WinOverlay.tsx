@@ -9,9 +9,9 @@ export function WinOverlay({ onRetry, onQuit, onNext }: { onRetry: () => void; o
   const currentLevelId = useGameStore((s) => s.currentLevelId);
   const timeRemaining = useGameStore((s) => s.timeRemaining);
   const initial = useGameStore((s) => s.currentMaze?.rules.initialTime ?? 0);
+  const newRecord = useGameStore((s) => s.lastWinIsNewRecord);
   const best = useLevelStore((s) => (currentLevelId ? s.bestByLevel[currentLevelId] : undefined));
   const timeUsed = initial - timeRemaining;
-  const newRecord = !best || timeUsed < best.timeUsed;
   return (
     <div style={overlayStyle}>
       <h2 style={{ color: 'var(--accent)' }}>通关！</h2>
