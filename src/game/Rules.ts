@@ -1,18 +1,34 @@
 import type { MazeData, Pickup } from '../maze/types';
 
-export function isAtExit(player: { x: number; z: number }, maze: MazeData): boolean {
+// Cell convention: cell i owns [i*cs, (i+1)*cs). floor() matches Collision.
+// collidesAt's convention. Round-based "nearest center" disagrees at exact
+// boundaries, causing findPickupAt to miss one-frame boundary hits.
+function cellX(point: { x: number }, cs: number) { return Math.floor(point.x / cs); }
+function cellZ(point: { z: number }, cs: number) { return Math.floor(point.z / cs); }
+
+export function crossesExit(
+  start: { x: number; z: number },
+  end: { x: number; z: number },
+  maze: MazeData,
+): boolean {
+  // Sample start, end, and the midpoint so fast movement (dt spikes, debug
+  // speed-up) cannot tunnel past the exit cell.
   const cs = maze.cellSize;
-  const cellX = Math.round((player.x - cs / 2) / cs);
-  const cellZ = Math.round((player.z - cs / 2) / cs);
-  return cellX === maze.exit.x && cellZ === maze.exit.z;
+  const ex = maze.exit.x;
+  const ez = maze.exit.z;
+  if (cellX(start, cs) === ex && cellZ(start, cs) === ez) return true;
+  if (cellX(end, cs) === ex && cellZ(end, cs) === ez) return true;
+  const midX = Math.floor((start.x + end.x) / 2 / cs);
+  const midZ = Math.floor((start.z + end.z) / 2 / cs);
+  return midX === ex && midZ === ez;
 }
 
 export function findPickupAt(player: { x: number; z: number }, maze: MazeData, remaining: Pickup[]): Pickup | null {
   const cs = maze.cellSize;
-  const cellX = Math.round((player.x - cs / 2) / cs);
-  const cellZ = Math.round((player.z - cs / 2) / cs);
+  const px = cellX(player, cs);
+  const pz = cellZ(player, cs);
   for (const p of remaining) {
-    if (p.x === cellX && p.z === cellZ) return p;
+    if (p.x === px && p.z === pz) return p;
   }
   return null;
 }

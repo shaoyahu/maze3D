@@ -14,21 +14,35 @@ import type { MazeData } from './maze/types';
 type UiScreen = 'menu' | 'levels' | 'settings' | 'game';
 
 async function loadAllLevels(): Promise<{ id: string; name: string; data: MazeData }[]> {
-  const modules = import.meta.glob('/public/levels/*.json', { eager: true });
+  // Non-eager glob: level JSONs parse on demand when the user picks one,
+  // instead of blocking the initial JS chunk with every level at startup.
+  const modules = import.meta.glob('/public/levels/*.json');
   const provider = new JsonMazeProvider(
     Object.fromEntries(
-      Object.entries(modules).map(([path, mod]) => {
+      Object.entries(modules).map(([path, loader]) => {
         const id = path.split('/').pop()!.replace('.json', '');
-        const data = (mod as { default?: unknown }).default ?? mod;
-        return [id, data];
+        return [
+          id,
+          async () => {
+            const mod = await loader();
+            return (mod as { default?: unknown }).default ?? mod;
+          },
+        ];
       }),
     ),
   );
   const ids = await provider.list();
   const out: { id: string; name: string; data: MazeData }[] = [];
   for (const id of ids) {
-    const m = await provider.load(id);
-    out.push({ id: m.id, name: m.name, data: m });
+    // Per-level try/catch: a single malformed level JSON must not block
+    // loading the rest. The user sees only the levels that successfully
+    // validated; the broken one is logged for the developer.
+    try {
+      const m = await provider.load(id);
+      out.push({ id: m.id, name: m.name, data: m });
+    } catch (e) {
+      console.warn(`loadAllLevels: skipping level '${id}' due to validation error`, e);
+    }
   }
   return out;
 }
@@ -37,11 +51,22 @@ export function App() {
   const [uiScreen, setUiScreen] = useState<UiScreen>('menu');
   const [levels, setLevels] = useState<{ id: string; name: string; data: MazeData }[]>([]);
   const [activeMaze, setActiveMaze] = useState<MazeData | null>(null);
-  const [retryCount, setRetryCount] = useState(0);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const gameScreen = useGameStore((s) => s.screen);
 
   useEffect(() => {
-    loadAllLevels().then(setLevels).catch((e) => console.error('Failed to load levels', e));
+    loadAllLevels()
+      .then((lv) => {
+        setLevels(lv);
+        // Empty list is a benign state, not an error — LevelSelect renders
+        // a neutral "暂无可用关卡" message in that case. Only network/parse
+        // failures should paint the red error style.
+      })
+      .catch((e) => {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error('Failed to load levels', e);
+        setLoadError(`关卡加载失败：${msg}`);
+      });
   }, []);
 
   const startLevel = (id: string) => {
@@ -49,7 +74,6 @@ export function App() {
     if (!lv) return;
     useGameStore.getState().startLevel(lv.data);
     setActiveMaze(lv.data);
-    if (uiScreen === 'game') setRetryCount((c) => c + 1); // force GameCanvas remount on retry
     setUiScreen('game');
   };
 
@@ -62,7 +86,7 @@ export function App() {
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       {uiScreen === 'game' && activeMaze && (
-        <GameCanvas key={`${activeMaze.id}-${retryCount}`} maze={activeMaze} />
+        <GameCanvas key={activeMaze.id} maze={activeMaze} />
       )}
       {uiScreen === 'game' && gameScreen === 'playing' && <HUD />}
       {uiScreen === 'game' && gameScreen === 'paused' && (
@@ -83,6 +107,7 @@ export function App() {
       {uiScreen === 'levels' && (
         <LevelSelect
           available={levels.map(({ id, name }) => ({ id, name }))}
+          error={loadError}
           onPick={startLevel}
           onBack={() => setUiScreen('menu')}
         />

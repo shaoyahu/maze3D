@@ -1,19 +1,39 @@
 import { LevelLoadError } from '../utils/errors';
+import { PLAYER_RADIUS } from '../entities/Player';
 import type { MazeData, MazeProvider, CellType, PickupType, VictoryType } from './types';
 
 const VALID_PICKUP_TYPES: PickupType[] = ['time', 'health', 'key'];
 const VALID_VICTORY: VictoryType[] = ['reach-exit', 'survive', 'time-trial'];
+// Derived from the player's collision radius — the player needs 2*radius of
+// clearance to fit inside a single cell. Importing PLAYER_RADIUS keeps the
+// validator in lockstep with Player.createPlayer: a future radius change
+// automatically tightens or loosens the level-size floor.
+const MIN_CELL_SIZE = 2 * PLAYER_RADIUS;
+
+export type MazeLoader = () => Promise<unknown>;
 
 export class JsonMazeProvider implements MazeProvider {
-  constructor(private data: Record<string, unknown>) {}
+  // Each entry is either a pre-validated data object (eager) or a loader
+  // function that returns a promise of the data (lazy). The constructor
+  // accepts both so callers can pick the trade-off: eager for tests, lazy
+  // for production so level JSONs are parsed on demand.
+  constructor(private data: Record<string, unknown | MazeLoader>) {}
 
   async list(): Promise<string[]> {
     return Object.keys(this.data);
   }
 
   async load(id: string): Promise<MazeData> {
-    const raw = this.data[id];
-    if (!raw) throw new LevelLoadError(`Maze '${id}' not found`);
+    const entry = this.data[id];
+    if (entry === undefined) throw new LevelLoadError(`Maze '${id}' not found`);
+    let raw: unknown;
+    try {
+      raw = typeof entry === 'function' ? await (entry as MazeLoader)() : entry;
+    } catch (e) {
+      throw new LevelLoadError(
+        `Maze '${id}': failed to load — ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
     return validateMaze(raw, id);
   }
 }
@@ -33,6 +53,9 @@ function validateMaze(raw: unknown, id: string): MazeData {
   requireNumber(m, 'cellSize', id);
   if (!Number.isFinite(m.cellSize as number) || (m.cellSize as number) <= 0) {
     throw new LevelLoadError(`Maze '${id}': cellSize must be a finite positive number`);
+  }
+  if ((m.cellSize as number) < MIN_CELL_SIZE) {
+    throw new LevelLoadError(`Maze '${id}': cellSize must be at least ${MIN_CELL_SIZE} to fit the player`);
   }
 
   requireObject(m, 'start', id);
@@ -78,6 +101,7 @@ function validateMaze(raw: unknown, id: string): MazeData {
   }
 
   const pickups = Array.isArray(m.pickups) ? m.pickups : [];
+  const seenCells = new Set<string>();
   for (const p of pickups) {
     if (typeof p !== 'object' || p === null) {
       throw new LevelLoadError(`Maze '${id}': invalid pickup`);
@@ -86,8 +110,8 @@ function validateMaze(raw: unknown, id: string): MazeData {
     requireNumber(pp, 'x', `${id}.pickup`);
     requireNumber(pp, 'z', `${id}.pickup`);
     requireNumber(pp, 'value', `${id}.pickup`);
-    if (!Number.isFinite(pp.value as number)) {
-      throw new LevelLoadError(`Maze '${id}': pickup value must be a finite number`);
+    if (!Number.isFinite(pp.value as number) || (pp.value as number) <= 0) {
+      throw new LevelLoadError(`Maze '${id}': pickup value must be a finite positive number`);
     }
     requireInBounds(pp, 'x', 'z', `${id}.pickup`, width, depth);
     if (!VALID_PICKUP_TYPES.includes(pp.type as PickupType)) {
@@ -99,6 +123,11 @@ function validateMaze(raw: unknown, id: string): MazeData {
     if (walls[pp.z as number][pp.x as number] === 1) {
       throw new LevelLoadError(`Maze '${id}': pickup is on a wall`);
     }
+    const cellKey = `${pp.x},${pp.z}`;
+    if (seenCells.has(cellKey)) {
+      throw new LevelLoadError(`Maze '${id}': duplicate pickup at (${pp.x}, ${pp.z})`);
+    }
+    seenCells.add(cellKey);
   }
 
   requireObject(m, 'rules', id);
@@ -106,6 +135,18 @@ function validateMaze(raw: unknown, id: string): MazeData {
   requireNumber(r, 'initialTime', `${id}.rules`);
   requireNumber(r, 'maxHealth', `${id}.rules`);
   requireNumber(r, 'timeOnPickup', `${id}.rules`);
+  const initialTime = r.initialTime as number;
+  const maxHealth = r.maxHealth as number;
+  const timeOnPickup = r.timeOnPickup as number;
+  if (!(initialTime > 0) || !Number.isFinite(initialTime)) {
+    throw new LevelLoadError(`Maze '${id}': initialTime must be a finite positive number`);
+  }
+  if (!(maxHealth > 0) || !Number.isFinite(maxHealth)) {
+    throw new LevelLoadError(`Maze '${id}': maxHealth must be a finite positive number`);
+  }
+  if (!Number.isFinite(timeOnPickup) || timeOnPickup <= 0) {
+    throw new LevelLoadError(`Maze '${id}': timeOnPickup must be a finite positive number`);
+  }
   if (!VALID_VICTORY.includes(r.victory as VictoryType)) {
     throw new LevelLoadError(`Maze '${id}': invalid victory type`);
   }
@@ -117,7 +158,13 @@ function requireString(o: Record<string, unknown>, key: string, ctx: string) {
   if (typeof o[key] !== 'string') throw new LevelLoadError(`Maze '${ctx}': missing string '${key}'`);
 }
 function requireNumber(o: Record<string, unknown>, key: string, ctx: string) {
-  if (typeof o[key] !== 'number') throw new LevelLoadError(`Maze '${ctx}': missing number '${key}'`);
+  // typeof NaN === 'number' and typeof Infinity === 'number', so the plain
+  // typeof check is insufficient — a JSON pipeline that produces NaN for
+  // missing fields would otherwise slip through and surface as "depth (NaN)"
+  // errors far from the root cause.
+  if (typeof o[key] !== 'number' || !Number.isFinite(o[key] as number)) {
+    throw new LevelLoadError(`Maze '${ctx}': missing or non-finite number '${key}'`);
+  }
 }
 function requireObject(o: Record<string, unknown>, key: string, ctx: string) {
   if (typeof o[key] !== 'object' || o[key] === null) {
@@ -127,7 +174,12 @@ function requireObject(o: Record<string, unknown>, key: string, ctx: string) {
 function requireInBounds(o: Record<string, unknown>, xKey: string, zKey: string, ctx: string, w: number, d: number) {
   const x = o[xKey] as number;
   const z = o[zKey] as number;
-  if (!(x >= 0 && x < w && z >= 0 && z < d)) {
-    throw new LevelLoadError(`Maze '${ctx}': (${xKey}=${x}, ${zKey}=${z}) out of bounds (width=${w}, depth=${d})`);
+  // Integer requirement: the cell convention (floor(x/cs)) only agrees with
+  // the cell-center positioning (start.x * cs + cs/2) when start.x is an
+  // integer. Fractional coordinates would put the player mid-cell, causing
+  // the runtime cell index to disagree with the validation-time cell index
+  // and making integer-cell pickups unreachable.
+  if (!Number.isInteger(x) || !Number.isInteger(z) || !(x >= 0 && x < w && z >= 0 && z < d)) {
+    throw new LevelLoadError(`Maze '${ctx}': (${xKey}=${x}, ${zKey}=${z}) out of bounds or non-integer (width=${w}, depth=${d})`);
   }
 }

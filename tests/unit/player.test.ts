@@ -9,7 +9,7 @@ describe('Player', () => {
     expect(p.yaw).toBe(0);
     expect(p.pitch).toBe(0);
     expect(p.speed).toBe(3);
-    expect(p.radius).toBe(0.3);
+    expect(p.radius).toBe(0.2);
   });
 
   it('applyLook updates yaw and pitch from mouse delta and clamps pitch', () => {
@@ -25,16 +25,20 @@ describe('Player', () => {
     expect(p.pitch).toBeGreaterThanOrEqual(-Math.PI / 2);
   });
 
-  it('updatePlayerCamera sets position and YXZ rotation', () => {
+  it('updatePlayerCamera sets position and a roll-free YXZ quaternion', () => {
     const p: PlayerState = { position: { x: 1.5, z: 2.5 }, yaw: 0.4, pitch: 0.1, speed: 1, radius: 0.1 };
+    const setFromEuler = vi.fn();
     const cam = {
       position: { set: vi.fn() },
-      rotation: { order: '' as string, y: 0, x: 0 },
+      quaternion: { setFromEuler },
     } as unknown as import('three').PerspectiveCamera;
     updatePlayerCamera(cam, p);
     expect(cam.position.set).toHaveBeenCalledWith(1.5, 1.6, 2.5);
-    expect(cam.rotation.order).toBe('YXZ');
-    expect(cam.rotation.y).toBeCloseTo(0.4);
-    expect(cam.rotation.x).toBeCloseTo(0.1);
+    expect(setFromEuler).toHaveBeenCalledTimes(1);
+    const euler = setFromEuler.mock.calls[0][0] as import('three').Euler;
+    expect(euler.order).toBe('YXZ');
+    expect(euler.x).toBeCloseTo(p.pitch);
+    expect(euler.y).toBeCloseTo(p.yaw);
+    expect(euler.z).toBe(0);
   });
 });

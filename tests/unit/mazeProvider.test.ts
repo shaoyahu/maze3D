@@ -96,4 +96,59 @@ describe('JsonMazeProvider', () => {
     const provider = new JsonMazeProvider({ 'm1': bad });
     await expect(provider.load('m1')).rejects.toThrow(LevelLoadError);
   });
+
+  it('throws LevelLoadError when initialTime is not positive', async () => {
+    const bad = { ...validMaze, rules: { ...validMaze.rules, initialTime: 0 } };
+    const provider = new JsonMazeProvider({ 'm1': bad });
+    await expect(provider.load('m1')).rejects.toThrow(LevelLoadError);
+  });
+
+  it('throws LevelLoadError when initialTime is negative', async () => {
+    const bad = { ...validMaze, rules: { ...validMaze.rules, initialTime: -10 } };
+    const provider = new JsonMazeProvider({ 'm1': bad });
+    await expect(provider.load('m1')).rejects.toThrow(LevelLoadError);
+  });
+
+  it('throws LevelLoadError when maxHealth is not positive', async () => {
+    const bad = { ...validMaze, rules: { ...validMaze.rules, maxHealth: 0 } };
+    const provider = new JsonMazeProvider({ 'm1': bad });
+    await expect(provider.load('m1')).rejects.toThrow(LevelLoadError);
+  });
+
+  it('throws LevelLoadError when timeOnPickup is NaN', async () => {
+    const bad = { ...validMaze, rules: { ...validMaze.rules, timeOnPickup: NaN } };
+    const provider = new JsonMazeProvider({ 'm1': bad });
+    await expect(provider.load('m1')).rejects.toThrow(LevelLoadError);
+  });
+
+  it('throws LevelLoadError when pickup value is zero', async () => {
+    const bad = { ...validMaze, pickups: [{ x: 2, z: 0, type: 'health', value: 0 }] };
+    const provider = new JsonMazeProvider({ 'm1': bad });
+    await expect(provider.load('m1')).rejects.toThrow(/pickup value must be a finite positive number/);
+  });
+
+  it('throws LevelLoadError when pickup value is negative', async () => {
+    const bad = { ...validMaze, pickups: [{ x: 2, z: 0, type: 'health', value: -5 }] };
+    const provider = new JsonMazeProvider({ 'm1': bad });
+    await expect(provider.load('m1')).rejects.toThrow(/pickup value must be a finite positive number/);
+  });
+
+  it('throws LevelLoadError when two pickups occupy the same cell', async () => {
+    const bad = {
+      ...validMaze,
+      pickups: [
+        { x: 2, z: 0, type: 'time', value: 5 },
+        { x: 2, z: 0, type: 'key', value: 1 },
+      ],
+    };
+    const provider = new JsonMazeProvider({ 'm1': bad });
+    await expect(provider.load('m1')).rejects.toThrow(/duplicate pickup/);
+  });
+
+  it('throws LevelLoadError when cellSize is too small for the player radius', async () => {
+    // player radius is 0.2, so cellSize must be at least 0.4 to fit.
+    const bad = { ...validMaze, cellSize: 0.3 };
+    const provider = new JsonMazeProvider({ 'm1': bad });
+    await expect(provider.load('m1')).rejects.toThrow(/cellSize must be at least/);
+  });
 });

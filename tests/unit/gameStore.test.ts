@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useGameStore } from '../../src/store/gameStore';
 import type { MazeData } from '../../src/maze/types';
 
@@ -41,6 +41,33 @@ describe('gameStore', () => {
     expect(useGameStore.getState().screen).toBe('game-over');
   });
 
+  it('tick increments elapsedTime while playing', () => {
+    useGameStore.getState().startLevel(initialMaze);
+    useGameStore.getState().tick(2);
+    expect(useGameStore.getState().elapsedTime).toBeCloseTo(2);
+  });
+
+  it('tick does not increment elapsedTime when paused', () => {
+    useGameStore.getState().startLevel(initialMaze);
+    useGameStore.getState().pause();
+    useGameStore.getState().tick(1);
+    expect(useGameStore.getState().elapsedTime).toBe(0);
+  });
+
+  it('startLevel resets elapsedTime to 0', () => {
+    useGameStore.getState().startLevel(initialMaze);
+    useGameStore.getState().tick(5);
+    useGameStore.getState().startLevel(initialMaze);
+    expect(useGameStore.getState().elapsedTime).toBe(0);
+  });
+
+  it('goToMenu resets elapsedTime to 0', () => {
+    useGameStore.getState().startLevel(initialMaze);
+    useGameStore.getState().tick(5);
+    useGameStore.getState().goToMenu();
+    expect(useGameStore.getState().elapsedTime).toBe(0);
+  });
+
   it('pause/resume transitions are correct', () => {
     useGameStore.getState().startLevel(initialMaze);
     useGameStore.getState().pause();
@@ -66,6 +93,33 @@ describe('gameStore', () => {
     useGameStore.getState().pickup({ x: 1, z: 1, type: 'key', value: 1 });
     expect(useGameStore.getState().pickupCount.collected).toBe(0);
     expect(useGameStore.getState().inventory[0]).toEqual({ x: 0, z: 0, type: 'key', value: 1 });
+  });
+
+  it('pickup with unknown type logs a warning and does not increment collected', () => {
+    useGameStore.getState().startLevel(initialMaze);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    // Bypass the Pickup union to simulate a future type not yet handled.
+    useGameStore.getState().pickup({ x: 1, z: 1, type: 'unknown' as never, value: 1 });
+    expect(warnSpy).toHaveBeenCalled();
+    expect(useGameStore.getState().pickupCount.collected).toBe(0);
+    warnSpy.mockRestore();
+  });
+
+  it('health pickup adds health and increments collected', () => {
+    useGameStore.getState().startLevel(initialMaze);
+    useGameStore.setState({ health: 1 });
+    useGameStore.getState().pickup({ x: 1, z: 1, type: 'health', value: 1 });
+    const s = useGameStore.getState();
+    expect(s.health).toBe(2);
+    expect(s.pickupCount.collected).toBe(1);
+  });
+
+  it('health pickup caps at maxHealth', () => {
+    useGameStore.getState().startLevel(initialMaze);
+    useGameStore.setState({ health: 3 });
+    useGameStore.getState().pickup({ x: 1, z: 1, type: 'health', value: 5 });
+    expect(useGameStore.getState().health).toBe(3);
+    expect(useGameStore.getState().pickupCount.collected).toBe(1);
   });
 
   it('damage decrements health and triggers game-over at 0', () => {

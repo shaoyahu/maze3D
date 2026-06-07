@@ -12,7 +12,7 @@ describe('persist', () => {
 
   it('saveJSON then loadJSON round-trips an object', () => {
     saveJSON('k', { a: 1, b: 'x' });
-    expect(loadJSON('k')).toEqual({ a: 1, b: 'x' });
+    expect(loadJSON('k', { a: 0, b: '' })).toEqual({ a: 1, b: 'x' });
   });
 
   it('loadJSON returns fallback when key missing', () => {

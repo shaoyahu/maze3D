@@ -13,38 +13,55 @@ interface LevelStore {
   bestByLevel: Record<string, BestRecord>;
   record: (r: BestRecord) => void;
   getBest: (levelId: string) => BestRecord | undefined;
+  // Pure read: would `record(r)` actually store r? Single source of truth
+  // shared with the win-overlay bridge so the two cannot drift.
+  peekIsBetter: (r: BestRecord) => boolean;
 }
 
 const STORAGE_KEY = 'maze3d.levels.v1';
 
-function isBestRecord(raw: unknown): raw is BestRecord {
+export function isBestRecord(raw: unknown): raw is BestRecord {
   if (typeof raw !== 'object' || raw === null) return false;
   const r = raw as Record<string, unknown>;
-  if (typeof r.levelId !== 'string') return false;
-  if (typeof r.timeUsed !== 'number' || !Number.isFinite(r.timeUsed)) return false;
-  if (typeof r.collected !== 'number' || !Number.isFinite(r.collected)) return false;
-  if (typeof r.total !== 'number' || !Number.isFinite(r.total)) return false;
-  if (typeof r.date !== 'string') return false;
+  if (typeof r.levelId !== 'string' || r.levelId === '') return false;
+  if (typeof r.timeUsed !== 'number' || !Number.isFinite(r.timeUsed) || r.timeUsed < 0) return false;
+  if (typeof r.collected !== 'number' || !Number.isFinite(r.collected) || r.collected < 0) return false;
+  if (typeof r.total !== 'number' || !Number.isFinite(r.total) || r.total < 0) return false;
+  if (r.collected > r.total) return false;
+  if (typeof r.date !== 'string' || Number.isNaN(Date.parse(r.date))) return false;
   return true;
 }
 
-function isBestRecordMap(raw: unknown): raw is Record<string, BestRecord> {
-  if (typeof raw !== 'object' || raw === null) return false;
-  for (const v of Object.values(raw)) {
-    if (!isBestRecord(v)) return false;
+export function sanitizeBestRecordMap(raw: unknown): Record<string, BestRecord> {
+  if (typeof raw !== 'object' || raw === null) return {};
+  const out: Record<string, BestRecord> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (isBestRecord(v)) out[k] = v;
+    else console.warn(`levelStore: dropped invalid record for level '${k}'`);
   }
-  return true;
+  return out;
 }
 
 export const useLevelStore = create<LevelStore>((set, get) => ({
-  bestByLevel: loadJSON<Record<string, BestRecord>>(STORAGE_KEY, {}, isBestRecordMap),
-  record: (r) => {
+  bestByLevel: (() => {
+    const raw = loadJSON<unknown>(STORAGE_KEY, null);
+    return raw ? sanitizeBestRecordMap(raw) : {};
+  })(),
+  peekIsBetter: (r) => {
+    if (!isBestRecord(r)) return false;
     const cur = get().bestByLevel[r.levelId];
-    const isBetter =
+    return (
       !cur ||
       r.timeUsed < cur.timeUsed ||
-      (r.timeUsed === cur.timeUsed && r.collected > cur.collected);
-    if (!isBetter) return;
+      (r.timeUsed === cur.timeUsed && r.collected > cur.collected)
+    );
+  },
+  record: (r) => {
+    if (!isBestRecord(r)) {
+      console.warn('levelStore.record: rejected invalid record', r);
+      return;
+    }
+    if (!get().peekIsBetter(r)) return;
     const next = { ...get().bestByLevel, [r.levelId]: r };
     saveJSON(STORAGE_KEY, next);
     set({ bestByLevel: next });

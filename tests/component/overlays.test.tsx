@@ -33,10 +33,19 @@ describe('overlays', () => {
     expect(onRetry).toHaveBeenCalled();
   });
 
-  it('WinOverlay shows time used', () => {
+  it('WinOverlay shows time used from elapsedTime', () => {
     useGameStore.getState().startLevel(maze);
-    useGameStore.setState({ timeRemaining: 35 });
+    useGameStore.setState({ elapsedTime: 25 });
     render(<WinOverlay onRetry={() => {}} onQuit={() => {}} />);
     expect(screen.getByText(/用时 00:25/)).toBeInTheDocument();
+  });
+
+  it('WinOverlay shows elapsedTime when time pickups push timeRemaining past initialTime', () => {
+    useGameStore.getState().startLevel(maze);
+    // Player picked up a +15s time pickup, then played for 10s and reached the exit.
+    // elapsedTime=10, timeRemaining=60-10+15=65 (past initialTime).
+    useGameStore.setState({ timeRemaining: 65, elapsedTime: 10 });
+    render(<WinOverlay onRetry={() => {}} onQuit={() => {}} />);
+    expect(screen.getByText(/用时 00:10/)).toBeInTheDocument();
   });
 });

@@ -13,21 +13,15 @@ export function loadJSON<T>(
   key: string,
   fallback: T,
   validate?: (raw: unknown) => raw is T,
-): T;
-export function loadJSON<T>(key: string): T | undefined;
-export function loadJSON<T>(
-  key: string,
-  fallback?: T,
-  validate?: (raw: unknown) => raw is T,
-): T | undefined {
+): T {
   try {
     const raw = localStorage.getItem(key);
-    if (raw == null) return fallback as T | undefined;
+    if (raw == null) return fallback;
     const parsed: unknown = JSON.parse(raw);
-    if (validate && !validate(parsed)) return fallback as T | undefined;
+    if (validate && !validate(parsed)) return fallback;
     return parsed as T;
   } catch {
-    return fallback as T | undefined;
+    return fallback;
   }
 }
 

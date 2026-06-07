@@ -10,6 +10,7 @@ describe('menu components', () => {
     localStorage.clear();
     useSettingsStore.setState({
       pointerSensitivity: 0.002,
+      fov: 60,
       darkMode: false,
       set: useSettingsStore.getState().set,
     });
@@ -46,7 +47,12 @@ describe('menu components', () => {
     const onBack = vi.fn();
     render(<Settings onBack={onBack} />);
     expect(screen.getByText(/rad\/px/)).toBeInTheDocument();
-    const slider = screen.getByRole('slider') as HTMLInputElement;
+    // Two sliders now (sensitivity + FOV). Pick the one whose min matches
+    // the sensitivity range so the test stays unambiguous if the FOV
+    // slider's range ever changes.
+    const slider = screen.getAllByRole('slider').find(
+      (el) => (el as HTMLInputElement).min === '0.0005',
+    ) as HTMLInputElement;
     fireEvent.change(slider, { target: { value: '0.004' } });
     expect(useSettingsStore.getState().pointerSensitivity).toBeCloseTo(0.004);
     fireEvent.click(screen.getByText('返回'));

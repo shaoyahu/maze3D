@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isAtExit, findPickupAt } from '../../src/game/Rules';
+import { findPickupAt, crossesExit } from '../../src/game/Rules';
 import type { MazeData } from '../../src/maze/types';
 
 const maze: MazeData = {
@@ -11,19 +11,32 @@ const maze: MazeData = {
 };
 
 describe('Rules', () => {
-  it('isAtExit returns true when player is in the exit cell', () => {
-    // cellSize=2, cell (2,1) center is (5, 3)
-    expect(isAtExit({ x: 5, z: 3 }, maze)).toBe(true);
-  });
-
-  it('isAtExit returns false when player is in another cell', () => {
-    expect(isAtExit({ x: 1, z: 1 }, maze)).toBe(false);
-  });
-
   it('findPickupAt returns the matching pickup or null', () => {
     const hit = findPickupAt({ x: 3, z: 3 }, maze, maze.pickups);
     expect(hit).toEqual({ x: 1, z: 1, type: 'time', value: 5 });
     const miss = findPickupAt({ x: 1, z: 1 }, maze, []);
     expect(miss).toBeNull();
+  });
+
+  describe('crossesExit', () => {
+    it('returns true when start is in the exit cell', () => {
+      expect(crossesExit({ x: 5, z: 3 }, { x: 5, z: 3 }, maze)).toBe(true);
+    });
+
+    it('returns true when end is in the exit cell', () => {
+      expect(crossesExit({ x: 1, z: 3 }, { x: 5, z: 3 }, maze)).toBe(true);
+    });
+
+    it('returns true when midpoint crosses the exit cell (tunneling guard)', () => {
+      const start = { x: 3.9, z: 3 };
+      const end = { x: 6.1, z: 3 };
+      expect(crossesExit(start, start, maze)).toBe(false);
+      expect(crossesExit(end, end, maze)).toBe(false);
+      expect(crossesExit(start, end, maze)).toBe(true);
+    });
+
+    it('returns false when the segment does not touch the exit cell', () => {
+      expect(crossesExit({ x: 1, z: 1 }, { x: 3, z: 3 }, maze)).toBe(false);
+    });
   });
 });

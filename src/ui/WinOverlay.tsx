@@ -7,11 +7,9 @@ import { formatTime } from '../utils/time';
 export function WinOverlay({ onRetry, onQuit, onNext }: { onRetry: () => void; onQuit: () => void; onNext?: () => void; }) {
   const pickupCount = useGameStore((s) => s.pickupCount);
   const currentLevelId = useGameStore((s) => s.currentLevelId);
-  const timeRemaining = useGameStore((s) => s.timeRemaining);
-  const initial = useGameStore((s) => s.currentMaze?.rules.initialTime ?? 0);
+  const timeUsed = useGameStore((s) => s.elapsedTime);
   const newRecord = useGameStore((s) => s.lastWinIsNewRecord);
   const best = useLevelStore((s) => (currentLevelId ? s.bestByLevel[currentLevelId] : undefined));
-  const timeUsed = initial - timeRemaining;
   return (
     <div style={overlayStyle}>
       <h2 style={{ color: 'var(--accent)' }}>通关！</h2>

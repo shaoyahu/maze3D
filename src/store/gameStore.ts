@@ -12,12 +12,21 @@ export interface GameState {
   pickupCount: { collected: number; total: number };
   inventory: (Pickup | null)[];
   lastWinIsNewRecord: boolean | null;
+  // Wall-clock time spent in the current level (pauses excluded). Separate
+  // from timeRemaining because time pickups can push it past initialTime,
+  // making initialTime - timeRemaining negative.
+  elapsedTime: number;
+  // Bumped on every startLevel() call so React effects (e.g. GameCanvas's
+  // level-reset effect) can observe "retry happened" even when the new
+  // maze id matches the old one. Without this, a retry on the same level
+  // would be invisible to effects keyed on maze.id.
+  restartKey: number;
 
   startLevel: (maze: MazeData) => void;
   pause: () => void;
   resume: () => void;
   tick: (dt: number) => void;
-  pickup: (p: Pickup) => void;
+  pickup: (p: Pickup) => boolean;
   damage: (n: number) => void;
   reachExit: (isNewRecord?: boolean) => void;
   goToMenu: () => void;
@@ -34,9 +43,11 @@ export const useGameStore = create<GameState>((set, get) => ({
   pickupCount: { collected: 0, total: 0 },
   inventory: [null, null],
   lastWinIsNewRecord: null,
+  elapsedTime: 0,
+  restartKey: 0,
 
   startLevel: (maze) =>
-    set({
+    set((s) => ({
       screen: 'playing',
       currentLevelId: maze.id,
       currentMaze: maze,
@@ -45,7 +56,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       pickupCount: { collected: 0, total: maze.pickups.length },
       inventory: Array(INVENTORY_SIZE).fill(null),
       lastWinIsNewRecord: null,
-    }),
+      elapsedTime: 0,
+      restartKey: s.restartKey + 1,
+    })),
 
   pause: () => {
     if (get().screen === 'playing') set({ screen: 'paused' });
@@ -58,20 +71,37 @@ export const useGameStore = create<GameState>((set, get) => ({
     const s = get();
     if (s.screen !== 'playing') return;
     const next = s.timeRemaining - dt;
-    if (next <= 0) set({ timeRemaining: 0, screen: 'game-over' });
-    else set({ timeRemaining: next });
+    if (next <= 0) {
+      // Player was only alive for s.timeRemaining seconds of this frame —
+      // the (dt - s.timeRemaining) tail is wall-clock time after they were
+      // already dead, so don't count it.
+      set({ timeRemaining: 0, screen: 'game-over', elapsedTime: s.elapsedTime + s.timeRemaining });
+    } else {
+      set({ timeRemaining: next, elapsedTime: s.elapsedTime + dt });
+    }
   },
 
-  pickup: (p) => {
+  pickup: (p): boolean => {
     const s = get();
-    if (s.screen !== 'playing') return;
-    const inv = [...s.inventory];
+    if (s.screen !== 'playing') return false;
     if (p.type === 'time') {
       set({
         timeRemaining: s.timeRemaining + (s.currentMaze?.rules.timeOnPickup ?? p.value),
         pickupCount: { ...s.pickupCount, collected: s.pickupCount.collected + 1 },
       });
-    } else {
+      return true;
+    }
+    if (p.type === 'health') {
+      const maxHealth = s.currentMaze?.rules.maxHealth ?? p.value;
+      const newHealth = Math.min(maxHealth, s.health + p.value);
+      set({
+        health: newHealth,
+        pickupCount: { ...s.pickupCount, collected: s.pickupCount.collected + 1 },
+      });
+      return true;
+    }
+    if (p.type === 'key') {
+      const inv = [...s.inventory];
       const idx = inv.findIndex((slot) => slot === null);
       if (idx >= 0) {
         inv[idx] = p;
@@ -79,9 +109,13 @@ export const useGameStore = create<GameState>((set, get) => ({
           inventory: inv,
           pickupCount: { ...s.pickupCount, collected: s.pickupCount.collected + 1 },
         });
+        return true;
       }
-      // If inventory full, do nothing — the pickup is lost.
+      // Inventory full — the engine must keep the pickup in the world.
+      return false;
     }
+    console.warn(`gameStore.pickup: unknown pickup type '${p.type}', dropping`, p);
+    return false;
   },
 
   damage: (n) => {
@@ -96,5 +130,17 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (get().screen === 'playing') set({ screen: 'win', lastWinIsNewRecord: isNewRecord ?? null });
   },
 
-  goToMenu: () => set({ screen: 'menu', currentLevelId: null, currentMaze: null }),
+  goToMenu: () =>
+    set({
+      screen: 'menu',
+      currentLevelId: null,
+      currentMaze: null,
+      timeRemaining: 0,
+      health: 0,
+      pickupCount: { collected: 0, total: 0 },
+      inventory: [null, null],
+      lastWinIsNewRecord: null,
+      elapsedTime: 0,
+      restartKey: 0,
+    }),
 }));
