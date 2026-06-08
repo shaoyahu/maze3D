@@ -31,7 +31,9 @@ describe('HUD', () => {
 
   it('renders inventory slot placeholders', () => {
     render(<HUD />);
-    expect(screen.getByText('1')).toBeInTheDocument();
-    expect(screen.getByText('2')).toBeInTheDocument();
+    // Each slot shows the digit both as center placeholder and as corner
+    // keyboard hint (P2-2 #12), so expect exactly 2 occurrences.
+    expect(screen.getAllByText('1').length).toBe(2);
+    expect(screen.getAllByText('2').length).toBe(2);
   });
 });
