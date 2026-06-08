@@ -10,9 +10,9 @@
 
 | 字段 | 值 |
 |---|---|
-| 活跃增量 | **P2-2** 深色模式 + 新 pickup 视觉 + UseItem 数字键 |
-| 已完成 | 13 / 14 |
-| 下一个任务 | **#14 文档同步：README / roadmap / spec 状态** |
+| 活跃增量 | **（P2-2 已完成 ✅；等待用户决定启动 P2-3 / P2-4a / P2-4b 之一）** |
+| 已完成 | 14 / 14（P2-2 全部 14 个任务） |
+| 下一个任务 | **等待用户决定**（P2-3 任务清单待展开；P2-4a 依赖 P2-3；P2-4b 独立） |
 | 最后更新 | 2026-06-08 |
 | 最近 commit | 见 `git log --oneline -1`（避免追尾，由 Claude 主动查） |
 
@@ -39,7 +39,7 @@
 
 |序 |名称 |优先级 | 前置依赖 |复杂度 |文档目录 |状态 |
 |---|---|---|---|---|---|---|
-| P2-2 | 深色模式 + 新 pickup 视觉 + UseItem 数字键 | P0 | — | Small | `docs/increments/dark-mode-pickups/` | pending |
+| P2-2 | 深色模式 + 新 pickup 视觉 + UseItem 数字键 | P0 | — | Small | `docs/increments/dark-mode-pickups/` | ✅ done (2026-06-08) |
 | P2-3 | 算法关卡（4 算法 × 3 尺寸 × time-trial） | P1 | — | Large | `docs/increments/procedural-modes/` | pending |
 | P2-4a | 巡逻敌人 + survive mode | P2 | P2-3 | Large | `docs/increments/enemies-editor/` | pending |
 | P2-4b | 关卡编辑器 | P2 | — | Large | `docs/increments/enemies-editor/` | pending |
@@ -98,9 +98,9 @@
 | 11 | `Pickup` mesh 按 type 选颜色：time 金黄 / health 红 / key 蓝 | S | [x] |
 | 12 | `InventoryBar` 加数字键提示 + slot 高亮激活态 | S | [x] |
 | 13 | E2E：`dark-mode.spec.ts` + `pickup-types.spec.ts` | M | [x] |
-| 14 | 文档同步：README / roadmap / spec 状态 | XS | [ ] |
+| 14 | 文档同步：README / roadmap / spec 状态 | XS | [x] |
 
-> 进度：13/14
+> 进度：14/14
 
 ### P2-3: 算法关卡（Large）
 

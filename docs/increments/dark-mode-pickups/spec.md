@@ -1,7 +1,7 @@
 # P2-2 — 深色模式 + 新 pickup 视觉 + UseItem 数字键（Spec 重写）
 
 **Slug**: dark-mode-pickups
-**状态**: ready（重写于 2026-06-08）
+**状态**: done（重写于 2026-06-08；全部 14 个任务 2026-06-08 完成）
 **对应路线图项**: P2-2
 **复杂度**: Small
 **关联决策**: Q1=A（补全差异）、Q3=A（严格不变）
@@ -79,29 +79,29 @@ grep -r "gameStore" src/engine/ && echo "FAIL" || echo "OK"
 ## 6. 验收（DoD 子集）
 
 ### 6.1 功能
-- [ ] F-1 到 F-10 全部 ship
-- [ ] darkMode toggle 立即生效（场景 + HUD）
-- [ ] health / key 拾取端到端可触发
-- [ ] 数字键 1/2 → useItem 端到端可走通
-- [ ] 三种 pickup 视觉可区分
+- [x] F-1 到 F-10 全部 ship
+- [x] darkMode toggle 立即生效（场景 + HUD）
+- [x] health / key 拾取端到端可触发
+- [x] 数字键 1/2 → useItem 端到端可走通
+- [x] 三种 pickup 视觉可区分
 
 ### 6.2 引擎边界
-- [ ] `grep -r "settingsStore" src/engine/` 为空
-- [ ] `grep -r "gameStore" src/engine/` 为空
-- [ ] Pickup 多色 mesh 在 `dispose()` 中释放
+- [x] `grep -r "settingsStore" src/engine/` 为空
+- [x] `grep -r "gameStore" src/engine/` 为空
+- [x] Pickup 多色 mesh 在 `dispose()` 中释放
 
 ### 6.3 测试
-- [ ] 单测覆盖率 ≥80%
-- [ ] 新增 action/分支单测
-- [ ] RTL: Settings / InventoryBar
-- [ ] E2E: dark-mode / pickup-types
-- [ ] `npm run typecheck` 与 `npm run build` 通过
+- [x] 单测覆盖率 ≥80%
+- [x] 新增 action/分支单测
+- [x] RTL: Settings / InventoryBar
+- [x] E2E: dark-mode / pickup-types
+- [x] `npm run typecheck` 与 `npm run build` 通过
 
 ### 6.4 文档
-- [ ] spec §6 全部勾选
-- [ ] README Future increments 移除 P2-2
-- [ ] roadmap 总任务表 P2-2 全部 [x]
-- [ ] spec 状态 ready → done
+- [x] spec §6 全部勾选
+- [x] README Future increments 移除 P2-2
+- [x] roadmap 总任务表 P2-2 全部 [x]
+- [x] spec 状态 ready → done
 
 ## 7. 风险
 

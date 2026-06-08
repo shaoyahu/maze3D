@@ -27,6 +27,7 @@ npm run dev          # http://localhost:5173
 - **WASD / Arrow keys** — Move
 - **Mouse** — Look around (click canvas to lock pointer)
 - **P** — Pause / Resume
+- **1 / 2** — Use inventory item in slot 1 / slot 2 (no-op if slot is empty)
 - **ESC** — Release pointer
 
 ## Adding a new level
@@ -49,8 +50,6 @@ See `docs/superpowers/specs/2026-06-05-maze3d-first-person-game-design.md` for t
 ## Future increments (Phase 2)
 
 - Medium / large level JSONs
-- Dark mode toggle
-- Pickup types beyond `time`
 - Sound
 - Mobile / touch support
 - Procedural maze generation
