@@ -21,6 +21,10 @@ export interface GameState {
   // maze id matches the old one. Without this, a retry on the same level
   // would be invisible to effects keyed on maze.id.
   restartKey: number;
+  // P2-2 #9: transient flash trigger for InventoryBar. Bumped on every
+  // valid useItem so the UI can use it as a React key to re-trigger the
+  // one-shot CSS flash animation. Null when no flash is pending.
+  useItemFlash: { slot: 0 | 1; version: number } | null;
 
   startLevel: (maze: MazeData) => void;
   pause: () => void;
@@ -28,6 +32,7 @@ export interface GameState {
   tick: (dt: number) => void;
   pickup: (p: Pickup) => boolean;
   damage: (n: number) => void;
+  useItem: (slot: 0 | 1) => void;
   reachExit: (isNewRecord?: boolean) => void;
   goToMenu: () => void;
 }
@@ -45,6 +50,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   lastWinIsNewRecord: null,
   elapsedTime: 0,
   restartKey: 0,
+  useItemFlash: null,
 
   startLevel: (maze) =>
     set((s) => ({
@@ -58,6 +64,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       lastWinIsNewRecord: null,
       elapsedTime: 0,
       restartKey: s.restartKey + 1,
+      useItemFlash: null,
     })),
 
   pause: () => {
@@ -126,6 +133,16 @@ export const useGameStore = create<GameState>((set, get) => ({
     else set({ health: next });
   },
 
+  useItem: (slot) => {
+    const s = get();
+    if (s.screen !== 'playing') return;
+    if (slot < 0 || slot >= INVENTORY_SIZE) return;
+    if (!s.inventory[slot]) return; // empty slot: no-op per spec §5.2
+    set({
+      useItemFlash: { slot, version: (s.useItemFlash?.version ?? 0) + 1 },
+    });
+  },
+
   reachExit: (isNewRecord) => {
     if (get().screen === 'playing') set({ screen: 'win', lastWinIsNewRecord: isNewRecord ?? null });
   },
@@ -142,5 +159,6 @@ export const useGameStore = create<GameState>((set, get) => ({
       lastWinIsNewRecord: null,
       elapsedTime: 0,
       restartKey: 0,
+      useItemFlash: null,
     }),
 }));

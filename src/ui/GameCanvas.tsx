@@ -68,9 +68,7 @@ export function GameCanvas({ maze }: { maze: MazeData }) {
       getInitialDarkMode: () => useSettingsStore.getState().darkMode,
       isActiveLevel: (levelId) => useGameStore.getState().currentLevelId === levelId,
       isPlaying: () => useGameStore.getState().screen === 'playing',
-      // P2-2 #8 stub: InputManager dispatches onUseItem here. The actual
-      // gameStore.useItem call is wired in #9.
-      onUseItem: (_slot) => {},
+      onUseItem: (slot) => useGameStore.getState().useItem(slot),
     };
     const game = new Game(bridge);
     game.init(ref.current);
