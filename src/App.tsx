@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useGameStore } from './store/gameStore';
+import { useSettingsStore } from './store/settingsStore';
 import { MainMenu } from './ui/MainMenu';
 import { LevelSelect } from './ui/LevelSelect';
 import { Settings } from './ui/Settings';
@@ -53,6 +54,13 @@ export function App() {
   const [activeMaze, setActiveMaze] = useState<MazeData | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const gameScreen = useGameStore((s) => s.screen);
+  const darkMode = useSettingsStore((s) => s.darkMode);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (darkMode) root.dataset.theme = 'dark';
+    else delete root.dataset.theme;
+  }, [darkMode]);
 
   useEffect(() => {
     loadAllLevels()
