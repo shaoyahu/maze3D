@@ -5,6 +5,7 @@ export class InputManager {
   private keys = new Set<string>();
   private mouse = { x: 0, y: 0 };
   private togglePauseListener: (() => void) | null = null;
+  private useItemListener: ((slot: 0 | 1) => void) | null = null;
   private paused = false;
   #sensitivity: number;
 
@@ -47,6 +48,8 @@ export class InputManager {
 
   onTogglePause(fn: () => void) { this.togglePauseListener = fn; }
 
+  onUseItem(fn: (slot: 0 | 1) => void) { this.useItemListener = fn; }
+
   getMove(): Move {
     let x = 0, z = 0;
     if (this.keys.has('KeyW') || this.keys.has('ArrowUp')) z -= 1;
@@ -86,6 +89,8 @@ export class InputManager {
   private onKeyDown = (e: KeyboardEvent) => {
     this.keys.add(e.code);
     if (e.code === 'KeyP' && !e.repeat) this.togglePauseListener?.();
+    if (e.code === 'Digit1' && !e.repeat) this.useItemListener?.(0);
+    if (e.code === 'Digit2' && !e.repeat) this.useItemListener?.(1);
   };
   private onKeyUp = (e: KeyboardEvent) => { this.keys.delete(e.code); };
   // Clearing the buffer on lock acquire is necessary but not sufficient —

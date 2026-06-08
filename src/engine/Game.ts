@@ -40,6 +40,9 @@ export interface GameBridge {
   getInitialDarkMode: () => boolean;
   isActiveLevel: (levelId: string) => boolean;
   isPlaying: () => boolean;
+  // P2-2 #8: fired by InputManager on Digit1 / Digit2 (no repeat).
+  // Wired to the useItem action by GameCanvas in #9.
+  onUseItem: (slot: 0 | 1) => void;
 }
 
 export class Game {
@@ -79,8 +82,8 @@ export class Game {
     this.camera.fov = this.bridge.getInitialFov();
     this.camera.updateProjectionMatrix();
     this.input = new InputManager(this.bridge.getInitialPointerSensitivity());
-    this.input.onTogglePause(() => this.bridge.onPausePauseToggle());
-  }
+    this.input.onTogglePause(() => this.bridge.onPauseToggle());
+    this.input.onUseItem((slot) => this.bridge.onUseItem(slot));
   }
 
   setSensitivity(n: number) {
