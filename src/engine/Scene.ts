@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { MazeData } from '../maze/types';
+import { createPickupMaterial } from '../entities/Pickup';
 
 function createWallTexture(): THREE.CanvasTexture {
   // Brick pattern with visible horizontal & vertical mortar lines so the
@@ -165,7 +166,6 @@ export function buildScene(maze: MazeData): SceneRefs {
   const wallTex = createWallTexture();
   const wallMat = new THREE.MeshLambertMaterial({ map: wallTex });
   const exitMat = new THREE.MeshLambertMaterial({ color: 0x5cff5c, emissive: 0x115511 });
-  const pickupMat = new THREE.MeshLambertMaterial({ color: 0xffb84d, emissive: 0x553300 });
 
   const floorGeom = new THREE.PlaneGeometry(w * cs, d * cs);
   const floor = new THREE.Mesh(floorGeom, floorMat);
@@ -260,6 +260,7 @@ export function buildScene(maze: MazeData): SceneRefs {
   const pickups: THREE.Mesh[] = [];
   const pickupGeom = new THREE.OctahedronGeometry(0.25);
   for (const p of maze.pickups) {
+    const pickupMat = createPickupMaterial(p.type);
     const lower = new THREE.Mesh(pickupGeom, pickupMat);
     lower.position.set((p.x + 0.5) * cs, 0.35, (p.z + 0.5) * cs);
     lower.userData = { pickup: p, siblings: [] as THREE.Mesh[] };
