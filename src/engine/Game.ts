@@ -85,6 +85,10 @@ export class Game {
     this.camera.updateProjectionMatrix();
   }
 
+  setDarkMode(enabled: boolean) {
+    this.sceneRefs?.setDarkMode(enabled);
+  }
+
   requestPointerLock(): Promise<void> {
     // requestPointerLock() returns a Promise in modern browsers but
     // undefined in others (and when called outside a user gesture). The
@@ -113,6 +117,7 @@ export class Game {
       disposeScene(this.sceneRefs.scene, this.sceneRefs.walls, this.sceneRefs.pickups);
     }
     this.sceneRefs = buildScene(maze);
+    this.sceneRefs.setDarkMode(useSettingsStore.getState().darkMode);
     this.player = createPlayer(maze.start, maze.cellSize);
     updatePlayerCamera(this.camera, this.player);
     this.currentMaze = maze;

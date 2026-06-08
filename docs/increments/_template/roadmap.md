@@ -12,7 +12,7 @@
 |---|---|
 | 活跃增量 | **P2-2** 深色模式 + 新 pickup 视觉 + UseItem 数字键 |
 | 已完成 | 2 / 13 |
-| 下一个任务 | **#6 `Settings.tsx` 新增 darkMode toggle 控件** |
+| 下一个任务 | **#7 `InputManager.ts` 监听 `Digit1`/`Digit2` → 触发 useItem** |
 | 最后更新 | 2026-06-08 |
 | 最近 commit | 见 `git log --oneline -1`（避免追尾，由 Claude 主动查） |
 
@@ -90,7 +90,7 @@
 | 3 | `theme.css` 新增 `[data-theme="dark"]` 变量集 | XS | [x] |
 | 4 | `App.tsx` useEffect 同步 `settingsStore.darkMode → data-theme` | XS | [x] |
 | 5 | `Scene.ts` 新增 `setDarkMode(bool)` 方法（Q3 严格：不 import store） | S | [x] |
-| 6 | `Settings.tsx` 新增 darkMode toggle 控件 | S | [ ] |
+| 6 | `Settings.tsx` 新增 darkMode toggle 控件 | S | [x] |
 | 7 | `InputManager.ts` 监听 `Digit1`/`Digit2` → 触发 useItem | S | [ ] |
 | 8 | `gameStore` 新增 `useItem(slot: 0\|1)` action | S | [ ] |
 | 9 | `Rules.ts` 实现 useItem handler（无锁门 = slot 高亮闪烁） | S | [ ] |
@@ -99,7 +99,7 @@
 | 12 | E2E：`dark-mode.spec.ts` + `pickup-types.spec.ts` | M | [ ] |
 | 13 | 文档同步：README / roadmap / spec 状态 | XS | [ ] |
 
-> 进度：5/13
+> 进度：6/13
 
 ### P2-3: 算法关卡（Large）
 

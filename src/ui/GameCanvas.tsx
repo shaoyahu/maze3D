@@ -130,6 +130,9 @@ export function GameCanvas({ maze }: { maze: MazeData }) {
       if (s.fov !== prev.fov) {
         gameRef.current?.setFov(s.fov);
       }
+      if (s.darkMode !== prev.darkMode) {
+        gameRef.current?.setDarkMode(s.darkMode);
+      }
     });
     return () => { unsubStore(); unsubSettings(); };
   }, []);
