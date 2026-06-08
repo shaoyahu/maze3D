@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { findPickupAt, crossesExit } from '../../src/game/Rules';
+import { findPickupAt, crossesExit, onUseItem } from '../../src/game/Rules';
 import type { MazeData } from '../../src/maze/types';
 
 const maze: MazeData = {
@@ -37,6 +37,32 @@ describe('Rules', () => {
 
     it('returns false when the segment does not touch the exit cell', () => {
       expect(crossesExit({ x: 1, z: 1 }, { x: 3, z: 3 }, maze)).toBe(false);
+    });
+  });
+
+  describe('onUseItem (P2-2 #10)', () => {
+    const keyPickup = { x: 0, z: 0, type: 'key' as const, value: 1 };
+
+    it('returns flash=false when maze is null', () => {
+      expect(onUseItem(0, [keyPickup, null], null)).toEqual({ flash: false, consumed: false });
+    });
+
+    it('returns flash=false when the slot is empty', () => {
+      expect(onUseItem(0, [null, null], maze)).toEqual({ flash: false, consumed: false });
+    });
+
+    it('returns flash=false when the slot index is out of bounds', () => {
+      expect(onUseItem(5, [keyPickup, null], maze)).toEqual({ flash: false, consumed: false });
+    });
+
+    it('returns flash=true and consumed=false for a filled slot in the no-lock world', () => {
+      // MVP has no lock cells, so a useItem only triggers a UI flash; future
+      // P2-4a lock logic would flip consumed to true once a key opens a door.
+      expect(onUseItem(0, [keyPickup, null], maze)).toEqual({ flash: true, consumed: false });
+    });
+
+    it('works for slot 1 as well', () => {
+      expect(onUseItem(1, [null, keyPickup], maze)).toEqual({ flash: true, consumed: false });
     });
   });
 });

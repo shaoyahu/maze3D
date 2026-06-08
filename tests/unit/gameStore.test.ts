@@ -142,4 +142,52 @@ describe('gameStore', () => {
     useGameStore.getState().goToMenu();
     expect(useGameStore.getState().screen).toBe('menu');
   });
+
+  describe('useItem (P2-2 #9/#10)', () => {
+    it('is a no-op when not playing', () => {
+      useGameStore.setState({ useItemFlash: null });
+      useGameStore.getState().useItem(0);
+      expect(useGameStore.getState().useItemFlash).toBeNull();
+    });
+
+    it('bumps useItemFlash.version when the slot is filled', () => {
+      useGameStore.getState().startLevel(initialMaze);
+      useGameStore.setState({
+        inventory: [{ x: 0, z: 0, type: 'key', value: 1 }, null],
+        useItemFlash: null,
+      });
+      useGameStore.getState().useItem(0);
+      const flash = useGameStore.getState().useItemFlash;
+      expect(flash).not.toBeNull();
+      expect(flash!.slot).toBe(0);
+      expect(flash!.version).toBe(1);
+    });
+
+    it('increments the version on repeated use', () => {
+      useGameStore.getState().startLevel(initialMaze);
+      useGameStore.setState({
+        inventory: [{ x: 0, z: 0, type: 'key', value: 1 }, null],
+      });
+      useGameStore.getState().useItem(0);
+      useGameStore.getState().useItem(0);
+      expect(useGameStore.getState().useItemFlash!.version).toBe(2);
+    });
+
+    it('is a no-op when the slot is empty', () => {
+      useGameStore.getState().startLevel(initialMaze);
+      useGameStore.setState({ inventory: [null, null], useItemFlash: null });
+      useGameStore.getState().useItem(0);
+      expect(useGameStore.getState().useItemFlash).toBeNull();
+    });
+
+    it('startLevel clears useItemFlash so it does not carry across runs', () => {
+      useGameStore.getState().startLevel(initialMaze);
+      useGameStore.setState({
+        inventory: [{ x: 0, z: 0, type: 'key', value: 1 }, null],
+        useItemFlash: { slot: 0, version: 5 },
+      });
+      useGameStore.getState().startLevel(initialMaze);
+      expect(useGameStore.getState().useItemFlash).toBeNull();
+    });
+  });
 });

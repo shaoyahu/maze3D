@@ -12,6 +12,12 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'html'],
       thresholds: { lines: 80, functions: 75, branches: 75, statements: 80 },
+      // Only score src/ against the threshold. E2E specs run under Playwright
+      // (not vitest), so they have no execution trace here and would drag
+      // the overall to 0% if counted. The vitest `include` above restricts
+      // which *test files* run, but the coverage tool still measures every
+      // file in the project unless we restrict its scope.
+      include: ['src/**'],
       exclude: [
         'src/main.tsx',
         'src/App.tsx',

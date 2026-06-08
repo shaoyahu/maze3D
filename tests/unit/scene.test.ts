@@ -107,4 +107,32 @@ describe('buildScene', () => {
     matSpy.mockRestore();
     texSpy.mockRestore();
   });
+
+  describe('setDarkMode (P2-2 #5)', () => {
+    it('enables a dark FogExp2 with density under 0.6 when turned on', () => {
+      const refs = buildScene(maze);
+      refs.setDarkMode(true);
+      expect(refs.scene.fog).toBeInstanceOf(THREE.FogExp2);
+      const fog = refs.scene.fog as THREE.FogExp2;
+      expect(fog.density).toBeLessThanOrEqual(0.6);
+    });
+
+    it('removes the fog when turned back off', () => {
+      const refs = buildScene(maze);
+      refs.setDarkMode(true);
+      refs.setDarkMode(false);
+      expect(refs.scene.fog).toBeNull();
+    });
+
+    it('swaps the background color between the two palettes', () => {
+      const refs = buildScene(maze);
+      const lightBg = (refs.scene.background as THREE.Color).getHex();
+      refs.setDarkMode(true);
+      const darkBg = (refs.scene.background as THREE.Color).getHex();
+      expect(darkBg).not.toBe(lightBg);
+      refs.setDarkMode(false);
+      const restoredBg = (refs.scene.background as THREE.Color).getHex();
+      expect(restoredBg).toBe(lightBg);
+    });
+  });
 });
