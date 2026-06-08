@@ -7,8 +7,6 @@ import { Loop } from './Loop';
 import { resolveMove, type WallGrid } from './Collision';
 import { createPlayer, applyLook, updatePlayerCamera, type PlayerState } from '../entities/Player';
 import { findPickupAt, crossesExit } from '../game/Rules';
-import { useSettingsStore } from '../store/settingsStore';
-import { useGameStore } from '../store/gameStore';
 import type { MazeData, Pickup } from '../maze/types';
 
 // Module-level scratch objects to avoid per-frame allocation in the hot
@@ -33,6 +31,15 @@ export interface GameBridge {
   // for the rest of the run instead of vanishing silently.
   onPickupCollected: (p: Pickup) => boolean;
   onReachExit: () => void;
+  // Q3 / DoD §14.2: the engine never imports a store. The App layer
+  // (GameCanvas) implements these by reading the relevant Zustand store.
+  // getInitial* are snapshotted at init / startLevel; the predicates are
+  // called per frame from update() — both are cheap single-property reads.
+  getInitialFov: () => number;
+  getInitialPointerSensitivity: () => number;
+  getInitialDarkMode: () => boolean;
+  isActiveLevel: (levelId: string) => boolean;
+  isPlaying: () => boolean;
 }
 
 export class Game {
@@ -69,10 +76,11 @@ export class Game {
     this.camera = createCamera();
     // Apply the player's saved FOV before the first render so the minimap
     // and the 3D view agree from frame 0.
-    this.camera.fov = useSettingsStore.getState().fov;
+    this.camera.fov = this.bridge.getInitialFov();
     this.camera.updateProjectionMatrix();
-    this.input = new InputManager(useSettingsStore.getState().pointerSensitivity);
-    this.input.onTogglePause(() => this.bridge.onPauseToggle());
+    this.input = new InputManager(this.bridge.getInitialPointerSensitivity());
+    this.input.onTogglePause(() => this.bridge.onPausePauseToggle());
+  }
   }
 
   setSensitivity(n: number) {
@@ -117,7 +125,7 @@ export class Game {
       disposeScene(this.sceneRefs.scene, this.sceneRefs.walls, this.sceneRefs.pickups);
     }
     this.sceneRefs = buildScene(maze);
-    this.sceneRefs.setDarkMode(useSettingsStore.getState().darkMode);
+    this.sceneRefs.setDarkMode(this.bridge.getInitialDarkMode());
     this.player = createPlayer(maze.start, maze.cellSize);
     updatePlayerCamera(this.camera, this.player);
     this.currentMaze = maze;
@@ -164,12 +172,12 @@ export class Game {
 
   private update(dt: number) {
     if (!this.renderer || !this.camera || !this.player || !this.sceneRefs || !this.currentMaze || !this.input) return;
-    if (useGameStore.getState().currentLevelId !== this.currentMaze.id) return;
+    if (!this.bridge.isActiveLevel(this.currentMaze.id)) return;
     // Bail when the run is over. pauseLoop() is called for the win path, but
     // game-over and post-goToMenu don't stop the loop — guarding here keeps
     // the player frozen, prevents phantom pickup/exit processing under
     // overlays, and avoids wasted render work on terminal screens.
-    if (useGameStore.getState().screen !== 'playing') return;
+    if (!this.bridge.isPlaying()) return;
 
     // Tick the clock first so the recorded time on win includes this frame's dt.
     // The previous code called onTick(dt) after the exit check, which undercounted

@@ -61,6 +61,13 @@ export function GameCanvas({ maze }: { maze: MazeData }) {
         }
         s.reachExit(isNewRecord);
       },
+      // Q3 / DoD §14.2: Game.ts is store-free. These accessors let the engine
+      // read settings + game state without importing any store itself.
+      getInitialFov: () => useSettingsStore.getState().fov,
+      getInitialPointerSensitivity: () => useSettingsStore.getState().pointerSensitivity,
+      getInitialDarkMode: () => useSettingsStore.getState().darkMode,
+      isActiveLevel: (levelId) => useGameStore.getState().currentLevelId === levelId,
+      isPlaying: () => useGameStore.getState().screen === 'playing',
     };
     const game = new Game(bridge);
     game.init(ref.current);
