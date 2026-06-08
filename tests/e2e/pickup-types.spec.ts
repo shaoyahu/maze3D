@@ -6,7 +6,7 @@ test('walking through health/key/time pickups lets the player reach the exit', a
   await page.reload();
 
   await page.getByRole('button', { name: '开始' }).click();
-  await page.getByRole('button', { name: 'Pickup Test' }).click();
+  await page.getByRole('button', { name: '__test-pickup__' }).click();
 
   // Walk right through the corridor. The key is collected at the second
   // pickup; the inventory slot 0 should render the type name "key" right

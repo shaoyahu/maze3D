@@ -27,14 +27,17 @@ export function Settings({ onBack }: { onBack: () => void }) {
         />
         <span style={{ opacity: 0.7, fontSize: 12 }}>{fov}°</span>
       </label>
-      <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-        <input
-          type="checkbox"
-          checked={darkMode}
-          onChange={(e) => set('darkMode', e.target.checked)}
-        />
-        深色模式
-      </label>
+      <fieldset style={{ border: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <legend style={{ padding: 0, fontSize: 14, fontWeight: 600 }}>外观</legend>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={darkMode}
+            onChange={(e) => set('darkMode', e.target.checked)}
+          />
+          深色模式
+        </label>
+      </fieldset>
       <Button onClick={onBack} variant="secondary">返回</Button>
     </div>
   );

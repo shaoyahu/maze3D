@@ -1,6 +1,6 @@
 {
   "id": "level-tiny-pickups",
-  "name": "Pickup Test",
+  "name": "__test-pickup__",
   "size": { "width": 5, "depth": 1 },
   "cellSize": 2,
   "start": { "x": 0, "z": 0 },
