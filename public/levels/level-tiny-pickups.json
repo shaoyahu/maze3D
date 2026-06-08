@@ -1,0 +1,22 @@
+{
+  "id": "level-tiny-pickups",
+  "name": "Pickup Test",
+  "size": { "width": 5, "depth": 1 },
+  "cellSize": 2,
+  "start": { "x": 0, "z": 0 },
+  "exit": { "x": 4, "z": 0 },
+  "walls": [
+    [0, 0, 0, 0, 0]
+  ],
+  "pickups": [
+    { "x": 1, "z": 0, "type": "health", "value": 1 },
+    { "x": 2, "z": 0, "type": "key", "value": 1 },
+    { "x": 3, "z": 0, "type": "time", "value": 10 }
+  ],
+  "rules": {
+    "initialTime": 30,
+    "maxHealth": 3,
+    "victory": "reach-exit",
+    "timeOnPickup": 10
+  }
+}

@@ -11,8 +11,8 @@
 | 字段 | 值 |
 |---|---|
 | 活跃增量 | **P2-2** 深色模式 + 新 pickup 视觉 + UseItem 数字键 |
-| 已完成 | 12 / 14 |
-| 下一个任务 | **#13 E2E：`dark-mode.spec.ts` + `pickup-types.spec.ts`** |
+| 已完成 | 13 / 14 |
+| 下一个任务 | **#14 文档同步：README / roadmap / spec 状态** |
 | 最后更新 | 2026-06-08 |
 | 最近 commit | 见 `git log --oneline -1`（避免追尾，由 Claude 主动查） |
 
@@ -97,10 +97,10 @@
 | 10 | `Rules.ts` 实现 useItem handler（无锁门 = slot 高亮闪烁） | S | [x] |
 | 11 | `Pickup` mesh 按 type 选颜色：time 金黄 / health 红 / key 蓝 | S | [x] |
 | 12 | `InventoryBar` 加数字键提示 + slot 高亮激活态 | S | [x] |
-| 13 | E2E：`dark-mode.spec.ts` + `pickup-types.spec.ts` | M | [ ] |
+| 13 | E2E：`dark-mode.spec.ts` + `pickup-types.spec.ts` | M | [x] |
 | 14 | 文档同步：README / roadmap / spec 状态 | XS | [ ] |
 
-> 进度：12/14
+> 进度：13/14
 
 ### P2-3: 算法关卡（Large）
 
