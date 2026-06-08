@@ -32,3 +32,24 @@ export function findPickupAt(player: { x: number; z: number }, maze: MazeData, r
   }
   return null;
 }
+
+// P2-2 #10: useItem handler. Pure function over (slot, inventory, maze) —
+// the store action calls it and reacts to the result. In the current
+// no-lock world the only effect is a UI flash; future P2-4a lock cells
+// would be resolved here and `consumed` would flip to true once a key
+// opens a door.
+export interface UseItemResult {
+  flash: boolean;
+  consumed: boolean;
+}
+
+export function onUseItem(
+  slot: 0 | 1,
+  inventory: (Pickup | null)[],
+  maze: MazeData | null,
+): UseItemResult {
+  if (!maze) return { flash: false, consumed: false };
+  if (slot < 0 || slot >= inventory.length) return { flash: false, consumed: false };
+  if (!inventory[slot]) return { flash: false, consumed: false };
+  return { flash: true, consumed: false };
+}

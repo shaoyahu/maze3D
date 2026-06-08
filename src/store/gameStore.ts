@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { MazeData, Pickup } from '../maze/types';
+import { onUseItem } from '../game/Rules';
 
 export type Screen = 'menu' | 'playing' | 'paused' | 'game-over' | 'win';
 
@@ -136,8 +137,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   useItem: (slot) => {
     const s = get();
     if (s.screen !== 'playing') return;
-    if (slot < 0 || slot >= INVENTORY_SIZE) return;
-    if (!s.inventory[slot]) return; // empty slot: no-op per spec §5.2
+    const result = onUseItem(slot, s.inventory, s.currentMaze);
+    if (!result.flash) return;
     set({
       useItemFlash: { slot, version: (s.useItemFlash?.version ?? 0) + 1 },
     });
