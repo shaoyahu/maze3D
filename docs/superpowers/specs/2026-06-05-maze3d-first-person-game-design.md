@@ -325,9 +325,11 @@ maze3D/
     └── e2e/
 ```
 
-## 12. Phased Delivery
+## 12. Roadmap
 
-### Phase 1 — MVP (small level only)
+>镜像副本：`docs/increments/_template/roadmap.md`。两边任一处修改需同步另一处。
+
+### Phase 1 — MVP（✅ 已完成）
 1. Project scaffold (Vite + React + TS + deps)
 2. `maze/types.ts` + `JsonMazeProvider` + first level JSON
 3. Engine: Renderer + Camera + Scene + Loop (gray box + walls only)
@@ -339,16 +341,29 @@ maze3D/
 9. Tests (unit + E2E)
 10. README + run instructions
 
-### Phase 2 — Increments
-- Medium / large level JSONs
-- Dark mode toggle (CSS variables + lighting swap)
-- Pickup types beyond `time` (health, key)
-- Sound (deferred audio pipeline)
-- Mobile / touch support (HUD responsive)
-- Procedural generation (`AlgorithmMazeProvider`)
-- Survival / time-trial modes
-- Patrol enemies with health-loss
-- In-browser level editor (`EditorMazeProvider`)
+### Phase 2 — 增量路线图
+|序 |名称 |优先级 | 前置依赖 |复杂度 |文档目录 |状态 |
+|---|---|---|---|---|---|---|
+| P2-2 | 深色模式 + 新 pickup 视觉 + UseItem 数字键 | P0 | — | Small | `docs/increments/dark-mode-pickups/` | pending |
+| P2-3 | 算法关卡（4 算法 × 3 尺寸 × time-trial） | P1 | — | Large | `docs/increments/procedural-modes/` | pending |
+| P2-4a | 巡逻敌人 + survive mode | P2 | P2-3 | Large | `docs/increments/enemies-editor/` | pending |
+| P2-4b | 关卡编辑器 | P2 | — | Large | `docs/increments/enemies-editor/` | pending |
+
+> **P2-1 已删除**：原计划"多关卡 JSON（中/大尺寸）"被 P2-3 算法生成取代。MVP 保留 `level-small.json` 作为"教学关"，`level-tiny.json` 留 E2E。
+> **P2-4 拆分**：原"敌人 + 编辑器"X-Large 拆成 P2-4a（敌人+survive mode，依赖 P2-3）和 P2-4b（编辑器，独立）。
+
+**优先级说明**：
+- **P0** = 不依赖其他增量，立即可做
+- **P1** = 独立，建议 P0 之后做
+- **P2** = 有显式前置依赖
+
+**复杂度说明**：Small ≤1 天；Medium 1–3 天；Large 3–7 天；X-Large >7 天
+
+每个增量的两阶段产物为 `docs/increments/<slug>/{spec.md, plan.md}`，模板见 `docs/increments/_template/`。
+
+> 注：本表仅列入已决定进入规划的增量。其他候选（音频、移动端/触摸、额外的 pickup 子类型）保留在候选池，待需求明确后再升级为 P2-N 行。
+
+> 跨增量总任务清单见 `docs/increments/_template/roadmap.md` 的"总任务列表（执行视图）"章节。
 
 ## 13. Open Questions (none blocking)
 
@@ -356,7 +371,47 @@ maze3D/
 - Pointer sensitivity default (0.002 rad/px) will be exposed in settings.
 - Health default of 3 may be tuned per level size.
 
-## 14. References
+## 14. 完成定义 /验收标准模板（Definition of Done）
+
+>镜像副本：`docs/increments/_template/dod.md`。两边任一处修改需同步另一处。
+
+每个增量（Phase2 项）完成后，必须满足以下检查项。所有项以 ✅标记才能视为该增量完成。
+
+**14.1 功能验收**
+- [] 增量 spec 中"功能需求"列表全部实现
+- [] 用户能从 UI触发该功能端到端走通（点击 →生效 →状态正确）
+- [] 边界情况在 spec 或 plan 中显式列出并被覆盖
+
+**14.2引擎 /架构边界**
+- [] 引擎层（`src/engine/`、`src/maze/`、`src/entities/`、`src/game/`、`src/utils/`）**不**新增对 `react` / `store/` 的 import
+- [] 任何对 `MazeProvider` 的新增实现必须实现完整接口（不靠 duck typing）
+- [] 新增 Three.js资源在 `dispose()`路径中被释放
+
+**14.3 测试**
+- [] 单元测试覆盖率 ≥80%（`npm run test`）
+- [] 新增的 Zustand action / Rule / Collision 分支必须有对应单测
+- [] 涉及 UI 的改动必须有 RTL组件测试
+- [] 涉及端到端流程的改动必须有 Playwright E2E（沿用 `level-tiny.json`模式）
+- [] `npm run typecheck` 与 `npm run build` 通过
+
+**14.4文档**
+- [] `docs/increments/<slug>/spec.md`存在且包含"完成"勾选清单（拷贝自 §14.1–14.3）
+- [] `docs/increments/<slug>/plan.md` 所有任务 checkbox 已勾
+- [] README.md 的"Future increments"列表同步更新（已完成的增量移走或打勾）
+- [] 新增的公共类型 / 常量 / 配置项在 spec §7 或对应章节反映
+
+**14.5持久化与兼容**
+- [] 不破坏现有 `localStorage` 的 best records / settings schema（必要时做迁移）
+- [] 新增设置项使用 `settingsStore`，并在 settings UI 中可调
+- [] 浏览器刷新后状态合理恢复
+
+**14.6 安全与健壮性**
+- [] 用户输入校验到位（关卡 JSON、关卡编辑器输入等）
+- [] 错误处理走 `GameError`体系，有 `userMessage`
+- [] 不引入 console.log / debugger残留
+- [] 不硬编码密钥 /资源 URL（必要时走 env 或常量）
+
+##15. References
 
 - Three.js docs: `https://threejs.org/docs/`
 - Zustand: `https://github.com/pmndrs/zustand`
