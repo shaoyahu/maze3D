@@ -106,23 +106,53 @@ export interface SceneRefs {
   exit: THREE.Mesh;
   pickups: THREE.Mesh[];
   playerMarker: THREE.Mesh;
+  setDarkMode: (enabled: boolean) => void;
 }
 
 export function buildScene(maze: MazeData): SceneRefs {
   const scene = new THREE.Scene();
-  // Sky-blue background so the space above the walls reads as a bright
-  // daytime sky rather than the original dark navy. Visible through any
-  // gaps past the maze boundary and behind translucent / absent geometry.
-  scene.background = new THREE.Color(0x87ceeb);
 
-  // Hemisphere light gives a softer outdoor feel: sky-blue from above,
-  // warm ground-bounce from below. Replaces the flat ambient + directional
-  // combo that read as "interior fluorescent" against the bright sky.
-  const hemi = new THREE.HemisphereLight(0xddeeff, 0xc8b896, 0.8);
+  const hemi = new THREE.HemisphereLight();
   scene.add(hemi);
-  const dir = new THREE.DirectionalLight(0xffffff, 0.7);
+  const dir = new THREE.DirectionalLight();
   dir.position.set(5, 10, 5);
   scene.add(dir);
+
+  // P2-2 dark mode: two palettes toggled by setDarkMode. Caller passes the
+  // bool; engine stays store-free per Q3 / DoD §14.2.
+  const LIGHT_PALETTE = {
+    bg: 0x87ceeb, hemiSky: 0xddeeff, hemiGround: 0xc8b896,
+    hemiIntensity: 0.8, dirColor: 0xffffff, dirIntensity: 0.7,
+  };
+  const DARK_PALETTE = {
+    bg: 0x0a0a14, hemiSky: 0x4466aa, hemiGround: 0x1a1a22,
+    hemiIntensity: 0.4, dirColor: 0xb0c4ff, dirIntensity: 0.5,
+    fogColor: 0x0a0a14, fogDensity: 0.05,
+  };
+  const applyPalette = (
+    p: typeof LIGHT_PALETTE,
+    fog: THREE.FogExp2 | null,
+  ) => {
+    scene.background = new THREE.Color(p.bg);
+    hemi.color.setHex(p.hemiSky);
+    hemi.groundColor.setHex(p.hemiGround);
+    hemi.intensity = p.hemiIntensity;
+    dir.color.setHex(p.dirColor);
+    dir.intensity = p.dirIntensity;
+    scene.fog = fog;
+  };
+  applyPalette(LIGHT_PALETTE, null);
+
+  function setDarkMode(enabled: boolean) {
+    if (enabled) {
+      applyPalette(
+        DARK_PALETTE,
+        new THREE.FogExp2(DARK_PALETTE.fogColor, DARK_PALETTE.fogDensity),
+      );
+    } else {
+      applyPalette(LIGHT_PALETTE, null);
+    }
+  }
 
   const cs = maze.cellSize;
   const w = maze.size.width;
@@ -244,7 +274,7 @@ export function buildScene(maze: MazeData): SceneRefs {
     pickups.push(upper);
   }
 
-  return { scene, walls, exit, pickups, playerMarker };
+  return { scene, walls, exit, pickups, playerMarker, setDarkMode };
 }
 
 export function disposeScene(
