@@ -6,3 +6,12 @@
   --panel: rgba(20, 20, 28, 0.85);
   --border: rgba(255, 255, 255, 0.12);
 }
+
+:root[data-theme="dark"] {
+  --bg: #05050a;
+  --fg: #e0e0ea;
+  --accent: #6c8eff;
+  --danger: #ff6b6b;
+  --panel: rgba(5, 5, 12, 0.92);
+  --border: rgba(108, 142, 255, 0.22);
+}
