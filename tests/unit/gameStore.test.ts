@@ -143,6 +143,62 @@ describe('gameStore', () => {
     expect(useGameStore.getState().screen).toBe('menu');
   });
 
+  describe('startLevel options + time-trial (P2-3)', () => {
+    it('defaults currentMode to maze.rules.victory when no options are passed', () => {
+      useGameStore.getState().startLevel(initialMaze);
+      expect(useGameStore.getState().currentMode).toBe('reach-exit');
+    });
+
+    it('overrides currentMode when options.mode is provided', () => {
+      useGameStore.getState().startLevel(initialMaze, { mode: 'time-trial' });
+      expect(useGameStore.getState().currentMode).toBe('time-trial');
+    });
+
+    it('in time-trial mode, timeRemaining is forced to 180s regardless of maze.rules.initialTime', () => {
+      // initialMaze declares initialTime: 60, but the mode preset overrides it.
+      useGameStore.getState().startLevel(initialMaze, { mode: 'time-trial' });
+      expect(useGameStore.getState().timeRemaining).toBe(180);
+    });
+
+    it('in time-trial mode, tick decrements timeRemaining', () => {
+      useGameStore.getState().startLevel(initialMaze, { mode: 'time-trial' });
+      useGameStore.getState().tick(5);
+      expect(useGameStore.getState().timeRemaining).toBe(175);
+    });
+
+    it('in time-trial mode, tick still increments elapsedTime', () => {
+      useGameStore.getState().startLevel(initialMaze, { mode: 'time-trial' });
+      useGameStore.getState().tick(3);
+      expect(useGameStore.getState().elapsedTime).toBeCloseTo(3);
+    });
+
+    it('in time-trial mode, timeRemaining at 0 triggers game-over (spec FR-8)', () => {
+      useGameStore.getState().startLevel(initialMaze, { mode: 'time-trial' });
+      useGameStore.getState().tick(180);
+      expect(useGameStore.getState().screen).toBe('game-over');
+    });
+
+    it('in time-trial mode, reachExit still transitions to win', () => {
+      useGameStore.getState().startLevel(initialMaze, { mode: 'time-trial' });
+      useGameStore.getState().reachExit();
+      expect(useGameStore.getState().screen).toBe('win');
+    });
+
+    it('in reach-exit mode, timeRemaining uses maze.rules.initialTime (not 180s)', () => {
+      // reach-exit does NOT apply the time-trial preset — it respects the
+      // maze's own initialTime, which is what hand-crafted levels tune.
+      useGameStore.getState().startLevel(initialMaze);
+      expect(useGameStore.getState().timeRemaining).toBe(60);
+    });
+
+    it('startLevel resets currentMode to whatever the new options dictate', () => {
+      useGameStore.getState().startLevel(initialMaze, { mode: 'time-trial' });
+      expect(useGameStore.getState().currentMode).toBe('time-trial');
+      useGameStore.getState().startLevel(initialMaze);
+      expect(useGameStore.getState().currentMode).toBe('reach-exit');
+    });
+  });
+
   describe('useItem (P2-2 #9/#10)', () => {
     it('is a no-op when not playing', () => {
       useGameStore.setState({ useItemFlash: null });
@@ -150,7 +206,22 @@ describe('gameStore', () => {
       expect(useGameStore.getState().useItemFlash).toBeNull();
     });
 
-    it('bumps useItemFlash.version when the slot is filled', () => {
+    // F3: silent ignores are now surfaced via console.debug so a Digit1/
+// Digit2 press during pause / game-over / win / menu leaves a trace
+// instead of feeling like a broken keyboard to the player.
+it('logs a debug message when useItem is called while not playing (F3)', () => {
+ const spy = vi.spyOn(console, 'debug').mockImplementation(() => {});
+ useGameStore.setState({ useItemFlash: null });
+ // Default screen after goToMenu is 'menu', which is not 'playing'.
+ useGameStore.getState().useItem(0);
+ expect(spy).toHaveBeenCalled();
+ const call = spy.mock.calls[0];
+ expect(call[0]).toBe('[useItem] ignored: screen =');
+ expect(call[1]).toBe('menu');
+ spy.mockRestore();
+});
+
+it('bumps useItemFlash.version when the slot is filled', () => {
       useGameStore.getState().startLevel(initialMaze);
       useGameStore.setState({
         inventory: [{ x: 0, z: 0, type: 'key', value: 1 }, null],
