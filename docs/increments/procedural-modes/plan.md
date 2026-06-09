@@ -29,67 +29,60 @@
 
 ##任务清单
 
+> **执行说明**：实际 ship 走的是 `docs/increments/_template/roadmap.md` §"总任务列表" 的 14 行清单（按 4 算法 × 3 尺寸 × 2 mode 的最终设计展开）。本 plan.md 是初版设计，与最终交付的差异：
+> - seeded RNG 移到 `src/utils/seed.ts`（与 maze 域更近，且加了 encode/decode + parseHexSeed）
+> - 4 个算法各成独立纯函数文件 + per-generator TDD，而非单一 provider
+> - mode 缩到 `time-trial` / `reach-exit`，`survive` 推到 P2-4a（Q5）
+> - `WinOverlay` 用时显示推到 P2-4a / 后续（FR-7 未完）
+>
+> 下方勾选反映实际 ship 状态；deferred 项保留未勾并加注。
+
 ### Task1: seeded RNG
-- [] **Action**：在 `src/utils/random.ts` 新增 `seededRandom(seed: number): () => number`（mulberry32 实现）；FNV-1a hash 把字符串 seed 转32-bit int。
-- [] **Validate**：`npm run test -- random` 同 seed 同输出 / 不同 seed 不同输出。
+- [x] **Action**：在 `src/utils/seed.ts`（路径调整自 `random.ts`）实现 `mulberry32(seed: number): () => number` + `fnv1a(s: string): number` + 16-hex seed 解析。
+- [x] **Validate**：`tests/unit/utils/seed.test.ts` 覆盖同 seed 同输出 / 不同 seed 不同输出 + encode/decode 往返。
 
 ### Task2: AlgorithmMazeProvider 算法
-- [] **Action**：`src/maze/AlgorithmMazeProvider.ts`：
- -接受 `{ size, seed }`。
- -递归回溯算法（迭代实现避免栈溢出）：从 start出发随机选未访问邻居，挖通；最终保证全图连通。
- - start = (0,0)，exit = (width-1, depth-1)。
- -随机放1-3 个 `time` pickup。
-- [] **Mirror**：实现 `MazeProvider` 接口（spec §5）。
-- [] **Validate**：单测（Task3）。
+- [x] **Action**：4 个独立纯函数生成器（recursive-backtracker / Kruskal / Prim / hunt-and-kill），位于 `src/maze/generators/*.ts`；统一通过 `src/maze/AlgorithmMazeProvider.ts` 调度。
+- [x] **Mirror**：`AlgorithmMazeProvider` 实现 `MazeProvider` 接口；start=(0,0)，exit=(右下逻辑角)，cellSize=2。
+- [x] **Validate**：见 Task3。
 
 ### Task3: AlgorithmMazeProvider 单测
-- [] **Action**：`tests/unit/maze/AlgorithmMazeProvider.test.ts`：
- - 同 seed 同尺寸 →同一 `MazeData`。
- - 不同 seed → 不同 `MazeData`。
- -30×30 完成 <500ms（`performance.now()`）。
- - 所有输出 `walls` 经 DFS验证 start ↔ exit 可达。
-- [] **Validate**：`npm run test` 通过。
+- [x] **Action**：per-generator TDD：`tests/unit/maze/generators/{recursiveBacktracker,kruskal,prim,huntAndKill}.test.ts` 各 8–9 case；50×50 性能单测 <500ms。
+- [x] **Validate**：`npm run test` 通过（33 个生成器单测 + provider 单测）。
 
 ### Task4: MazeProvider 接口扩展
-- [] **Action**：`src/maze/MazeProvider.ts` 把 `getMaze`签名扩展为 `getMaze(options: { id, seed?, size?, mode? }): Promise<MazeData>`；`JsonMazeProvider`忽略 seed/size（用 JSON 内置字段）。
-- [] **Mirror**：两个 provider 都实现完整新接口。
-- [] **Validate**：`npm run typecheck` 通过。
+- [x] **Action**：`src/maze/types.ts` 新增 `Algorithm` 枚举、`Seed`、`StartLevelOptions`、`MazeSize` 类型；`JsonMazeProvider` 与 `AlgorithmMazeProvider` 都实现新接口。
+- [x] **Validate**：`npm run typecheck` 通过。
 
 ### Task5: gameStore.startLevel options
-- [] **Action**：`src/store/gameStore.ts` 的 `startLevel`接受 `options?: { seed?: string; size?: { width, depth }; mode?: VictoryType }`，存入 `currentOptions`。
-- [] **Validate**：`npm run test -- gameStore`覆盖 options传递。
+- [x] **Action**：`src/store/gameStore.ts` 的 `startLevel(maze, options?)` 接受 `{ mode?, seed? }`；time-trial 强制 180s 计时；`currentMode` 持久化。
+- [x] **Validate**：`tests/unit/gameStore.test.ts` 覆盖 mode 切换 + 180s 强制 + time-trial 至 0 触发 game-over。
 
-### Task6: Game.ts传递 options
-- [] **Action**：`src/engine/Game.ts` 的 `startLevel(levelId, options?)` 把 options转发给 `mazeProvider.getMaze`。
-- [] **Validate**：手动调用 `startLevel('procedural', { seed: 'test' })` 生成对应 maze。
+### Task6: Game.ts 传递 options
+- [x] **Action**：`src/engine/Game.ts` 的 `startLevel(maze, options?)` 接受 options 并 snapshot 到 `currentMode`，对外提供 `getCurrentMode()`。
+- [x] **Validate**：手动调用 + GameCanvas 透传 options 已验证。
 
-### Task7: Rules.ts mode判定
-- [] **Action**：`src/game/Rules.ts`：
- - `mode: 'reach-exit'` →维持现有逻辑。
- - `mode: 'survive'` → time=120s + enemy命中 ≥3 → game-over（敌人来自 P2-4，未到位前 hits=0 不触发）。
- - `mode: 'time-trial'` → time=180s 内 reach exit → win，否则 game-over。
-- [] **Validate**：`npm run test -- rules`三个 mode 分支覆盖。
+### Task7: Rules.ts mode 判定（部分 deferred）
+- [x] **time-trial**：在 gameStore.tick 中倒计时至 0 → game-over，180s 上限。
+- [x] **reach-exit**：维持现有逻辑（GameCanvas onReachExit 钩子）。
+- [ ] **survive**：敌人来自 P2-4a，本增量不 ship——deferred 到 P2-4a（Q5）。
 
-### Task8: WinOverlay / GameOverOverlay 显示
-- [] **Action**：
- - `WinOverlay.tsx`：time-trial 时显示"用时 X 秒"。
- - `GameOverOverlay.tsx`：survive 时显示"被击中 N 次"。
-- [] **Validate**：`npm run test -- WinOverlay GameOverOverlay` RTL覆盖。
+### Task8: WinOverlay / GameOverOverlay 显示（deferred）
+- [ ] **WinOverlay time-trial 用时显示**：现 WinOverlay 仅显示 best/new-record；time-trial 专用文案未加——deferred（FR-7 未完）。
+- [ ] **GameOverOverlay survive 击中数**：依赖 survive mode（P2-4a）。
 
 ### Task9: LevelSelect 程序生成分组
-- [] **Action**：`src/ui/LevelSelect.tsx` 新增"程序生成"卡片：尺寸 slider（10-30）+ seed文本输入 + mode 下拉（survive / time-trial / reach-exit）。
-- [] **Validate**：`npm run test -- LevelSelect`覆盖程序生成分组渲染。
+- [x] **Action**：`src/ui/LevelSelect.tsx` 拆为 3 分组——固定关卡、随机关卡（3 尺寸卡片）、指定种子关卡（16-hex 输入 + 默认 30×30 + time-trial）；算法对玩家不可见（Q11）。
+- [x] **Validate**：`tests/component/menus.test.tsx` 6 个 P2-3 case + 既有 case 覆盖。
 
-### Task10: E2E
-- [] **Action**：
- - `procedural.spec.ts`：选程序生成 → 进游戏 → 通关 → win。
- - `time-trial.spec.ts`：超时 → game-over。
- - `pause-resume.spec.ts`扩展：survive / time-trial暂停正确。
-- [] **Validate**：`npm run test:e2e` 全绿。
+### Task10: E2E（部分 deferred）
+- [x] **procedural.spec.ts**：3 尺寸卡片可见 / 点 15×15 进游戏 / 合法 hex seed 进游戏 / 非 hex seed 不进游戏。
+- [ ] **time-trial.spec.ts**：180s 超时 → game-over——deferred（180s 等待对 CI 时长不友好，留给 P2-4a 时一起 ship 或加 fake-timer）。
+- [ ] **pause-resume.spec.ts 扩展**：现有 spec 已覆盖通用暂停；新 mode 暂停未单独加 case——deferred。
 
-### Task11:文档同步
-- [] **Action**：README / roadmap / spec同步更新。
-- [] **Validate**：grep验证。
+### Task11: 文档同步
+- [x] **Action**：README / roadmap / spec / plan 全部同步至 ship 状态。
+- [x] **Validate**：grep "AlgorithmMazeProvider" 在 README Architecture 段出现；roadmap 14/14；spec FR 段勾选反映实际 ship。
 
 ##验证
 
@@ -112,7 +105,7 @@ grep -E "(react|store)" src/maze/AlgorithmMazeProvider.ts && echo "FAIL" || echo
 | seed持久化破坏旧数据 | 低 | levelStore.best schema兼容 |
 
 ##验收
-- [] 所有 Task勾选完成
-- [] 验证命令全部通过
-- [] spec §11 完成清单全部勾选
-- [] README.md / roadmap.md / spec.md同步更新
+- [x] 所有 Task 勾选完成（Task7/8/10 deferred 子项已标注且原因明确）
+- [x] 验证命令全部通过：`npm run typecheck` ✅ / `npm test` 260/260 ✅ / `npm run build` ✅
+- [x] spec §11 完成清单反映实际 ship 状态
+- [x] README.md / roadmap.md / spec.md / plan.md 同步更新
