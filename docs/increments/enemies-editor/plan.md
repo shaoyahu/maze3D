@@ -59,18 +59,19 @@
 - [x] **Validate**：`npm run typecheck` 通过；`tests/unit/maze/types.test.ts` 覆盖 enemyCount 范围 / surviveSeconds 枚举 / enemies path ≥2 节点。
 
 ### Task2: Enemy.ts 实体 + 状态机
-- [ ] **Action**：`src/entities/Enemy.ts` 纯类（不 import react/store），字段：
+- [x] **Action**：`src/entities/Enemy.ts` 纯类（不 import react/store），字段：
   - `id, position, path, currentIndex, dwellTime, fovRange, fovAngleDeg, speed, chaseMultiplier, state, alertTimer`
   - 方法 `update(dt, player)`：状态机切换 + 沿 path 推进
-- [ ] **状态机**：
+- [x] **状态机**：
   - `patrol`（沿 path 推进至下一节点） → `dwell`（节点停留 `dwellTime` 秒） → `patrol`（下一节点，循环）
   - `patrol` → `chase`（玩家进入 FOV）→ `chase`（追击 0.5s "alert" 防抖）→ `patrol`（玩家脱离）
-- [ ] **Validate**：`tests/unit/entities/Enemy.test.ts` 覆盖 ≥6 case：
-  - patrol→dwell→patrol 循环
-  - patrol→chase 触发（玩家进入 FOV）
-  - chase→patrol 脱离 + 0.5s 防抖期间不退出
-  - FOV 边界：角度 = FOV/2（true） / 角度 > FOV/2（false） / 距离 > range（false）
+- [x] **Validate**：`tests/unit/entities/Enemy.test.ts` 覆盖 ≥6 case（实际 13 case）：
+  - patrol→dwell→patrol 循环 + 节点循环回 0
+  - patrol→chase 触发（玩家进入 FOV / 背后不入 FOV）
+  - chase→patrol 脱离 + 0.5s 防抖期间不退出 + 防抖中重新入 FOV 重置
+  - FOV 边界：轴心（true）/ FOV/2 角度（true）/ > FOV/2（false）/ > range（false）
   - dwellTime = 0 不停留
+  - path < 2 节点构造抛错
 
 ### Task3: Collision.playerVsEnemy
 - [ ] **Action**：`src/engine/Collision.ts` 新增 `playerVsEnemy(playerPos, playerRadius, enemy)`：圆形 vs 胶囊 AABB（敌人 = 高度 1.6m / 半径 0.35m）。返回 boolean。
