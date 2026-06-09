@@ -9,6 +9,12 @@ function rec(over: Partial<BestRecord> = {}): BestRecord {
   };
 }
 
+const PROC_SEED = {
+  algorithm: 'recursive-backtracker' as const,
+  size: 15 as const,
+  mazeSeed: '0123456789abcdef',
+};
+
 describe('levelStore', () => {
   beforeEach(() => {
     localStorage.clear();
@@ -71,6 +77,44 @@ describe('levelStore', () => {
 
   it('isBestRecord rejects empty levelId', () => {
     expect(isBestRecord(rec({ levelId: '' }))).toBe(false);
+  });
+
+  describe('seed field (P2-3 procedural mode)', () => {
+    it('accepts a record with a valid procedural seed', () => {
+      expect(isBestRecord(rec({ levelId: 'algo-v1-recursive-backtracker-15-0123456789abcdef', seed: PROC_SEED }))).toBe(true);
+    });
+
+    it('accepts a record without a seed (hand-crafted level)', () => {
+      expect(isBestRecord(rec())).toBe(true);
+    });
+
+    it('rejects a record with an unknown algorithm in the seed', () => {
+      expect(isBestRecord(rec({ seed: { ...PROC_SEED, algorithm: 'not-a-real-algo' as 'recursive-backtracker' } }))).toBe(false);
+    });
+
+    it('rejects a record with a non-whitelisted size in the seed', () => {
+      expect(isBestRecord(rec({ seed: { ...PROC_SEED, size: 99 as 15 } }))).toBe(false);
+    });
+
+    it('rejects a record with a malformed mazeSeed in the seed', () => {
+      expect(isBestRecord(rec({ seed: { ...PROC_SEED, mazeSeed: 'not-hex' } }))).toBe(false);
+    });
+
+    it('rejects a record where the seed object is missing required fields', () => {
+      expect(isBestRecord(rec({ seed: { algorithm: 'prim', size: 15 } as unknown as BestRecord['seed'] }))).toBe(false);
+    });
+
+    it('record() stores the seed field for procedural bests', () => {
+      useLevelStore.getState().record(rec({ levelId: 'algo-v1-prim-30-aaaaaaaaaaaaaaaa', seed: { ...PROC_SEED, algorithm: 'prim', size: 30, mazeSeed: 'aaaaaaaaaaaaaaaa' } }));
+      const stored = useLevelStore.getState().getBest('algo-v1-prim-30-aaaaaaaaaaaaaaaa');
+      expect(stored?.seed).toEqual({ algorithm: 'prim', size: 30, mazeSeed: 'aaaaaaaaaaaaaaaa' });
+    });
+
+    it('sanitizeBestRecordMap drops records whose seed field is invalid', () => {
+      const good = rec({ levelId: 'good', seed: PROC_SEED });
+      const bad = rec({ levelId: 'bad', seed: { ...PROC_SEED, mazeSeed: 'not-hex' } });
+      expect(sanitizeBestRecordMap({ good, bad })).toEqual({ good });
+    });
   });
 
   describe('sanitizeBestRecordMap', () => {

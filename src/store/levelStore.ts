@@ -1,5 +1,15 @@
 import { create } from 'zustand';
 import { loadJSON, saveJSON } from './persist';
+import type { Algorithm, MazeSize, Seed } from '../maze/types';
+
+const VALID_ALGORITHMS: readonly Algorithm[] = [
+  'recursive-backtracker',
+  'kruskal',
+  'prim',
+  'hunt-and-kill',
+];
+const VALID_SIZES: readonly MazeSize[] = [15, 30, 50];
+const MAZE_SEED_RE = /^[0-9a-f]{16}$/;
 
 export interface BestRecord {
   levelId: string;
@@ -7,6 +17,11 @@ export interface BestRecord {
   collected: number;
   total: number;
   date: string; // ISO
+  // P2-3: optional structured seed for procedural bests. Hand-crafted levels
+  // (loaded from public/levels/*.json) leave this undefined. When present
+  // it must round-trip through AlgorithmMazeProvider to regenerate the same
+  // maze, so it carries the algorithm + size + 16-hex mazeSeed triple.
+  seed?: Seed;
 }
 
 interface LevelStore {
@@ -20,6 +35,21 @@ interface LevelStore {
 
 const STORAGE_KEY = 'maze3d.levels.v1';
 
+function isValidSeed(raw: unknown): raw is Seed {
+  if (typeof raw !== 'object' || raw === null) return false;
+  const s = raw as Record<string, unknown>;
+  if (typeof s.algorithm !== 'string' || !VALID_ALGORITHMS.includes(s.algorithm as Algorithm)) {
+    return false;
+  }
+  if (typeof s.size !== 'number' || !VALID_SIZES.includes(s.size as MazeSize)) {
+    return false;
+  }
+  if (typeof s.mazeSeed !== 'string' || !MAZE_SEED_RE.test(s.mazeSeed)) {
+    return false;
+  }
+  return true;
+}
+
 export function isBestRecord(raw: unknown): raw is BestRecord {
   if (typeof raw !== 'object' || raw === null) return false;
   const r = raw as Record<string, unknown>;
@@ -29,6 +59,10 @@ export function isBestRecord(raw: unknown): raw is BestRecord {
   if (typeof r.total !== 'number' || !Number.isFinite(r.total) || r.total < 0) return false;
   if (r.collected > r.total) return false;
   if (typeof r.date !== 'string' || Number.isNaN(Date.parse(r.date))) return false;
+  // Seed is optional, but if it is present it must be a well-formed Seed
+  // object. A malformed seed silently turns the procedural level into a
+  // non-replayable black box, so reject the record rather than persist it.
+  if (r.seed !== undefined && !isValidSeed(r.seed)) return false;
   return true;
 }
 
