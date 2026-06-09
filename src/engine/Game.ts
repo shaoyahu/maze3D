@@ -7,7 +7,17 @@ import { Loop } from './Loop';
 import { resolveMove, type WallGrid } from './Collision';
 import { createPlayer, applyLook, updatePlayerCamera, type PlayerState } from '../entities/Player';
 import { findPickupAt, crossesExit } from '../game/Rules';
-import type { InventorySlot, MazeData, Pickup, StartLevelOptions, VictoryType } from '../maze/types';
+import { injectEnemySpawns } from '../maze/enemySpawner';
+import type {
+  EnemyAggression,
+  InventorySlot,
+  MazeData,
+  Pickup,
+  StartLevelOptions,
+  VictoryType,
+  SurviveSeconds,
+} from '../maze/types';
+import { normalizeSurviveSeconds, SURVIVE_SECONDS_DEFAULT } from '../maze/types';
 
 // Module-level scratch objects to avoid per-frame allocation in the hot
 // update() path. Updated in place each frame; never store the references
@@ -42,6 +52,14 @@ export interface GameBridge {
   getInitialFov: () => number;
   getInitialPointerSensitivity: () => number;
   getCurrentDarkMode: () => boolean;
+  // P2-4a: live-read aggression from the settings store. Engine snapshots
+  // it per-frame from the bridge so the user can change it mid-run
+  // (if a future UI surfaces a runtime difficulty toggle); the Enemy
+  // class also reads its own chaseMultiplier at construction time, so
+  // changing aggression mid-level affects future spawns, not the
+  // already-spawned ones. For the current UI (Settings overlay between
+  // levels), startLevel is the only time it matters.
+  getCurrentEnemyAggression: () => EnemyAggression;
   isActiveLevel: (levelId: string) => boolean;
   isPlaying: () => boolean;
   // P2-2 #8: fired by InputManager on Digit1 / Digit2 (no repeat).
@@ -76,7 +94,21 @@ export class Game {
   getCurrentMode(): VictoryType {
     return this.currentMode;
   }
+  // P2-4a: snapshot of options.surviveSeconds (default 90). HUD/UI
+  // (e.g. the survive countdown) reads this to know how long to run
+  // without going through the Zustand store. The store still owns
+  // the authoritative value; this is a mirror for engine-side consumers.
+  getCurrentSurviveSeconds(): SurviveSeconds {
+    return this.currentSurviveSeconds;
+  }
+  // P2-4a: per-frame read of settingsStore.enemyAggression. Same
+  // snapshot/live-split pattern as getCurrentDarkMode — see the
+  // bridge comment for why live-reads make sense for difficulty.
+  getCurrentEnemyAggression(): EnemyAggression {
+    return this.bridge.getCurrentEnemyAggression();
+  }
   private currentMode: VictoryType = 'reach-exit';
+  private currentSurviveSeconds: SurviveSeconds = SURVIVE_SECONDS_DEFAULT;
   private input?: InputManager;
   private loop?: Loop;
   private remainingPickups: Pickup[] = [];
@@ -145,14 +177,24 @@ export class Game {
     // engine itself doesn't branch on mode — the store's tick() handles
     // countdown semantics — but the mode is needed for display purposes.
     this.currentMode = options?.mode ?? 'reach-exit';
+    // P2-4a: snapshot the survive target the same way (only meaningful
+    // when currentMode === 'survive', but storing it is harmless and
+    // avoids a special case in UI consumers).
+    this.currentSurviveSeconds = normalizeSurviveSeconds(options?.surviveSeconds);
+    // P2-4a: inject enemy spawns into the maze based on enemyCount,
+    // appending to any pre-existing enemies (so a hand-crafted level
+    // JSON's explicit enemies aren't lost). The result is a new maze
+    // object — we don't mutate the caller's reference.
+    const generated = injectEnemySpawns(maze, options?.enemyCount);
+    const injectedMaze: MazeData = { ...maze, enemies: [...maze.enemies, ...generated] };
     // F4: buildScene applies the palette exactly once based on the dark
     // mode flag, so the follow-up setDarkMode() (which would re-run
     // applyPalette a second time) is no longer needed.
-    this.sceneRefs = buildScene(maze, this.bridge.getCurrentDarkMode());
-    this.player = createPlayer(maze.start, maze.cellSize);
+    this.sceneRefs = buildScene(injectedMaze, this.bridge.getCurrentDarkMode());
+    this.player = createPlayer(injectedMaze.start, injectedMaze.cellSize);
     updatePlayerCamera(this.camera, this.player);
-    this.currentMaze = maze;
-    this.remainingPickups = [...maze.pickups];
+    this.currentMaze = injectedMaze;
+    this.remainingPickups = [...injectedMaze.pickups];
     // Discard any mouse delta that accumulated between pointer-lock acquire
     // and the first update tick (spurious browser events, page-focus events,
     // HMR-triggered remounts). Without this, the first few frames can carry

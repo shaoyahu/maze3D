@@ -96,16 +96,19 @@
   - disposeScene 释放 enemy mesh + 清空数组
 
 ### Task6: Game.startLevel 注入 EnemySpawn
-- [ ] **Action**：`engine/Game.ts` 的 `startLevel(maze, options?)`：
+- [x] **Action**：`engine/Game.ts` 的 `startLevel(maze, options?)`：
   - 接收 `enemyCount` + `spawnSchedule` + `surviveSeconds` + `mode='survive'`
-  - `enemyCount` 强制 0-10 范围
+  - `enemyCount` 强制 0-10 范围（用 clampEnemyCount）
   - 根据 `enemyCount` + 迷宫布局（避开 start/exit 周围 1 格 + 路径候选点）生成 EnemySpawn 注入 `maze.enemies`
   - 暴露 `getCurrentSurviveSeconds()` / `getCurrentEnemyAggression()` 给 GameBridge
-- [ ] **Validate**：`tests/unit/engine/Game.test.ts`（或 `tests/unit/maze/AlgorithmMazeProvider.test.ts` 扩展）覆盖：
+- [x] **Validate**：`tests/unit/maze/enemySpawner.test.ts` 新建 + 9 case 覆盖：
   - enemyCount=0 → 不注入
   - enemyCount=3 → 3 个 EnemySpawn
   - enemyCount=11 → 截断到 10
-  - 注入位置不与 start/exit 重叠
+  - 注入位置不与 start/exit 重叠（Chebyshev 距离 1）
+  - 不放在 wall 单元 / 默认值 / NaN 回退
+  - 注入逻辑提取到 `src/maze/enemySpawner.ts`（纯函数，不依赖 engine）
+- [x] **附**：settingsStore 加 `enemyAggression` 字段（默认 `'medium'`，与 Task9 共享持久化槽位；Task9 会补全 UI radio + 三档对应 1.2/1.5/1.8 倍率映射）
 
 ### Task7: Rules.damage + 视野 + survive timer
 - [ ] **Action**：`Rules.ts`：

@@ -8,6 +8,7 @@ describe('settingsStore', () => {
       pointerSensitivity: 0.002,
       fov: 60,
       darkMode: false,
+      enemyAggression: 'medium',
       set: useSettingsStore.getState().set,
     });
   });
@@ -17,6 +18,7 @@ describe('settingsStore', () => {
     expect(s.pointerSensitivity).toBe(0.002);
     expect(s.fov).toBe(60);
     expect(s.darkMode).toBe(false);
+    expect(s.enemyAggression).toBe('medium');
   });
 
   it('set updates a field and persists to localStorage', () => {
@@ -36,7 +38,12 @@ describe('settingsStore', () => {
 
     it('strips extra fields like the legacy `set: null` and keeps valid core fields', () => {
       const oldShape = { pointerSensitivity: 0.004, fov: 80, darkMode: true, set: null };
-      expect(sanitizeSettings(oldShape)).toEqual({ pointerSensitivity: 0.004, fov: 80, darkMode: true });
+      expect(sanitizeSettings(oldShape)).toEqual({
+        pointerSensitivity: 0.004,
+        fov: 80,
+        darkMode: true,
+        enemyAggression: 'medium',
+      });
     });
 
     it('returns null when core fields are missing or invalid', () => {
@@ -52,6 +59,7 @@ describe('settingsStore', () => {
         pointerSensitivity: 0.003,
         fov: 75,
         darkMode: false,
+        enemyAggression: 'medium',
       });
     });
   });

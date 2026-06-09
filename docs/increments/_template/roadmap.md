@@ -10,9 +10,9 @@
 
 | 字段 | 值 |
 |---|---|
-| 活跃增量 | **P2-4a**（巡逻敌人 + survive mode；spec 2/16 ✅，ship 5/16） |
-| 已完成 | P2-2 14/14 ✅ + P2-3 14/14 ✅ + P2-4a Task1 ✅ + Task2 ✅ + Task3 ✅ + Task4 ✅ + Task5 ✅ |
-| 下一个任务 | **开始 P2-4a Task6 Game.startLevel 注入 EnemySpawn**（或用户决策：先 P2-4b / 插入其他增量） |
+| 活跃增量 | **P2-4a**（巡逻敌人 + survive mode；spec 2/16 ✅，ship 6/16） |
+| 已完成 | P2-2 14/14 ✅ + P2-3 14/14 ✅ + P2-4a Task1 ✅ + Task2 ✅ + Task3 ✅ + Task4 ✅ + Task5 ✅ + Task6 ✅ |
+| 下一个任务 | **开始 P2-4a Task7 Rules.damage + 视野 + survive timer**（或用户决策：先 P2-4b / 插入其他增量） |
 | 最后更新 | 2026-06-09 |
 | 最近 commit | 见 `git log --oneline -1`（避免追尾，由 Claude 主动查） |
 

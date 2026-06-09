@@ -66,6 +66,7 @@ export function GameCanvas({ maze, options }: { maze: MazeData; options?: StartL
       getInitialFov: () => useSettingsStore.getState().fov,
       getInitialPointerSensitivity: () => useSettingsStore.getState().pointerSensitivity,
       getCurrentDarkMode: () => useSettingsStore.getState().darkMode,
+      getCurrentEnemyAggression: () => useSettingsStore.getState().enemyAggression,
       isActiveLevel: (levelId) => useGameStore.getState().currentLevelId === levelId,
       isPlaying: () => useGameStore.getState().screen === 'playing',
       onUseItem: (slot) => useGameStore.getState().useItem(slot),

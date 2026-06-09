@@ -1,17 +1,29 @@
 import { create } from 'zustand';
 import { loadJSON, saveJSON } from './persist';
+import type { EnemyAggression } from '../maze/types';
+
+const VALID_AGGRESSION: EnemyAggression[] = ['easy', 'medium', 'hard'];
 
 export interface Settings {
   pointerSensitivity: number; // rad/px
   fov: number; // degrees, vertical FOV of the camera
   darkMode: boolean;
+  // P2-4a: enemy chase-speed multiplier bracket. Persistence +
+  // user-facing radio come in Task9; the field is defined now so
+  // the engine's GameBridge can read it.
+  enemyAggression: EnemyAggression;
 }
 
 interface SettingsStore extends Settings {
   set: <K extends keyof Settings>(k: K, v: Settings[K]) => void;
 }
 
-const DEFAULTS: Settings = { pointerSensitivity: 0.002, fov: 60, darkMode: false };
+const DEFAULTS: Settings = {
+  pointerSensitivity: 0.002,
+  fov: 60,
+  darkMode: false,
+  enemyAggression: 'medium',
+};
 const STORAGE_KEY = 'maze3d.settings.v1';
 
 export function sanitizeSettings(raw: unknown): Settings | null {
@@ -20,11 +32,30 @@ export function sanitizeSettings(raw: unknown): Settings | null {
   if (typeof s.pointerSensitivity !== 'number' || !Number.isFinite(s.pointerSensitivity) || s.pointerSensitivity <= 0) return null;
   if (typeof s.fov !== 'number' || !Number.isFinite(s.fov) || s.fov < 30 || s.fov > 120) return null;
   if (typeof s.darkMode !== 'boolean') return null;
-  return { pointerSensitivity: s.pointerSensitivity, fov: s.fov, darkMode: s.darkMode };
+  // Lenient on enemyAggression: a pre-P2-4a persisted record won't
+  // have the field, so default to 'medium' instead of failing the
+  // whole-settings validation. (Task9 will add a per-key arm here
+  // that rejects obviously bad strings, but 'undefined' is a
+  // forward-compat case, not a corruption case.)
+  const aggression: EnemyAggression =
+    typeof s.enemyAggression === 'string' && VALID_AGGRESSION.includes(s.enemyAggression as EnemyAggression)
+      ? (s.enemyAggression as EnemyAggression)
+      : 'medium';
+  return {
+    pointerSensitivity: s.pointerSensitivity,
+    fov: s.fov,
+    darkMode: s.darkMode,
+    enemyAggression: aggression,
+  };
 }
 
 function pickSettings(s: Settings): Settings {
-  return { pointerSensitivity: s.pointerSensitivity, fov: s.fov, darkMode: s.darkMode };
+  return {
+    pointerSensitivity: s.pointerSensitivity,
+    fov: s.fov,
+    darkMode: s.darkMode,
+    enemyAggression: s.enemyAggression,
+  };
 }
 
 function isValidSetting(k: keyof Settings, v: unknown): v is Settings[keyof Settings] {
@@ -36,6 +67,9 @@ function isValidSetting(k: keyof Settings, v: unknown): v is Settings[keyof Sett
   }
   if (k === 'darkMode') {
     return typeof v === 'boolean';
+  }
+  if (k === 'enemyAggression') {
+    return typeof v === 'string' && VALID_AGGRESSION.includes(v as EnemyAggression);
   }
   return false;
 }
