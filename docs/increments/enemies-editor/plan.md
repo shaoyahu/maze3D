@@ -82,11 +82,11 @@
   - 跨节点 enemy 沿朝向位移后判定
 
 ### Task4: JsonMazeProvider 解析 enemies
-- [ ] **Action**：`JsonMazeProvider` 解析 `enemies` 字段（缺省 `[]`）；`path.length < 2` → fallback 该 enemy 排除 + console.warn。
-- [ ] **Validate**：`tests/unit/maze/JsonMazeProvider.test.ts` 新增：
-  - 含 enemies 字段正常解析
+- [x] **Action**：`JsonMazeProvider` 解析 `enemies` 字段（缺省 `[]`）；`path.length < 2` → fallback 该 enemy 排除 + console.warn。
+- [x] **Validate**：`tests/unit/mazeProvider.test.ts` 追加 3 case：
+  - 含 enemies 字段正常解析（含可选 dwellTime）
   - 缺省 `enemies` → `[]`
-  - path 1 节点 fallback 排除
+  - path 1 节点 fallback 排除 + warn spy 验证
 
 ### Task5: Scene 注册敌人 mesh
 - [ ] **Action**：`Scene.ts` 接收 `MazeData.enemies`，为每个 enemy 创建 `CapsuleGeometry(0.35, 1.6)` 胶囊 mesh（深灰偏红 `#553333`），加入 scene；`dispose()` 释放所有 enemy mesh。

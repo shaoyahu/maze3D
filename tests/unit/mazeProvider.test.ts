@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { JsonMazeProvider } from '../../src/maze/JsonMazeProvider';
 import { LevelLoadError } from '../../src/utils/errors';
 
@@ -151,5 +151,51 @@ describe('JsonMazeProvider', () => {
     const bad = { ...validMaze, cellSize: 0.3 };
     const provider = new JsonMazeProvider({ 'm1': bad });
     await expect(provider.load('m1')).rejects.toThrow(/cellSize must be at least/);
+  });
+
+  it('parses a maze with a valid enemies array', async () => {
+    const maze = {
+      ...validMaze,
+      enemies: [
+        { id: 'e1', x: 0, z: 1, path: [{ x: 1, z: 1 }, { x: 2, z: 1 }] },
+        {
+          id: 'e2', x: 2, z: 0, path: [{ x: 2, z: 1 }, { x: 1, z: 0 }], dwellTime: 0.5,
+        },
+      ],
+    };
+    const provider = new JsonMazeProvider({ 'm1': maze });
+    const loaded = await provider.load('m1');
+    expect(loaded.enemies).toHaveLength(2);
+    expect(loaded.enemies[0].id).toBe('e1');
+    expect(loaded.enemies[0].path).toEqual([{ x: 1, z: 1 }, { x: 2, z: 1 }]);
+    expect(loaded.enemies[1].dwellTime).toBe(0.5);
+  });
+
+  it('defaults enemies to [] when the field is missing', async () => {
+    const maze = { ...validMaze } as Record<string, unknown>;
+    delete (maze as { enemies?: unknown }).enemies;
+    const provider = new JsonMazeProvider({ 'm1': maze });
+    const loaded = await provider.load('m1');
+    expect(loaded.enemies).toEqual([]);
+  });
+
+  it('drops an enemy whose path has fewer than 2 nodes (and warns)', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const maze = {
+        ...validMaze,
+        enemies: [
+          { id: 'bad', x: 0, z: 1, path: [{ x: 1, z: 1 }] }, // 1 node -> drop
+          { id: 'good', x: 0, z: 1, path: [{ x: 1, z: 1 }, { x: 2, z: 1 }] },
+        ],
+      };
+      const provider = new JsonMazeProvider({ 'm1': maze });
+      const loaded = await provider.load('m1');
+      expect(loaded.enemies).toHaveLength(1);
+      expect(loaded.enemies[0].id).toBe('good');
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringMatching(/bad.*1 path node/));
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 });

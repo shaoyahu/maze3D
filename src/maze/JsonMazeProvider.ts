@@ -1,6 +1,6 @@
 import { LevelLoadError } from '../utils/errors';
 import { PLAYER_RADIUS } from '../entities/Player';
-import type { MazeData, MazeProvider, CellType, PickupType, VictoryType } from './types';
+import type { MazeData, MazeProvider, CellType, PickupType, VictoryType, EnemySpawn } from './types';
 
 const VALID_PICKUP_TYPES: PickupType[] = ['time', 'health', 'key'];
 const VALID_VICTORY: VictoryType[] = ['reach-exit', 'survive', 'time-trial'];
@@ -151,7 +151,71 @@ function validateMaze(raw: unknown, id: string): MazeData {
     throw new LevelLoadError(`Maze '${id}': invalid victory type`);
   }
 
-  return m as unknown as MazeData;
+  const enemies = parseEnemies(m.enemies, id, width, depth);
+
+  return { ...m, enemies } as unknown as MazeData;
+}
+
+// Returns [] when the field is missing or not an array, drops any enemy
+// whose path has fewer than 2 nodes (with a console.warn so a bad hand-
+// crafted level doesn't silently lose enemies at runtime), and otherwise
+// builds a strictly-typed EnemySpawn for each entry. Spawn x/z must be
+// in-bounds so the engine's enemy-vs-wall checks can rely on them; path
+// nodes are not bounds-checked here — patrol nodes are scene-level
+// concerns the engine validates separately.
+function parseEnemies(raw: unknown, id: string, width: number, depth: number): EnemySpawn[] {
+  if (!Array.isArray(raw)) return [];
+  const out: EnemySpawn[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    const e = raw[i];
+    if (typeof e !== 'object' || e === null) {
+      throw new LevelLoadError(`Maze '${id}': invalid enemy at index ${i}`);
+    }
+    const ee = e as Record<string, unknown>;
+    requireString(ee, 'id', `${id}.enemies[${i}]`);
+    requireNumber(ee, 'x', `${id}.enemies[${i}]`);
+    requireNumber(ee, 'z', `${id}.enemies[${i}]`);
+    requireInBounds(ee, 'x', 'z', `${id}.enemies[${i}]`, width, depth);
+
+    if (!Array.isArray(ee.path)) {
+      throw new LevelLoadError(`Maze '${id}': enemy ${ee.id} path must be array`);
+    }
+    const path: Array<{ x: number; z: number }> = [];
+    for (let j = 0; j < ee.path.length; j++) {
+      const node = ee.path[j];
+      if (typeof node !== 'object' || node === null) {
+        throw new LevelLoadError(`Maze '${id}': enemy ${ee.id} path[${j}] must be an object`);
+      }
+      const nn = node as Record<string, unknown>;
+      requireNumber(nn, 'x', `${id}.enemies[${i}].path[${j}]`);
+      requireNumber(nn, 'z', `${id}.enemies[${i}].path[${j}]`);
+      path.push({ x: nn.x as number, z: nn.z as number });
+    }
+    if (path.length < 2) {
+      console.warn(
+        `Maze '${id}': enemy ${ee.id as string} has ${path.length} path node(s); needs >= 2 — excluded`,
+      );
+      continue;
+    }
+
+    const spawn: EnemySpawn = {
+      id: ee.id as string,
+      x: ee.x as number,
+      z: ee.z as number,
+      path,
+    };
+    if (typeof ee.dwellTime === 'number' && Number.isFinite(ee.dwellTime)) {
+      spawn.dwellTime = ee.dwellTime;
+    }
+    if (typeof ee.fovRange === 'number' && Number.isFinite(ee.fovRange)) {
+      spawn.fovRange = ee.fovRange;
+    }
+    if (typeof ee.fovAngleDeg === 'number' && Number.isFinite(ee.fovAngleDeg)) {
+      spawn.fovAngleDeg = ee.fovAngleDeg;
+    }
+    out.push(spawn);
+  }
+  return out;
 }
 
 function requireString(o: Record<string, unknown>, key: string, ctx: string) {
