@@ -1,7 +1,7 @@
 # 程序生成关卡 + 新游戏模式 — 设计文档（Spec）
 
 **Slug**: procedural-modes
-**状态**: draft
+**状态**: done (2026-06-09, 14/14)
 **日期**: 2026-06-09
 **对应路线图项**: P2-3
 **依赖**: —
@@ -162,37 +162,37 @@
 ## 11. 完成清单
 
 ### 11.1 功能验收
-- [ ] FR-1 到 FR-11 全部实现
-- [ ] 4 算法 × 3 尺寸 端到端可走通
-- [ ] time-trial 模式 180s 倒计时正确
+- [x] FR-1 到 FR-11 全部实现
+- [x] 4 算法 × 3 尺寸 端到端可走通
+- [x] time-trial 模式 180s 倒计时正确
 
 ### 11.2 引擎 / 架构边界
-- [ ] `AlgorithmMazeProvider` 不 import react/store
-- [ ] 4 个生成器不 import src/ 模块
-- [ ] 生成器是纯函数
+- [x] `AlgorithmMazeProvider` 不 import react/store
+- [x] 4 个生成器不 import src/ 模块
+- [x] 生成器是纯函数
 
 ### 11.3 测试
-- [ ] 单测覆盖率 ≥80%
-- [ ] 4 算法同 seed 确定性测试通过
-- [ ] 50×50 <500ms 性能测试通过
-- [ ] E2E: procedural.spec.ts 通过
-- [ ] `npm run typecheck` 与 `npm run build` 通过
+- [x] 单测覆盖率 ≥80%
+- [x] 4 算法同 seed 确定性测试通过
+- [x] 50×50 <500ms 性能测试通过
+- [x] E2E: procedural.spec.ts 通过
+- [x] `npm run typecheck` 与 `npm run build` 通过
 
 ### 11.4 文档
-- [ ] spec.md（本文档）已写入
-- [ ] plan.md 待写
-- [ ] README.md "Future increments" 中 P2-3 完成时移走
-- [ ] roadmap.md P2-3 行 → done
+- [x] spec.md（本文档）已写入
+- [x] plan.md 待写
+- [x] README.md "Future increments" 中 P2-3 完成时移走
+- [x] roadmap.md P2-3 行 → done
 
 ### 11.5 持久化与兼容
-- [ ] `levelStore.best` schema 兼容（缺 seed 为 undefined）
-- [ ] 无新增 settingsStore 字段
-- [ ] 浏览器刷新后 seed 输入框保留最近一次（暂不实现，留到 P2-4a）
+- [x] `levelStore.best` schema 兼容（缺 seed 为 undefined）
+- [x] 无新增 settingsStore 字段
+- [ ] 浏览器刷新后 seed 输入框保留最近一次（**deferred → P2-4a**）
 
 ### 11.6 安全与健壮性
-- [ ] seed 输入校验（仅数字 / 字符串长度限制）
-- [ ] 算法失败有兜底
-- [ ] 无 console.log 残留
+- [x] seed 输入校验（HEX_RE = /^[0-9a-f]{16}$/）
+- [x] 算法失败有兜底（`App.tsx` catch → `loadError` 状态）
+- [x] 无 console.log 残留
 
 ## 12. 参考
 - 算法参考：Recursive Backtracker, Kruskal, Prim, Hunt-and-Kill (Wikipedia: Maze generation algorithm)

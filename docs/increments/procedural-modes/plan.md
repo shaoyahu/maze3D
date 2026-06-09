@@ -36,6 +36,20 @@
 > - `WinOverlay` 用时显示推到 P2-4a / 后续（FR-7 未完）
 >
 > 下方勾选反映实际 ship 状态；deferred 项保留未勾并加注。
+>
+> ### Deferred → P2-4a 显式归属清单
+>
+> 用户 2026-06-09 确认：以下 P2-3 范围内未 ship 的项推到 P2-4a（巡逻敌人 + survive mode），不进入 P2-3 follow-up。P2-4a 展开任务清单时可直接抄：
+>
+> | 来源 | 描述 | P2-4a 任务草案 |
+> |---|---|---|
+> | plan §Task8a | `WinOverlay` 在 time-trial 模式下显示用时 | P2-4a T-? : HUD/WinOverlay 倒计时显示 |
+> | plan §Task8b | `GameOverOverlay` 在 survive 模式下显示击中数 | P2-4a T-? : survive 计数显示 |
+> | plan §Task10b | `tests/e2e/time-trial.spec.ts` 180s 超时 | P2-4a T-? : 用 fake-timer 替代 180s 等待 |
+> | plan §Task10c | `tests/e2e/pause-resume.spec.ts` 扩展新 mode 暂停 | P2-4a T-? : survive mode 暂停测试 |
+> | spec §11.5 #3 | 浏览器刷新后 seed 输入框保留最近一次 | P2-4a T-? : seed 输入框 localStorage 持久化 |
+>
+> P2-3 范围 14/14 完成；以上 5 项不阻塞 P2-3 验收。
 
 ### Task1: seeded RNG
 - [x] **Action**：在 `src/utils/seed.ts`（路径调整自 `random.ts`）实现 `mulberry32(seed: number): () => number` + `fnv1a(s: string): number` + 16-hex seed 解析。
