@@ -31,9 +31,10 @@ describe('HUD', () => {
 
   it('renders inventory slot placeholders', () => {
     render(<HUD />);
-    // Each slot shows the digit both as center placeholder and as corner
-    // keyboard hint (P2-2 #12), so expect exactly 2 occurrences.
-    expect(screen.getAllByText('1').length).toBe(2);
-    expect(screen.getAllByText('2').length).toBe(2);
+    // F5: only the corner badge renders the digit now (the center
+    // placeholder for empty slots was removed), so expect exactly 1
+    // occurrence per slot.
+    expect(screen.getAllByText('1').length).toBe(1);
+    expect(screen.getAllByText('2').length).toBe(1);
   });
 });

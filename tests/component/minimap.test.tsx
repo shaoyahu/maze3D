@@ -64,7 +64,7 @@ describe('Minimap', () => {
 
   it('renders each pickup as an orange circle centered on its cell', () => {
     const { container } = render(<Minimap maze={maze} gameRef={makeGameRef(1, 3)} />);
-    const pickups = container.querySelectorAll('circle[fill="rgba(255, 184, 77, 0.95)"]');
+    const pickups = container.querySelectorAll('circle[fill="rgba(255, 216, 77, 0.95)"]');
     expect(pickups.length).toBe(1);
     expect(pickups[0]?.getAttribute('cx')).toBe('1.5');
     expect(pickups[0]?.getAttribute('cy')).toBe('1.5');

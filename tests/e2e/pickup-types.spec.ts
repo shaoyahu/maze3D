@@ -12,9 +12,13 @@ test('walking through health/key/time pickups lets the player reach the exit', a
   // pickup; the inventory slot 0 should render the type name "key" right
   // after. We sample the inventory mid-traverse (before the win overlay
   // hides the HUD) by walking in short pulses.
+  // P2-2 F10: 400ms down (was 250ms) gives 0.5+ units of slack over the
+  // pickup cell on slow CI runners. The 250ms value landed the player at
+  // x≈3.95 of a 4-unit walk to the key at x=5, on the very edge of
+  // findPickupAt's hit window.
   for (let i = 0; i < 4; i++) {
     await page.keyboard.down('KeyD');
-    await page.waitForTimeout(250);
+    await page.waitForTimeout(400);
     await page.keyboard.up('KeyD');
     await page.waitForTimeout(150);
   }

@@ -36,6 +36,35 @@ describe('InputManager', () => {
     expect(fn).toHaveBeenCalledOnce();
   });
 
+  // P2-2 F9: Digit1/Digit2 wiring lives in InputManager.ts onKeyDown (added in
+  // the same change as the useItem action). The original P2-2 plan claimed
+  // these were covered by inputManager.test.ts, but only KeyP was — without
+  // these cases a future refactor that drops the listeners (or the !e.repeat
+  // guard) would only be caught by the slow e2e pickup-types flow.
+  it('Digit1 fires useItem listener with slot 0', () => {
+    const fn = vi.fn();
+    im.onUseItem(fn);
+    window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit1' }));
+    expect(fn).toHaveBeenCalledOnce();
+    expect(fn).toHaveBeenCalledWith(0);
+  });
+
+  it('Digit2 fires useItem listener with slot 1', () => {
+    const fn = vi.fn();
+    im.onUseItem(fn);
+    window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit2' }));
+    expect(fn).toHaveBeenCalledOnce();
+    expect(fn).toHaveBeenCalledWith(1);
+  });
+
+  it('Digit1/Digit2 ignore key-repeat (e.repeat=true) so holding the key does not spam useItem', () => {
+    const fn = vi.fn();
+    im.onUseItem(fn);
+    window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit1', repeat: true }));
+    window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Digit2', repeat: true }));
+    expect(fn).not.toHaveBeenCalled();
+  });
+
   it('pointer move accumulates delta and consumeMouseDelta resets it', () => {
     Object.defineProperty(document, 'pointerLockElement', { value: document.body, configurable: true });
     const im2 = new InputManager();
