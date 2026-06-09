@@ -2,183 +2,199 @@
 
 **Slug**: procedural-modes
 **状态**: draft
-**日期**:2026-06-08
+**日期**: 2026-06-09
 **对应路线图项**: P2-3
-**依赖**:—
+**依赖**: —
 **复杂度**: Large
 
-##1.概述
+## 1. 概述
+
 两个相互配合的扩展：
-（a）实现 `AlgorithmMazeProvider`，用递归回溯算法生成连通迷宫，集成到现有 `MazeProvider` 接口；
-（b）扩展 `VictoryType` 已有的 `survive` 与 `time-trial`模式，实现新游戏模式（生存 /计时挑战）。
 
-两者组合让游戏从"固定关卡 → 通关"扩展为"任意尺寸 → 多目标"。
+(a) 实现 `AlgorithmMazeProvider`，4 种迷宫算法（Recursive Backtracker / Kruskal / Prim / Hunt-and-Kill）× 3 种尺寸（15×15、30×30、50×50）；
+(b) 保留 `reach-exit` 模式，新增 `time-trial` 模式（180s 内通关，否则 game-over）。
 
-##2.目标 / 非目标
+两者组合让游戏从"固定关卡 → 通关"扩展为"任意尺寸 × 算法 × 模式"。
 
-###目标
-- 新增 `src/maze/AlgorithmMazeProvider.ts`，实现 `MazeProvider` 接口
-- 算法：递归回溯（recursive backtracker），保证单解路径
-- 支持尺寸参数化（width × depth ≥5×5）
-- `Game.startLevel(id, options?)`接收 `seed` 与 `mode` 参数
-- 新增 `survive`模式：固定时间（120s）内被敌人碰到 N 次即 game-over（敌人系统来自 P2-4；本增量提供 mode框架与 rules，等 P2-4补敌人）
-- 新增 `time-trial`模式：3 分钟内完成关卡即胜利，否则 game-over
-- 关卡选择界面增加"程序生成"分组（尺寸 / seed / mode 可选）
+## 2. 目标 / 非目标
+
+### 目标
+- 新增 `src/maze/AlgorithmMazeProvider.ts` + `src/maze/generators/{recursiveBacktracker,kruskal,prim,huntAndKill}.ts`
+- 4 算法：Recursive Backtracker / Kruskal / Prim / Hunt-and-Kill
+- 3 尺寸：15×15、30×30、50×50
+- 2 模式：reach-exit（默认）/ time-trial（180s 内通关）
+- Seed 自包含：算法 + 版本 + 尺寸 + 64-bit mazeSeed → ID 形如 `algo-v1-{algo}-{size}-{hex}`
+- LevelSelect 两入口：随机关卡（自动生成 seed）/ 指定种子关卡（用户输入 seed）
+- 同 seed 同算法 → 同一 `MazeData`（确定性）
+- localStorage 缓存 `seed → {algorithm, mazeSeed}` 元数据
+- `BestRecord` 加 `seed?: string` 字段，兼容旧数据
 
 ### 非目标
--多种算法（仅递归回溯；预留接口给后续 Kruskal / Prim）
--难度自适应（玩家显式选尺寸）
--多人 /协作模式
-- 服务器端 seed共享
+- 单元自动布局（迷宫完全程序生成）
+- 服务器端 seed 共享
+- 编辑器
+- survive 模式（推迟到 P2-4a）
 
-##3. 用户故事
+## 3. 用户故事
 - 作为休闲玩家，我想要无限关卡，以便不会玩腻
 - 作为竞技玩家，我想要 seed 可复现的关卡，以便挑战他人成绩
-- 作为速通玩家，我想要 time-trial模式，以便专注通关速度
+- 作为速通玩家，我想要 time-trial 模式，以便专注通关速度
+- 作为好奇玩家，我想要 4 种不同算法，看不同迷宫结构
 
-##4. 功能需求
-- FR-1：新增 `AlgorithmMazeProvider` 类，实现完整 `MazeProvider` 接口
-- FR-2：算法接受 `seed: number | string`（确定性）
-- FR-3：算法保证 start 与 exit 间至少一条路径
-- FR-4：算法生成时随机放置1-3个 `time` pickup
-- FR-5：`LevelSelect.tsx` 新增"程序生成"分组，含尺寸 + seed 输入
-- FR-6：`gameStore.startLevel` 新增 `options: { mode?, seed?, size? }` 参数
-- FR-7：`Rules.ts` 实现 `survive` 与 `time-trial` 的胜负判定
-- FR-8：`WinOverlay` 与 `GameOverOverlay` 显示对应 mode 的结果文案
-- FR-9：`pause-resume.spec.ts`扩展：survive / time-trial模式下暂停正确
-- FR-10：seed持久化到 `levelStore` 的 best records字段
+## 4. 功能需求
+- FR-1：4 种迷宫生成器（纯函数，输入 `{size, prng}`，输出 `walls: CellType[][]`）
+- FR-2：所有算法保证 start ↔ exit 至少一条路径（DFS 单测验证）
+- FR-3：所有算法同 seed → 同 walls（确定性单测）
+- FR-4：50×50 尺寸 <500ms（性能单测）
+- FR-5：`AlgorithmMazeProvider.generate({algorithm, size, mazeSeed, mode})` 返回 `MazeData`
+- FR-6：Seed 编码 `algo-v1-{algo}-{size}-{hex}`，解码校验
+- FR-7：`gameStore.startLevel(maze, options?)` 接受 options
+- FR-8：time-trial 模式 timeRemaining=180s，到 0 → game-over
+- FR-9：reach-exit 模式维持现有逻辑
+- FR-10：`LevelSelect` 两入口（随机关卡 / 指定种子关卡）+ 3 尺寸 UI
+- FR-11：`levelStore.BestRecord` 加 `seed?: string` 字段，向后兼容
 
-##5. 数据 /类型变更
+## 5. 数据 / 类型变更
 
-###新增 /修改的类型
+### 新增 / 修改的类型
 - `src/maze/types.ts`：
- - `MazeProvider` 接口已存在，新实现 `AlgorithmMazeProvider`
- - `MazeData`字段保持不变
-- `src/maze/MazeProvider.ts`：
- -扩展 `getMaze(options: { id, seed?, size?, mode? }): Promise<MazeData>`
-- `src/store/gameStore.ts`：
- - `startLevel(id, options?)`接受可选 options
+  - `Algorithm = 'recursive-backtracker' | 'kruskal' | 'prim' | 'hunt-and-kill'`
+  - `MazeSize = 15 | 30 | 50`
+  - `Seed = { algorithm: Algorithm; size: MazeSize; mazeSeed: string /* 16 hex */ }`
+  - `StartLevelOptions = { seed?: Seed; mode?: VictoryType }`
 - `src/store/levelStore.ts`：
- - best record 增加 `seed?: string`字段
+  - `BestRecord.seed?: string`
+- `src/store/gameStore.ts`：
+  - `startLevel(maze, options?: StartLevelOptions)`
 - `src/game/Rules.ts`：
- - `survive` mode: time=120s, hits≥3 → game-over
- - `time-trial` mode: time=180s → win
+  - `time-trial`: initialTime=180s, timeOnPickup 同 reach-exit
 
-###边界检查
-- 算法纯函数，输入 `(size, seed)` → 输出 `MazeData`
-- 算法不依赖 React / Zustand
+### 边界检查
+- 4 个生成器都是纯函数，输入 `(size, prng)` → 输出 `walls`
+- 生成器不依赖 React / Zustand
+- 生成器输出经 DFS 验证 start ↔ exit 可达
 
-##6.引擎 /架构影响
+## 6. 引擎 / 架构影响
 
-###受影响文件
-| 文件 |改动 |说明 |
+### 受影响文件
+| 文件 | 改动 | 说明 |
 |---|---|---|
-| `src/maze/AlgorithmMazeProvider.ts` | CREATE | 新 provider |
-| `src/maze/MazeProvider.ts` | UPDATE | 接口扩展 options |
-| `src/store/gameStore.ts` | UPDATE | startLevel接受 options |
-| `src/store/levelStore.ts` | UPDATE | best record schema兼容扩展 |
-| `src/game/Rules.ts` | UPDATE | 新 mode胜负判定 |
-| `src/game/GameState.ts` | UPDATE | 新 mode 的状态分支 |
-| `src/engine/Game.ts` | UPDATE |接受 options传给 provider |
-| `src/ui/LevelSelect.tsx` | UPDATE | 程序生成分组 |
-| `src/ui/WinOverlay.tsx` | UPDATE | 显示 mode 结果 |
-| `src/ui/GameOverOverlay.tsx` | UPDATE | 显示 mode 结果 |
-| `tests/unit/maze/AlgorithmMazeProvider.test.ts` | CREATE | 单测 |
-| `tests/e2e/procedural.spec.ts` | CREATE | E2E |
+| `src/utils/seed.ts` | CREATE | encodeSeed / decodeSeed / fnv1a / mulberry32 |
+| `src/maze/types.ts` | UPDATE | Algorithm / Seed / StartLevelOptions |
+| `src/maze/generators/recursiveBacktracker.ts` | CREATE | 递归回溯 |
+| `src/maze/generators/kruskal.ts` | CREATE | Kruskal |
+| `src/maze/generators/prim.ts` | CREATE | Prim（随机版） |
+| `src/maze/generators/huntAndKill.ts` | CREATE | Hunt-and-Kill |
+| `src/maze/AlgorithmMazeProvider.ts` | CREATE | 4 算法调度 + 性能 |
+| `src/store/levelStore.ts` | UPDATE | BestRecord.seed |
+| `src/store/gameStore.ts` | UPDATE | startLevel options + time-trial 计时 |
+| `src/engine/Game.ts` | UPDATE | startLevel 接受 options |
+| `src/ui/LevelSelect.tsx` | UPDATE | 两入口 + 3 尺寸 UI |
+| `src/App.tsx` | UPDATE | 接 procedural provider |
+| `tests/unit/utils/seed.test.ts` | CREATE | seed 单测 |
+| `tests/unit/maze/generators/*.test.ts` | CREATE | 4 算法单测 |
+| `tests/unit/maze/AlgorithmMazeProvider.test.ts` | CREATE | provider 单测 |
+| `tests/unit/levelStore.test.ts` | EXTEND | seed 字段持久化 |
+| `tests/unit/gameStore.test.ts` | EXTEND | startLevel options + time-trial |
+| `tests/e2e/procedural.spec.ts` | CREATE | 程序生成端到端 |
 
-###边界检查
+### 边界检查
 - `AlgorithmMazeProvider` 不 import react/store
-- 算法是纯函数，便于测试
-- 新增 mode 分支保持 Rules.ts <50行函数边界
+- 4 个生成器是纯函数
+- 生成器不 import 任何 src/ 模块（除 types.ts）
 
-##7. UI /UX变更
+## 7. UI / UX 变更
 
-###屏幕 /组件改动
-- `LevelSelect.tsx`：新增"程序生成"卡片，含尺寸 slider（10-30）与 seed 输入框
-- `WinOverlay.tsx`：time-trial模式显示"用时 X 秒"
-- `GameOverOverlay.tsx`：survive模式显示"被击中 N 次"
+### 屏幕 / 组件改动
+- `LevelSelect.tsx`：新增两个入口卡片
+  - 随机关卡：3 尺寸卡片（15/30/50），点击 → 随机 seed → startLevel
+  - 指定种子关卡：seed 输入框 + 算法下拉 + 尺寸下拉 + 开始按钮
 
-###交互流程（time-trial 示例）
-1.玩家在 LevelSelect选 "time-trial"
-2. 选择尺寸与 seed（默认随机）
-3. 进入游戏，倒计时180s
-4. 通关 → WinOverlay 显示成绩
+### 交互流程（随机关卡 time-trial）
+1. 玩家在 LevelSelect 选 "随机关卡" → 选 30×30
+2. App 调 `AlgorithmMazeProvider.generate({ algorithm: 'recursive-backtracker', size: 30, mazeSeed: random64bit, mode: 'time-trial' })`
+3. 进入游戏，倒计时 180s
+4. 通关 → WinOverlay 显示用时 + "新纪录！"（如有）
 5. 超时 → GameOverOverlay
 
-##8.错误处理
+## 8. 错误处理
 
-###新增错误码
-- `InvalidSeedError`：seed解析失败时使用 fallback
-- `UnsolvableMazeError`：算法保证可解，此错误作为防御性日志
+### 新增错误码
+- `InvalidSeedError`：seed 解析失败 → fallback 到 small JSON
+- `UnsupportedAlgorithmError`：未知算法 → fallback
 
-###兜底行为
-- 算法超时（>2s）→退回 small JSON 关卡
-- size <5×5 →强制最小尺寸
-- 同 seed 重玩 → levelStore命中现有 best record
+### 兜底行为
+- 算法超时（>2s）→ 退回 small JSON
+- size <5×5 → 强制最小尺寸
+- seed 解析失败 → 重新生成
 
-##9. 测试策略
+## 9. 测试策略
 
-###单元测试
-- `AlgorithmMazeProvider.test.ts`：
- - 同 seed 同尺寸 → 同 MazeData
- - 不同 seed → 不同 MazeData
- - 所有 MazeData 通过可达性校验
- - 大尺寸（30×30）<500ms 完成
-- `rules.test.ts`：扩展 survive / time-trial模式分支
-- `gameStore.test.ts`：startLevel options传递
-- `levelStore.test.ts`：seed字段持久化兼容
+### 单元测试
+- `utils/seed.test.ts`：
+  - encodeSeed/decodeSeed 互逆
+  - FNV-1a 已知输入 → 已知输出
+  - mulberry32 同 seed → 同输出
+- `maze/generators/{4算法}.test.ts`：
+  - 同 size + 同 prng state → 同 walls
+  - 不同 seed → 不同 walls（统计）
+  - 输出经 DFS 验证可达
+  - 50×50 <500ms
+- `maze/AlgorithmMazeProvider.test.ts`：
+  - generate 4 算法返回 valid MazeData
+  - 50×50 <500ms
+- `levelStore.test.ts`：seed 字段持久化兼容
+- `gameStore.test.ts`：startLevel options + time-trial 计时
 
 ### E2E 测试
-- `procedural.spec.ts`：选程序生成 → 进入 → 通关 → win
-- `time-trial.spec.ts`：180s 超时 → game-over
--扩展 `pause-resume.spec.ts`：survive / time-trial 下暂停
+- `procedural.spec.ts`：选随机关卡 → 进入 → 通关 → win
+- （time-trial 超时 E2E 跳过；性能不可靠）
 
-##10.风险
+## 10. 风险
 
-|风险 |可能性 |缓解 |
+| 风险 | 可能性 | 缓解 |
 |---|---|---|
-| 算法在大尺寸性能差 | 中 |单元测30×30 <500ms；如不行换 iterative 实现 |
-| seed碰撞（不同 seed 同 maze） | 低 | 用 FNV-1a hash +32-bit seed |
-| mode状态机分支过多 | 中 | Rules.ts拆分独立函数；<50行 |
-| best record schema升级破坏旧数据 | 低 |缺 seed字段时视为不同关卡 |
+| 算法大尺寸性能 | 中 | 单元测 50×50 <500ms；如失败改 iterative |
+| seed 碰撞（不同 seed 同 maze） | 低 | 64-bit seed + mulberry32 |
+| 生成器输出一致性 | 中 | 4 算法单测覆盖 |
+| BestRecord schema 升级破坏旧数据 | 低 | seed 可选字段 |
 
-##11. 完成清单（拷贝自 `_template/dod.md`）
+## 11. 完成清单
 
-###11.1 功能验收
-- [] FR-1 到 FR-10全部实现
-- [] 程序生成关卡端到端可走通（选 → 进 → 通关）
-- [] survive / time-trial mode胜负判定正确
+### 11.1 功能验收
+- [ ] FR-1 到 FR-11 全部实现
+- [ ] 4 算法 × 3 尺寸 端到端可走通
+- [ ] time-trial 模式 180s 倒计时正确
 
-###11.2引擎 /架构边界
-- [] `AlgorithmMazeProvider` 实现完整 `MazeProvider` 接口
-- [] 算法不 `import react/store`（grep验证）
-- [] 新增 Three.js资源在 `dispose()` 中释放
+### 11.2 引擎 / 架构边界
+- [ ] `AlgorithmMazeProvider` 不 import react/store
+- [ ] 4 个生成器不 import src/ 模块
+- [ ] 生成器是纯函数
 
-###11.3 测试
-- [] 单测覆盖率 ≥80%（新增4 个测试文件）
-- [] 算法同 seed 同尺寸确定性测试通过
-- [] RTL:LevelSelect 程序生成分组
-- [] E2E:procedural / time-trial / pause-resume扩展
-- [] `npm run typecheck` 与 `npm run build` 通过
+### 11.3 测试
+- [ ] 单测覆盖率 ≥80%
+- [ ] 4 算法同 seed 确定性测试通过
+- [ ] 50×50 <500ms 性能测试通过
+- [ ] E2E: procedural.spec.ts 通过
+- [ ] `npm run typecheck` 与 `npm run build` 通过
 
-###11.4文档
-- [] `docs/increments/procedural-modes/spec.md`已写入（本文件）
-- [] `docs/increments/procedural-modes/plan.md`待写
-- [] README.md 的"Future increments"中标 P2-3 完成时移走
-- [] spec §7 `MazeProvider` 接口反映新 options
+### 11.4 文档
+- [ ] spec.md（本文档）已写入
+- [ ] plan.md 待写
+- [ ] README.md "Future increments" 中 P2-3 完成时移走
+- [ ] roadmap.md P2-3 行 → done
 
-###11.5持久化与兼容
-- [] `levelStore.best` schema兼容（缺 seed字段为 undefined）
-- [] 无新增 settingsStore字段
-- [] 浏览器刷新后 seed 输入框保留最近一次（用 settingsStore 或独立 persistence）
+### 11.5 持久化与兼容
+- [ ] `levelStore.best` schema 兼容（缺 seed 为 undefined）
+- [ ] 无新增 settingsStore 字段
+- [ ] 浏览器刷新后 seed 输入框保留最近一次（暂不实现，留到 P2-4a）
 
-###11.6 安全与健壮性
-- [] seed 输入校验（仅数字 /字符串长度限制）
-- [] 算法失败有兜底（退回 small JSON）
-- [] 无 console.log残留
+### 11.6 安全与健壮性
+- [ ] seed 输入校验（仅数字 / 字符串长度限制）
+- [ ] 算法失败有兜底
+- [ ] 无 console.log 残留
 
-##12. 参考
-- 设计 spec:`docs/superpowers/specs/2026-06-05-maze3d-first-person-game-design.md` §5 `MazeProvider`, §7 `VictoryType`
-- 算法参考：Recursive Backtracker (Wikipedia)
-- DoD模板:`docs/increments/_template/dod.md`
--路线图:`docs/increments/_template/roadmap.md`
+## 12. 参考
+- 算法参考：Recursive Backtracker, Kruskal, Prim, Hunt-and-Kill (Wikipedia: Maze generation algorithm)
+- DoD 模板：`docs/increments/_template/dod.md`
+- 路线图：`docs/increments/_template/roadmap.md`
