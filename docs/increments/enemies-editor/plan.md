@@ -176,15 +176,16 @@
   - `npm run test:e2e` 需要 Playwright 浏览器（`npm run test:e2e:install`）— 本地未装浏览器，spec 已按 v1.48 page.clock API 写好，等 CI 跑
 
 ### Task13: 文档同步
-- [ ] **Action**：
-  - README.md "Future increments" 段 P2-4a 完成时移走
-  - roadmap.md P2-4a 行 → done；进度 16/16
-  - spec.md §11 完成清单全部勾选
-  - plan.md "执行日志" 段填写实际 ship 状态
-- [ ] **Validate**：grep 验证：
-  - `AlgorithmMazeProvider` / `EnemySpawn` / `enemyAggression` / `survive` 在 README 出现
-  - roadmap.md P2-4a 16/16 ✅
-  - spec.md §11 全部 `[x]`
+- [x] **Action**：
+  - README.md "Future increments" 段 P2-4a 完成时移走（路线图标 → ✅ 已完成（13/13））
+  - README.md 加 Enemy.ts / EnemySpawn / enemyAggression 关键字 + 敌人关卡 fixture + survive 文案
+  - roadmap.md P2-4a 行 → done（2026-06-09）；顶部锚点 13/13 ✅
+  - spec.md §11 完成清单全部勾选（23/23）
+  - plan.md "执行日志" 段填写实际 ship 状态（实施日期 / 改动文件清单 / 偏差 / 备注）
+- [x] **Validate**：
+  - README `AlgorithmMazeProvider` 3 次 / `EnemySpawn` 1 次 / `enemyAggression` 1 次 / `survive` 2 次 ✅
+  - roadmap.md P2-4a ✅ done ✅
+  - spec.md §11 全部 `[x]`（0 个未勾）
 
 ## 验证
 
@@ -212,22 +213,83 @@ grep -rE "(react|store)" src/maze/AlgorithmMazeProvider.ts && echo "FAIL" || ech
 ## 验收
 - [ ] 所有 Task 勾选完成（13/13）
 - [ ] 验证命令全部通过（`npm run typecheck` ✅ / `npm test` ≥290/290 ✅ / `npm run build` ✅ / `npm run test:e2e` ✅）
-- [ ] spec §11 完成清单全部勾选
-- [ ] README.md / roadmap.md / spec.md / plan.md 同步
-- [ ] 任何 mode（reach-exit / time-trial / survive）都能叠加敌人
-- [ ] survive mode 30/60/90/120s 都触发 win
-- [ ] 渐进 spawn：每 15s + 每 pickup → +1 enemy（上限 10）
-- [ ] 承接 P2-3 deferred 5 项全部 ship（FR-18 / FR-19 / FR-20 + GameOverOverlay survive 击中数 + time-trial 超时 E2E）
+- [x] spec §11 完成清单全部勾选
+- [x] README.md / roadmap.md / spec.md / plan.md 同步
+- [x] 任何 mode（reach-exit / time-trial / survive）都能叠加敌人
+- [x] survive mode 30/60/90/120s 都触发 win
+- [x] 渐进 spawn：每 15s + 每 pickup → +1 enemy（上限 10）
+- [x] 承接 P2-3 deferred 5 项全部 ship（FR-18 / FR-19 / FR-20 + GameOverOverlay survive 击中数 + time-trial 超时 E2E）
 
-## 执行日志（实施时填写）
+## 执行日志
 
 ### 实施日期
-待填写
+2026-06-09
 
 ### 实际改动文件
-（实施后与上方对照）
+
+**新增（src/）**
+- `src/entities/Enemy.ts`
+- `src/maze/enemySpawner.ts`
+- `src/ui/components/EnemyCounter.tsx`
+- `src/ui/components/InvulnerableFlash.tsx`
+
+**修改（src/）**
+- `src/maze/types.ts`（+ Enemy* / SpawnSchedule / 验证常量与函数）
+- `src/maze/JsonMazeProvider.ts`（parseEnemies）
+- `src/maze/AlgorithmMazeProvider.ts`（enemies: []）
+- `src/engine/Collision.ts`（playerVsEnemy）
+- `src/engine/Scene.ts`（CapsuleGeometry + SceneRefs.enemies + dispose 第 4 参）
+- `src/engine/Game.ts`（injectEnemySpawns + getCurrentSurviveSeconds/Aggression + bridge）
+- `src/game/Rules.ts`（applyDamage / shouldSurviveWin / shouldProgressSpawn）
+- `src/store/gameStore.ts`（invulnerableUntil / survive 计时 / 渐进 spawn 调度器）
+- `src/store/settingsStore.ts`（enemyAggression 字段）
+- `src/ui/HUD.tsx`（EnemyCounter + InvulnerableFlash）
+- `src/ui/LevelSelect.tsx`（4 控件 + lastSeed 持久化）
+- `src/ui/Settings.tsx`（enemyAggression radio）
+- `src/ui/GameOverOverlay.tsx`（survive 文案）
+- `src/ui/components/HealthBar.tsx`（flashing class）
+- `src/ui/GameCanvas.tsx`（bridge.getCurrentEnemyAggression）
+- `src/styles/theme.css`（invulnerable-fade / health-bar-flash keyframes）
+
+**新增（tests/）**
+- `tests/unit/maze/types.test.ts`
+- `tests/unit/maze/enemySpawner.test.ts`
+- `tests/unit/entities/Enemy.test.ts`
+- `tests/e2e/enemies.spec.ts`
+- `tests/e2e/survive.spec.ts`
+- `tests/e2e/time-trial.spec.ts`
+
+**修改（tests/）**
+- `tests/unit/collision.test.ts`（+ playerVsEnemy 4 case）
+- `tests/unit/mazeProvider.test.ts`（+ enemies 解析 3 case）
+- `tests/unit/scene.test.ts`（+ enemy mesh 3 case）
+- `tests/unit/rules.test.ts`（+ applyDamage / shouldSurviveWin / shouldProgressSpawn 12 case）
+- `tests/unit/gameStore.test.ts`（+ survive / 渐进 spawn 7 case）
+- `tests/unit/settingsStore.test.ts`（+ enemyAggression 默认 / 持久化 / 拒绝非法值）
+- `tests/component/menus.test.tsx`（+ 4 控件 / seed 持久化 7 case）
+- `tests/component/settings.test.tsx`（+ enemyAggression radio 3 case）
+- `tests/component/hud.test.tsx`（+ EnemyCounter / InvulnerableFlash / HealthBar 5 case）
+- `tests/component/overlays.test.tsx`（+ WinOverlay 新纪录 / GameOverOverlay survive 3 case）
+- `tests/e2e/pause-resume.spec.ts`（+ survive 暂停冻结 elapsedTime）
+
+**新增（public/）**
+- `public/levels/level-tiny-enemy.json`（E2E 敌人 fixture）
+
+**文档**
+- `docs/increments/enemies-editor/spec.md` §11 全部勾选
+- `docs/increments/enemies-editor/plan.md` 本节
+- `docs/increments/_template/roadmap.md` P2-4a → done，顶部锚点更新
+- `README.md` P2-4a 行 + survive 模式说明 + 数字键注释
 
 ### 遇到的偏差
-（spec 中计划 ...，实际做了 ...，原因 ...）
+- **Task1**：原本 `types.ts` 包含 `enemyChaseMultiplier` 与 `ENEMY_DWELL_TIME_DEFAULT` 等常量；初版落地时被移除以收敛范围（这些是 Task2 / Task9 / Task5 的内容）。后续 Task 各自补回所需常量。
+- **Task6**：bridge 需要 `enemyAggression` 字段，所以 `settingsStore.ts` 在 Task6 就加了字段；Task9 补完持久化测试与 `enemyChaseMultiplier` 映射（同时存在两个 commit 是因为类型先于 UI 锁定）。
+- **Task7/8**：plan 把 Rules 纯函数与 gameStore 集成拆成两个任务，但实际耦合度过高，合并为一个 commit 提交；Task8 在独立 commit 里只做 plan/roadmap 标记。
+- **Task12 E2E**：本地无 Playwright 浏览器（`npm run test:e2e:install` 未跑），spec 已按 v1.48 page.clock API 写好，等 CI 验证。
 
 ### 备注
+- 单元 / 组件测试 353/353 通过（基线 260 + P2-4a 新增 93 case）
+- 引擎层边界 `grep -rE "(react|store)" src/entities/Enemy.ts` → OK
+- 引擎层边界 `grep -rE "(react|store)" src/maze/AlgorithmMazeProvider.ts` → OK
+- `npm run typecheck` 全绿
+- `npm run build` 待 CI 验证（本地未跑）

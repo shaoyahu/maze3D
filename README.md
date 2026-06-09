@@ -58,6 +58,7 @@ npm run dev          # http://localhost:5173
 - `level-small` — 入门尺寸
 - `level-tiny` — 最小尺寸，便于 E2E 调试
 - `level-tiny-pickups` — 包含拾取物品的最小关卡
+- `level-tiny-enemy` — 包含单个敌人（id `test-enemy`）的最小关卡，供 E2E 玩家-敌人碰撞用
 
 ### 程序生成关卡（P2-3）
 
@@ -65,6 +66,8 @@ npm run dev          # http://localhost:5173
 
 - **随机关卡** — 三档尺寸卡片（15×15 / 30×30 / 50×50），每次点击都会用 64 位随机种子生成全新迷宫，并启动 180 秒的竞速模式。
 - **指定种子关卡** — 输入任意 16 位小写十六进制种子后点击"开始"，可复现同一迷宫（默认 30×30 竞速模式）。
+
+关卡 JSON / 程序生成结果都符合 `MazeData`（`src/maze/types.ts`），核心字段：`size / start / exit / walls / pickups / enemies[] / rules`。`EnemySpawn` 描述巡逻敌人的出生坐标 + 路径节点（`path: {x,z}[]`，≥ 2 节点），由 `JsonMazeProvider` 解析；程序生成时由 `Game.startLevel` 调用 `injectEnemySpawns` 注入到 `maze.enemies`。
 
 两个入口都通过 `AlgorithmMazeProvider` 调度，分发到以下四种迷宫生成算法：
 
@@ -85,7 +88,7 @@ npm run dev          # http://localhost:5173
 | `health` | 恢复生命值（不超过 `rules.maxHealth`） |
 | `key` | 进入库存（2 个槽位，库存满时拾取失败，物品保留在原位） |
 
-库存槽位通过数字键 `1` / `2` 触发使用。当前没有"锁格"或"门"等可消耗 `key` 的机关，使用仅触发 UI 闪烁；该契约为未来的 P2-4a 敌人生存模式预留。
+库存槽位通过数字键 `1` / `2` 触发使用。当前没有"锁格"或"门"等可消耗 `key` 的机关，使用仅触发 UI 闪烁；该契约为敌人 / 生存模式下的扩展预留。
 
 ## 胜利模式
 
@@ -95,7 +98,7 @@ npm run dev          # http://localhost:5173
 |---|---|---|
 | `reach-exit` | 抵达出口格子即胜利 | 沿用关卡自身的 `initialTime` |
 | `time-trial` | 180 秒内抵达出口，否则 game-over | 强制 180 秒预算 |
-| `survive` | 在限定时间内存活（P2-4a 计划中） | 待定 |
+| `survive` | 30/60/90/120 秒存活，倒计时跑完即胜利 | 30/60/90/120 秒预算（LevelSelect 可选） |
 
 最佳成绩按 `levelId` 分别保存到 `localStorage`（`maze3d.levels.v1`），程序生成关卡的成绩会附上自描述 `Seed`，可随时重新打开同一迷宫。
 
@@ -113,10 +116,11 @@ src/
 │   └── Scene.ts           # 场景搭建（墙、地面、出口、拾取）
 ├── entities/
 │   ├── Player.ts          # 玩家位置 / 朝向 / 半径（PLAYER_RADIUS）
-│   └── Pickup.ts          # 拾取物品的视觉与碰撞表示
+│   ├── Pickup.ts          # 拾取物品的视觉与碰撞表示
+│   └── Enemy.ts           # 巡逻敌人（patrol / dwell / chase 状态机 + FOV）
 ├── game/
 │   ├── GameState.ts       # 状态机：idle / playing / paused / game-over / win
-│   └── Rules.ts           # 纯函数规则：跨过出口、捡起物品、使用物品
+│   └── Rules.ts           # 纯函数规则：跨过出口、捡起物品、使用物品、伤害 / 存活 / 渐进 spawn
 ├── maze/
 │   ├── types.ts           # CellType / PickupType / VictoryType / Seed 等
 │   ├── JsonMazeProvider.ts        # 从 public/levels/*.json 加载
@@ -131,12 +135,12 @@ src/
 ├── store/
 │   ├── gameStore.ts       # 运行时状态（屏幕、计时、生命、库存等）
 │   ├── levelStore.ts      # 最佳成绩（持久化）
-│   ├── settingsStore.ts   # 用户偏好（暗色模式等，持久化）
+│   ├── settingsStore.ts   # 用户偏好（暗色模式 / 敌人追击速度 enemyAggression，持久化）
 │   └── persist.ts         # localStorage 读写 + 校验
 ├── ui/                    # 纯 React 视图层
 │   ├── App / MainMenu / LevelSelect / Settings
 │   ├── GameCanvas         # 装配 Three.js 画布
-│   ├── HUD                # 状态条（HUD = 健康 / 时间 / 库存 / 小地图）
+│   ├── HUD                # 状态条（HUD = 健康 / 时间 / 库存 / 敌人计数 / 受伤屏闪 / 小地图）
 │   └── overlays/          # Pause / GameOver / Win 三个遮罩
 ├── utils/
 │   └── seed.ts            # FNV-1a 哈希 + mulberry32 PRNG + 种子编解码
@@ -159,7 +163,7 @@ src/
 | P2-1 | MVP（手写关卡 + 第一人称 + 通关） | ✅ 已完成 |
 | P2-2 | 暗色模式 + 拾取物品系统 | ✅ 已完成 |
 | P2-3 | 程序生成关卡 + 竞速模式 | ✅ 已完成（14/14） |
-| P2-4a | 敌人 + 生存模式（survive） | 📝 设计中 |
+| P2-4a | 敌人 + 生存模式（survive） | ✅ 已完成（13/13） |
 | P2-4b | 浏览器内关卡编辑器 | ⏳ 暂缓 |
 
 增量文档位于 `docs/increments/`，每个增量都包含 `spec.md`（设计）、`plan.md`（任务分解）、`review.md`（事后复盘，仅完成的增量有）。

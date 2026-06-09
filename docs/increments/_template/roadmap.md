@@ -10,9 +10,9 @@
 
 | 字段 | 值 |
 |---|---|
-| 活跃增量 | **P2-4a**（巡逻敌人 + survive mode；spec 2/16 ✅，ship 12/16） |
-| 已完成 | P2-2 14/14 ✅ + P2-3 14/14 ✅ + P2-4a Task1 ✅ + Task2 ✅ + Task3 ✅ + Task4 ✅ + Task5 ✅ + Task6 ✅ + Task7 ✅ + Task8 ✅ + Task9 ✅ + Task10 ✅ + Task11 ✅ + Task12 ✅ |
-| 下一个任务 | **开始 P2-4a Task13 文档同步**（或用户决策：先 P2-4b / 插入其他增量） |
+| 活跃增量 | **P2-4a**（巡逻敌人 + survive mode；spec 13/16 ✅，ship 13/13 ✅） |
+| 已完成 | P2-2 14/14 ✅ + P2-3 14/14 ✅ + P2-4a 13/13 ✅ |
+| 下一个任务 | **决策点：P2-4b 关卡编辑器（独立）或其他增量** |
 | 最后更新 | 2026-06-09 |
 | 最近 commit | 见 `git log --oneline -1`（避免追尾，由 Claude 主动查） |
 
@@ -40,8 +40,8 @@
 |序 |名称 |优先级 | 前置依赖 |复杂度 |文档目录 |状态 |
 |---|---|---|---|---|---|---|
 | P2-2 | 深色模式 + 新 pickup 视觉 + UseItem 数字键 | P0 | — | Small | `docs/increments/dark-mode-pickups/` | ✅ done (2026-06-08) |
-| P2-3 | 算法关卡（4 算法 × 3 尺寸 × time-trial） | P1 | — | Large | `docs/increments/procedural-modes/` | pending |
-| P2-4a | 巡逻敌人 + survive mode | P2 | P2-3 | Large | `docs/increments/enemies-editor/` | pending |
+| P2-3 | 算法关卡（4 算法 × 3 尺寸 × time-trial） | P1 | — | Large | `docs/increments/procedural-modes/` | ✅ done (2026-06-08) |
+| P2-4a | 巡逻敌人 + survive mode | P2 | P2-3 | Large | `docs/increments/enemies-editor/` | ✅ done (2026-06-09) |
 | P2-4b | 关卡编辑器 | P2 | — | Large | `docs/increments/enemies-editor/` | pending |
 
 > **P2-1 已删除**：原计划"多关卡 JSON（中/大尺寸）"被 P2-3 算法生成取代。MVP 保留 `level-small.json` 作为"教学关"，`level-tiny.json` 留 E2E。

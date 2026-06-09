@@ -229,39 +229,39 @@ export interface MazeData {
 ## 11. 完成清单
 
 ### 11.1 功能验收
-- [ ] FR-1 ~ FR-20 全部实现（含 P2-3 deferred 3 项补入）
-- [ ] 任何 mode 都能叠加敌人
-- [ ] survive mode 30/60/90/120s 都触发 win
-- [ ] 渐进 spawn：每 15s + 每 pickup → +1 enemy（上限 10）
+- [x] FR-1 ~ FR-20 全部实现（含 P2-3 deferred 3 项补入）
+- [x] 任何 mode 都能叠加敌人
+- [x] survive mode 30/60/90/120s 都触发 win
+- [x] 渐进 spawn：每 15s + 每 pickup → +1 enemy（上限 10）
 
 ### 11.2 引擎 / 架构边界
-- [ ] `Enemy.ts` 不 import react/store
-- [ ] 引擎仍走 GameBridge 回调
-- [ ] 算法 provider 仅接收 enemyCount 数值
-- [ ] 视野 / 状态机 / 碰撞在 engine 层
+- [x] `Enemy.ts` 不 import react/store
+- [x] 引擎仍走 GameBridge 回调
+- [x] 算法 provider 仅接收 enemyCount 数值
+- [x] 视野 / 状态机 / 碰撞在 engine 层
 
 ### 11.3 测试
-- [ ] 单测覆盖率 ≥80%
-- [ ] Enemy 状态机 ≥6 case
-- [ ] survive E2E 用 fake-timer
-- [ ] `npm run typecheck` + `npm run build` 通过
+- [x] 单测覆盖率 ≥80%
+- [x] Enemy 状态机 ≥6 case（实际 13 case）
+- [x] survive E2E 用 fake-timer（page.clock fastForward）
+- [x] `npm run typecheck` + `npm run build` 通过
 
 ### 11.4 文档
-- [ ] spec.md（本文件）已写入
-- [ ] plan.md 待写
-- [ ] README.md "Future increments" 段 P2-4a 完成时移走
-- [ ] roadmap.md P2-4a 行 → done
+- [x] spec.md（本文件）已写入
+- [x] plan.md 待写（13 任务已 ship）
+- [x] README.md "Future increments" 段 P2-4a 完成时移走
+- [x] roadmap.md P2-4a 行 → done
 
 ### 11.5 持久化与兼容
-- [ ] `settingsStore.enemyAggression` 持久化
-- [ ] `MazeData.enemies` 字段缺省 `[]`，兼容旧 JSON
-- [ ] 旧 best records 不破坏
+- [x] `settingsStore.enemyAggression` 持久化
+- [x] `MazeData.enemies` 字段缺省 `[]`，兼容旧 JSON
+- [x] 旧 best records 不破坏
 
 ### 11.6 安全与健壮性
-- [ ] enemyCount 0–10 范围校验
-- [ ] surviveSeconds 仅 30/60/90/120
-- [ ] enemies path < 2 节点 fallback
-- [ ] 无 console.log 残留
+- [x] enemyCount 0–10 范围校验
+- [x] surviveSeconds 仅 30/60/90/120
+- [x] enemies path < 2 节点 fallback
+- [x] 无 console.log 残留
 
 ## 12. 参考
 
