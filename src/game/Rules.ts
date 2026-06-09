@@ -1,4 +1,4 @@
-import type { MazeData, Pickup } from '../maze/types';
+import type { InventorySlot, MazeData, Pickup } from '../maze/types';
 
 // Cell convention: cell i owns [i*cs, (i+1)*cs). floor() matches Collision.
 // collidesAt's convention. Round-based "nearest center" disagrees at exact
@@ -44,7 +44,7 @@ export interface UseItemResult {
 }
 
 export function onUseItem(
-  slot: 0 | 1,
+  slot: InventorySlot,
   inventory: (Pickup | null)[],
   maze: MazeData | null,
 ): UseItemResult {

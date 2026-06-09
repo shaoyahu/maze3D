@@ -1,3 +1,5 @@
+import type { InventorySlot } from '../maze/types';
+
 export interface Move { x: number; z: number; }
 export interface MouseDelta { x: number; y: number; }
 
@@ -5,7 +7,7 @@ export class InputManager {
   private keys = new Set<string>();
   private mouse = { x: 0, y: 0 };
   private togglePauseListener: (() => void) | null = null;
-  private useItemListener: ((slot: 0 | 1) => void) | null = null;
+  private useItemListener: ((slot: InventorySlot) => void) | null = null;
   private paused = false;
   #sensitivity: number;
 
@@ -48,7 +50,7 @@ export class InputManager {
 
   onTogglePause(fn: () => void) { this.togglePauseListener = fn; }
 
-  onUseItem(fn: (slot: 0 | 1) => void) { this.useItemListener = fn; }
+  onUseItem(fn: (slot: InventorySlot) => void) { this.useItemListener = fn; }
 
   getMove(): Move {
     let x = 0, z = 0;

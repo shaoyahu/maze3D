@@ -52,7 +52,10 @@ describe('Rules', () => {
     });
 
     it('returns flash=false when the slot index is out of bounds', () => {
-      expect(onUseItem(5, [keyPickup, null], maze)).toEqual({ flash: false, consumed: false });
+      // Cast: the runtime guard exists to protect against bad input that
+      // bypassed the type system (e.g. wider `number` callers). The literal
+      // 5 isn't assignable to `InventorySlot = 0 | 1` without a cast.
+      expect(onUseItem(5 as unknown as 0 | 1, [keyPickup, null], maze)).toEqual({ flash: false, consumed: false });
     });
 
     it('returns flash=true and consumed=false for a filled slot in the no-lock world', () => {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useState } from 'react';
 import { useGameStore } from './store/gameStore';
 import { useSettingsStore } from './store/settingsStore';
 import { MainMenu } from './ui/MainMenu';
@@ -10,7 +10,8 @@ import { GameOverOverlay } from './ui/GameOverOverlay';
 import { WinOverlay } from './ui/WinOverlay';
 import { GameCanvas } from './ui/GameCanvas';
 import { JsonMazeProvider } from './maze/JsonMazeProvider';
-import type { MazeData } from './maze/types';
+import { AlgorithmMazeProvider } from './maze/AlgorithmMazeProvider';
+import type { MazeData, StartLevelOptions } from './maze/types';
 
 type UiScreen = 'menu' | 'levels' | 'settings' | 'game';
 
@@ -52,11 +53,12 @@ export function App() {
   const [uiScreen, setUiScreen] = useState<UiScreen>('menu');
   const [levels, setLevels] = useState<{ id: string; name: string; data: MazeData }[]>([]);
   const [activeMaze, setActiveMaze] = useState<MazeData | null>(null);
+  const [activeOptions, setActiveOptions] = useState<StartLevelOptions | undefined>(undefined);
   const [loadError, setLoadError] = useState<string | null>(null);
   const gameScreen = useGameStore((s) => s.screen);
   const darkMode = useSettingsStore((s) => s.darkMode);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const root = document.documentElement;
     if (darkMode) root.dataset.theme = 'dark';
     else delete root.dataset.theme;
@@ -77,24 +79,50 @@ export function App() {
       });
   }, []);
 
-  const startLevel = (id: string) => {
+  const startLevel = (id: string, options?: StartLevelOptions) => {
+    // P2-3: ids starting with 'algo-v1-' are procedural seeds — we generate
+    // the MazeData on demand via AlgorithmMazeProvider instead of looking
+    // it up in the hand-crafted `levels` list. Anything else is a
+    // hand-crafted level id.
+    const isProcedural = id.startsWith('algo-v1-');
+    if (isProcedural) {
+      const algoProvider = new AlgorithmMazeProvider();
+      algoProvider
+        .load(id)
+        .then((maze) => {
+          useGameStore.getState().startLevel(maze, options);
+          setActiveMaze(maze);
+          setActiveOptions(options);
+          setUiScreen('game');
+        })
+        .catch((e) => {
+          // Bad seed id or generator failure — surface as a load error and
+          // leave the UI on the levels screen so the user can retry.
+          const msg = e instanceof Error ? e.message : String(e);
+          console.error('Failed to load procedural level', e);
+          setLoadError(`关卡生成失败：${msg}`);
+        });
+      return;
+    }
     const lv = levels.find((l) => l.id === id);
     if (!lv) return;
-    useGameStore.getState().startLevel(lv.data);
+    useGameStore.getState().startLevel(lv.data, options);
     setActiveMaze(lv.data);
+    setActiveOptions(options);
     setUiScreen('game');
   };
 
   const quitToMenu = () => {
     useGameStore.getState().goToMenu();
     setActiveMaze(null);
+    setActiveOptions(undefined);
     setUiScreen('menu');
   };
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       {uiScreen === 'game' && activeMaze && (
-        <GameCanvas key={activeMaze.id} maze={activeMaze} />
+        <GameCanvas key={activeMaze.id} maze={activeMaze} options={activeOptions} />
       )}
       {uiScreen === 'game' && gameScreen === 'playing' && <HUD />}
       {uiScreen === 'game' && gameScreen === 'paused' && (
