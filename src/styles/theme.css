@@ -27,3 +27,25 @@
   0%   { opacity: 1; border-color: var(--accent-strong); }
   100% { opacity: 0; border-color: var(--accent-strong); }
 }
+
+@keyframes invulnerable-fade {
+  /* P2-4a: 0.5s red fade for the post-hit invulnerable window. The
+     animation is mounted only while `invulnerableUntil > elapsedTime`,
+     so its 0.5s duration matches the 0.5s server-side window and the
+     element unmounts exactly when the animation ends — no jump, no
+     re-trigger flicker. */
+  0%   { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@keyframes health-bar-flash {
+  /* P2-4a: the HealthBar's --flashing modifier pulses the heart color
+     once during the invulnerable window so the user sees the link
+     between the red overlay and the bar they're tracking. */
+  0%   { filter: brightness(2) saturate(1.5); transform: scale(1.05); }
+  100% { filter: brightness(1) saturate(1);   transform: scale(1);    }
+}
+
+.health-bar--flashing {
+  animation: health-bar-flash 0.5s linear;
+}

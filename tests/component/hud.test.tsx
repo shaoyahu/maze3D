@@ -38,4 +38,38 @@ describe('HUD', () => {
     expect(screen.getAllByText('1').length).toBe(1);
     expect(screen.getAllByText('2').length).toBe(1);
   });
+
+  describe('EnemyCounter + InvulnerableFlash (P2-4a)', () => {
+    it('renders the enemy counter as "敌人 X/Y" using progressiveEnemyCount', () => {
+      useGameStore.setState({ progressiveEnemyCount: 4 });
+      render(<HUD />);
+      expect(screen.getByTestId('enemy-counter').textContent).toContain('敌人 4 / 10');
+    });
+
+    it('does NOT render InvulnerableFlash when invulnerableUntil has passed', () => {
+      useGameStore.setState({ invulnerableUntil: 0, elapsedTime: 5 });
+      render(<HUD />);
+      expect(screen.queryByTestId('invulnerable-flash')).toBeNull();
+    });
+
+    it('renders InvulnerableFlash when invulnerableUntil > elapsedTime', () => {
+      useGameStore.setState({ invulnerableUntil: 1.0, elapsedTime: 0.5 });
+      render(<HUD />);
+      expect(screen.getByTestId('invulnerable-flash')).toBeInTheDocument();
+    });
+
+    it('HealthBar gains the flashing class during the invulnerable window', () => {
+      useGameStore.setState({ invulnerableUntil: 1.0, elapsedTime: 0.5 });
+      render(<HUD />);
+      const bar = screen.getByTestId('health-bar');
+      expect(bar.className).toContain('health-bar--flashing');
+    });
+
+    it('HealthBar drops the flashing class once the window elapses', () => {
+      useGameStore.setState({ invulnerableUntil: 0, elapsedTime: 5 });
+      render(<HUD />);
+      const bar = screen.getByTestId('health-bar');
+      expect(bar.className).not.toContain('health-bar--flashing');
+    });
+  });
 });

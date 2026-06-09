@@ -49,4 +49,31 @@ describe('overlays', () => {
     render(<WinOverlay onRetry={() => {}} onQuit={() => {}} />);
     expect(screen.getByText(/用时 00:10/)).toBeInTheDocument();
   });
+
+  it('WinOverlay shows "新纪录！" when lastWinIsNewRecord is true (P2-4a FR-18)', () => {
+    useGameStore.getState().startLevel(maze);
+    useGameStore.setState({ elapsedTime: 30, lastWinIsNewRecord: true });
+    render(<WinOverlay onRetry={() => {}} onQuit={() => {}} />);
+    expect(screen.getByText('新纪录！')).toBeInTheDocument();
+  });
+
+  it('GameOverOverlay in survive mode shows 坚持时间 + 击中数 (P2-4a FR-18)', () => {
+    useGameStore.getState().startLevel(maze, { mode: 'survive', surviveSeconds: 60 });
+    useGameStore.setState({ elapsedTime: 17, pickupCount: { collected: 3, total: 5 } });
+    render(<GameOverOverlay onRetry={() => {}} onQuit={() => {}} />);
+    expect(screen.getByText('坚持失败')).toBeInTheDocument();
+    expect(screen.getByText(/坚持了 00:17/)).toBeInTheDocument();
+    expect(screen.getByText(/击中数 3/)).toBeInTheDocument();
+  });
+
+  it('GameOverOverlay in non-survive mode keeps the original "时间到！" copy', () => {
+    // goToMenu doesn't reset currentMode (preexisting gap), so explicitly
+    // pin it for this case.
+    useGameStore.setState({ currentMode: 'reach-exit' });
+    render(<GameOverOverlay onRetry={() => {}} onQuit={() => {}} />);
+    expect(screen.getByText('时间到！')).toBeInTheDocument();
+    expect(screen.queryByText('坚持失败')).toBeNull();
+    expect(screen.queryByText(/坚持了/)).toBeNull();
+    expect(screen.queryByText(/击中数/)).toBeNull();
+  });
 });

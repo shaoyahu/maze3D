@@ -153,19 +153,15 @@
   - `tests/component/settings.test.tsx` 追加 3 case（默认 medium / 切换 hard/easy 触发 store / 非默认值回显）
 
 ### Task11: HUD + Overlays
-- [ ] **Action**：
-  - `EnemyCounter.tsx` 新建：HUD 角落显示 "敌人 X/Y"（current / max）
-  - `InvulnerableFlash.tsx` 新建：受伤 0.5s 全屏红色蒙层（与 `invulnerableUntil` 同步）
-  - `HealthBar.tsx` 受伤时闪红 + 渐隐
-  - `WinOverlay.tsx` time-trial 显示用时（mm:ss）+ "新纪录！"（如有）
-  - `GameOverOverlay.tsx` survive 显示坚持时间 + 击中数
-- [ ] **Validate**：`tests/component/hud.test.tsx` 覆盖：
-  - EnemyCounter 渲染
-  - InvulnerableFlash 时机（mock `invulnerableUntil` 时间）
-  - HealthBar 闪红 class 切换
-  - `tests/component/overlays.test.tsx` 覆盖：
-  - WinOverlay time-trial 文案（含 mm:ss）
-  - GameOverOverlay survive 文案（含坚持时间 + 击中数）
+- [x] **Action**：
+  - `EnemyCounter.tsx` 新建：HUD 角落显示 "敌人 X/Y"（progressiveEnemyCount / 10）
+  - `InvulnerableFlash.tsx` 新建：受伤 0.5s 全屏红色蒙层（与 `invulnerableUntil` 同步，CSS keyframe `invulnerable-fade`）
+  - `HealthBar.tsx` 受伤时加 `health-bar--flashing` class（CSS keyframe `health-bar-flash`）
+  - `WinOverlay.tsx` time-trial 显示用时（mm:ss，已存在）+ "新纪录！"（已有，加测试）
+  - `GameOverOverlay.tsx` survive 显示 "坚持失败" + 坚持时间 + 击中数
+- [x] **Validate**：
+  - `tests/component/hud.test.tsx` 追加 5 case（EnemyCounter 渲染 / InvulnerableFlash 出现条件 ×2 / HealthBar 闪红 class ×2）
+  - `tests/component/overlays.test.tsx` 追加 3 case（WinOverlay 新纪录 / GameOverOverlay survive 文案 / GameOverOverlay 非 survive 保留原样）
 
 ### Task12: E2E
 - [ ] **Action**：

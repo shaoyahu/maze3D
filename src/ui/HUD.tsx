@@ -3,6 +3,8 @@ import { Timer } from './components/Timer';
 import { HealthBar } from './components/HealthBar';
 import { InventoryBar } from './components/InventoryBar';
 import { ControlHints } from './components/ControlHints';
+import { EnemyCounter } from './components/EnemyCounter';
+import { InvulnerableFlash } from './components/InvulnerableFlash';
 
 export function HUD() {
   const timeRemaining = useGameStore((s) => s.timeRemaining);
@@ -15,6 +17,8 @@ export function HUD() {
       <ControlHints />
       <InventoryBar slots={inventory} />
       <HealthBar health={health} max={maxHealth} />
+      <EnemyCounter />
+      <InvulnerableFlash />
     </>
   );
 }
