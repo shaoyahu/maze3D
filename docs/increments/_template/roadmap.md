@@ -10,10 +10,10 @@
 
 | 字段 | 值 |
 |---|---|
-| 活跃增量 | **（P2-2 已完成 ✅；等待用户决定启动 P2-3 / P2-4a / P2-4b 之一）** |
-| 已完成 | 14 / 14（P2-2 全部 14 个任务） |
-| 下一个任务 | **等待用户决定**（P2-3 任务清单待展开；P2-4a 依赖 P2-3；P2-4b 独立） |
-| 最后更新 | 2026-06-08 |
+| 活跃增量 | **P2-3 进行中**（4 算法 × 3 尺寸 × 2 mode 升级；任务清单已展开 14 行） |
+| 已完成 | 0 / 14（P2-3 进行中；P2-2 14/14 ✅） |
+| 下一个任务 | **#1 升级 roadmap.md（已展开）→ #2 重写 spec.md** |
+| 最后更新 | 2026-06-09 |
 | 最近 commit | 见 `git log --oneline -1`（避免追尾，由 Claude 主动查） |
 
 **约束**：
@@ -106,7 +106,25 @@
 
 > 范围：4 算法 × 3 尺寸（15×15、30×30、50×50）× 2 mode（time-trial 默认、reach-exit 可切）。Seed 自包含（算法+版本+尺寸+64-bit mazeSeed），localStorage 缓存 `seed → {algorithm, mazeSeed}` 元数据。LevelSelect 两个入口："随机关卡" / "指定种子关卡"。
 
-> **待 P2-2 完成后展开任务清单**。
+| # | 任务 | 工作量 | 状态 |
+|---|---|---|---|
+| 1 | 升级 roadmap.md（**本任务**） | XS | [x] |
+| 2 | 重写 P2-3 spec.md（4 算法 × 3 尺寸 × 2 mode） | XS | [x] |
+| 3 | `utils/seed.ts` 新增 `encodeSeed` / `decodeSeed` / `fnv1a` / `mulberry32` | S | [x] |
+| 4 | `maze/types.ts` 新增 `Algorithm` 枚举 + `Seed` + `StartLevelOptions` | XS | [x] |
+| 5 | `maze/generators/recursiveBacktracker.ts` 纯函数 (TDD：尺寸+seed 确定性 + 可达性) | S | [x] |
+| 6 | `maze/generators/kruskal.ts` 纯函数 (TDD) | S | [x] |
+| 7 | `maze/generators/prim.ts` 纯函数 (TDD) | S | [x] |
+| 8 | `maze/generators/huntAndKill.ts` 纯函数 (TDD) | S | [x] |
+| 9 | `maze/AlgorithmMazeProvider.ts` 调度 4 算法 + 50×50 <500ms 性能单测 | M | [x] |
+| 10 | `levelStore.ts` `BestRecord` 加 `seed?: string` 字段，isBestRecord 兼容 | XS | [x] |
+| 11 | `gameStore.startLevel(maze, options?)` + time-trial 模式 180s 计时 (TDD) | M | [x] |
+| 12 | `engine/Game.ts` `startLevel(maze, options?)` 接受 options 转发 provider | S | [x] |
+| 13 | `ui/LevelSelect.tsx` 两入口 UI（随机关卡 / 指定种子关卡）+ 3 尺寸卡片 | M | [x] |
+| 14 | E2E `procedural.spec.ts`（通关+time-trial超时）+ 文档同步 | M | [x] |
+
+> 进度：14/14
+> 关键模块走 TDD（任务 3、5–9、11），其它快速完成（任务 2、4、10、12、13、14）。
 
 ### P2-4a: 巡逻敌人 + survive mode（Large）
 
