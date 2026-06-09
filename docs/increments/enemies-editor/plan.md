@@ -125,17 +125,12 @@
   - 视野触发 chase（覆盖在 Enemy.test.ts，Task2 完成）
 
 ### Task8: gameStore 扩展
-- [ ] **Action**：`gameStore.ts`：
-  - 已有 `damage(n)`（P2-2 框架）；加 `invulnerableUntil: number` 字段
-  - 已有 `tick(dt)`；survive mode 加 `elapsedTime` 字段；time-trial 用 `timeRemaining`（P2-3 已有）
-  - 渐进 spawn 调度器状态：`nextSpawnAt: number`、`pickupCount` 累计
+- [x] **Action**：`gameStore.ts`：与 Task7 一并完成（Rules 纯函数 + store 状态耦合，分两次提交会反复来回）。
+  - 已有 `damage(n)`（P2-2 框架）→ 强化为 `applyDamage` 包装，加 `invulnerableUntil: number` 字段
+  - 已有 `tick(dt)` → survive mode 加 `currentSurviveSeconds` 字段 + win 条件；time-trial 走 timeRemaining（P2-3 已有）
+  - 渐进 spawn 调度器状态：`nextSpawnAt: number` + `lastPickupCountForSpawn` 累计
   - mode 切换时（reach-exit/time-trial/survive）正确初始化对应计时器
-- [ ] **Validate**：`tests/unit/store/gameStore.test.ts` 覆盖：
-  - survive mode elapsedTime 增长 + win 触发
-  - 渐进 spawn 时间触发（mock `tick(dt)` 推进 15s）
-  - 渐进 spawn pickup 触发（mock pickup action）
-  - enemyCount 强制 0-10
-  - invulnerable 时间窗
+- [x] **Validate**：`tests/unit/gameStore.test.ts` 追加 7 case（invulnerable / survive 30s win / survive 忽略 timeRemaining / progressive 15s / pickup / cap 10 / enemyCount 来自 options）— 已在 Task7 commit 中包含。
 
 ### Task9: settingsStore.enemyAggression
 - [ ] **Action**：`settingsStore.ts` 新增 `enemyAggression: EnemyAggression`，默认 `'medium'`，持久化到 localStorage。
