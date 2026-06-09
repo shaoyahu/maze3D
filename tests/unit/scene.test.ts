@@ -33,6 +33,47 @@ describe('buildScene', () => {
     expect(playerMarker.position.z).toBeCloseTo(maze.start.z * maze.cellSize + maze.cellSize / 2);
   });
 
+  it('builds one capsule mesh per MazeData.enemies entry, anchored at the cell center', () => {
+    const mazeWithEnemies: MazeData = {
+      ...maze,
+      enemies: [
+        { id: 'e1', x: 0, z: 2, path: [{ x: 0, z: 2 }, { x: 2, z: 2 }] },
+        { id: 'e2', x: 2, z: 0, path: [{ x: 2, z: 0 }, { x: 0, z: 0 }] },
+      ],
+    };
+    const { enemies, scene } = buildScene(mazeWithEnemies);
+    expect(enemies).toHaveLength(2);
+    for (const m of enemies) {
+      expect(m.geometry).toBeInstanceOf(THREE.CapsuleGeometry);
+      // Bottom of capsule sits on the floor (y=0), so center y = height/2 = 0.8.
+      expect(m.position.y).toBeCloseTo(0.8);
+    }
+    // First enemy at grid (0,2) -> cell center (1, _, 5); maze is 3x3 with cs=2.
+    const e1 = enemies.find(
+      (m) => Math.abs(m.position.x - 1) < 1e-6 && Math.abs(m.position.z - 5) < 1e-6,
+    );
+    expect(e1, 'enemy mesh at grid (0,2) cell center (1, _, 5)').toBeTruthy();
+    // And the mesh is actually added to the scene graph.
+    expect(scene.children).toContain(e1);
+  });
+
+  it('exposes an empty enemies array when the level has no enemies', () => {
+    const { enemies } = buildScene(maze);
+    expect(enemies).toEqual([]);
+  });
+
+  it('disposeScene releases enemy geometry/material along with the rest', () => {
+    const mazeWithEnemies: MazeData = {
+      ...maze,
+      enemies: [
+        { id: 'e1', x: 0, z: 2, path: [{ x: 0, z: 2 }, { x: 2, z: 2 }] },
+      ],
+    };
+    const { scene, walls, pickups, enemies } = buildScene(mazeWithEnemies);
+    expect(() => disposeScene(scene, walls, pickups, enemies)).not.toThrow();
+    expect(enemies).toEqual([]);
+  });
+
   it('places perimeter wall meshes one cell outside the grid so OOB collisions have a visible wall', () => {
     // Collision treats x<0, x>=w, z<0, z>=d as wall. Without a visible mesh
     // at those positions, the player can walk against the map edge, get

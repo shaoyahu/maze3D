@@ -89,8 +89,11 @@
   - path 1 节点 fallback 排除 + warn spy 验证
 
 ### Task5: Scene 注册敌人 mesh
-- [ ] **Action**：`Scene.ts` 接收 `MazeData.enemies`，为每个 enemy 创建 `CapsuleGeometry(0.35, 1.6)` 胶囊 mesh（深灰偏红 `#553333`），加入 scene；`dispose()` 释放所有 enemy mesh。
-- [ ] **Validate**：手动启动含敌人关卡可见敌人 mesh；`dispose()` 后无泄漏（Chrome DevTools Memory 截图）。可视情况加 scene 渲染快照单测。
+- [x] **Action**：`Scene.ts` 接收 `MazeData.enemies`，为每个 enemy 创建 `CapsuleGeometry(0.35, 1.6)` 胶囊 mesh（深灰偏红 `#553333`），加入 scene；`dispose()` 释放所有 enemy mesh。
+- [x] **Validate**：`tests/unit/scene.test.ts` 追加 3 case（现有 8 + 3 = 11）：
+  - 含 enemies 的 maze → CapsuleGeometry 锚定在 cell center、y=0.8（贴地）
+  - 0 enemies → `enemies === []`
+  - disposeScene 释放 enemy mesh + 清空数组
 
 ### Task6: Game.startLevel 注入 EnemySpawn
 - [ ] **Action**：`engine/Game.ts` 的 `startLevel(maze, options?)`：

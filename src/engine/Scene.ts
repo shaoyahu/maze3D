@@ -106,6 +106,7 @@ export interface SceneRefs {
   walls: THREE.Mesh[];
   exit: THREE.Mesh;
   pickups: THREE.Mesh[];
+  enemies: THREE.Mesh[];
   playerMarker: THREE.Mesh;
   setDarkMode: (enabled: boolean) => void;
 }
@@ -291,13 +292,32 @@ export function buildScene(maze: MazeData, darkMode =false): SceneRefs {
     pickups.push(upper);
   }
 
-  return { scene, walls, exit, pickups, playerMarker, setDarkMode };
+  // P2-4a: one capsule mesh per enemy. Total height 1.6m = 2*radius + length.
+  // Shared geometry + material across enemies (saves GPU memory and matches
+  // the wall/pickup pattern) — disposeScene still releases the single
+  // instance exactly once because the disposeMat/seenGeoms set dedupes.
+  const enemies: THREE.Mesh[] = [];
+  const ENEMY_RADIUS = 0.35;
+  const ENEMY_HEIGHT = 1.6;
+  const enemyGeom = new THREE.CapsuleGeometry(ENEMY_RADIUS, ENEMY_HEIGHT - 2 * ENEMY_RADIUS);
+  const enemyMat = new THREE.MeshLambertMaterial({ color: 0x553333 });
+  for (const e of maze.enemies) {
+    const mesh = new THREE.Mesh(enemyGeom, enemyMat);
+    // Spawn at cell center, y = height/2 so the capsule sits on the floor.
+    mesh.position.set((e.x + 0.5) * cs, ENEMY_HEIGHT / 2, (e.z + 0.5) * cs);
+    mesh.userData = { enemy: e };
+    scene.add(mesh);
+    enemies.push(mesh);
+  }
+
+  return { scene, walls, exit, pickups, enemies, playerMarker, setDarkMode };
 }
 
 export function disposeScene(
   scene: THREE.Scene,
   walls: THREE.Mesh[],
   pickups: THREE.Mesh[],
+  enemies: THREE.Mesh[] = [],
 ) {
   const seenGeoms = new WeakSet<THREE.BufferGeometry>();
   const seenMats = new WeakSet<THREE.Material>();
@@ -323,4 +343,5 @@ export function disposeScene(
   });
   walls.length = 0;
   pickups.length = 0;
+  enemies.length = 0;
 }

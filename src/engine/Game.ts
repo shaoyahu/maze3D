@@ -138,7 +138,7 @@ export class Game {
   startLevel(maze: MazeData, options?: StartLevelOptions) {
     if (!this.renderer || !this.camera) throw new Error('Game not initialized');
     if (this.sceneRefs) {
-      disposeScene(this.sceneRefs.scene, this.sceneRefs.walls, this.sceneRefs.pickups);
+      disposeScene(this.sceneRefs.scene, this.sceneRefs.walls, this.sceneRefs.pickups, this.sceneRefs.enemies);
     }
     // P2-3: snapshot the mode so getCurrentMode() callers (HUD/UI) see
     // the level's active mode without having to reach into the store. The
@@ -188,7 +188,7 @@ export class Game {
     this.loop?.stop();
     this.input?.dispose();
     if (this.sceneRefs) {
-      disposeScene(this.sceneRefs.scene, this.sceneRefs.walls, this.sceneRefs.pickups);
+      disposeScene(this.sceneRefs.scene, this.sceneRefs.walls, this.sceneRefs.pickups, this.sceneRefs.enemies);
     }
     this.renderer?.dispose();
   }
