@@ -110,7 +110,7 @@ export interface SceneRefs {
   setDarkMode: (enabled: boolean) => void;
 }
 
-export function buildScene(maze: MazeData): SceneRefs {
+export function buildScene(maze: MazeData, darkMode =false): SceneRefs {
   const scene = new THREE.Scene();
 
   const hemi = new THREE.HemisphereLight();
@@ -125,10 +125,15 @@ export function buildScene(maze: MazeData): SceneRefs {
     bg: 0x87ceeb, hemiSky: 0xddeeff, hemiGround: 0xc8b896,
     hemiIntensity: 0.8, dirColor: 0xffffff, dirIntensity: 0.7,
   };
+  // P2-2 F12: fog color is no longer a separate field — it must track bg,
+  // otherwise the horizon fog band reads as a different color than the sky
+  // (the value 0x0a0a14 was previously duplicated in both fields and the
+  // duplication was load-bearing rather than explicit). Callers read it via
+  // DARK_PALETTE.bg at the call sites below.
   const DARK_PALETTE = {
     bg: 0x0a0a14, hemiSky: 0x4466aa, hemiGround: 0x1a1a22,
     hemiIntensity: 0.4, dirColor: 0xb0c4ff, dirIntensity: 0.5,
-    fogColor: 0x0a0a14, fogDensity: 0.05,
+    fogDensity: 0.05,
   };
   const applyPalette = (
     p: typeof LIGHT_PALETTE,
@@ -148,10 +153,21 @@ export function buildScene(maze: MazeData): SceneRefs {
     if (enabled) {
       applyPalette(
         DARK_PALETTE,
-        new THREE.FogExp2(DARK_PALETTE.fogColor, DARK_PALETTE.fogDensity),
+        new THREE.FogExp2(DARK_PALETTE.bg, DARK_PALETTE.fogDensity),
       );
     } else {
-      applyPalette(LIGHT_PALETTE, null);
+      // F4: apply the palette exactly once at scene build so startLevel does
+   // not have to call setDarkMode a second time. Pass the dark mode flag
+   // explicitly so this stays the single source of truth for the initial
+   // palette.
+   if (darkMode) {
+    applyPalette(
+     DARK_PALETTE,
+     new THREE.FogExp2(DARK_PALETTE.bg, DARK_PALETTE.fogDensity),
+    );
+   } else {
+    applyPalette(LIGHT_PALETTE, null);
+   }
     }
   }
 
