@@ -8,6 +8,7 @@ const maze: MazeData = {
   walls: [[1, 1, 1], [1, 0, 1], [1, 1, 1]],
   pickups: [{ x: 1, z: 1, type: 'time', value: 5 }],
   rules: { initialTime: 60, maxHealth: 3, victory: 'reach-exit', timeOnPickup: 15 },
+  enemies: [],
 };
 
 describe('Rules', () => {

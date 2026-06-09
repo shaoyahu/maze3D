@@ -36,6 +36,7 @@ export interface MazeData {
   walls: CellType[][];
   pickups: Pickup[];
   rules: LevelRules;
+  enemies: EnemySpawn[];
 }
 
 export interface MazeProvider {
@@ -73,4 +74,66 @@ export interface Seed {
 export interface StartLevelOptions {
   seed?: Seed;
   mode?: VictoryType;
+  enemyCount?: number;
+  spawnSchedule?: SpawnSchedule;
+  surviveSeconds?: 30 | 60 | 90 | 120;
+}
+
+// ---------------------------------------------------------------------------
+// P2-4a: enemies + survive mode
+// ---------------------------------------------------------------------------
+
+export type EnemyState = 'patrol' | 'dwell' | 'chase';
+
+export interface EnemySpawn {
+  id: string;
+  x: number;
+  z: number;
+  path: Array<{ x: number; z: number }>;
+  dwellTime?: number;
+  fovRange?: number;
+  fovAngleDeg?: number;
+}
+
+export interface SpawnSchedule {
+  intervalSec: number;
+  onPickup: boolean;
+  enabled: boolean;
+}
+
+export type EnemyAggression = 'easy' | 'medium' | 'hard';
+
+export const ENEMY_COUNT_MIN = 0;
+export const ENEMY_COUNT_MAX = 10;
+export const ENEMY_COUNT_DEFAULT = 3;
+
+export const SURVIVE_SECONDS_VALUES = [30, 60, 90, 120] as const;
+export type SurviveSeconds = (typeof SURVIVE_SECONDS_VALUES)[number];
+export const SURVIVE_SECONDS_DEFAULT: SurviveSeconds = 90;
+
+export const SPAWN_SCHEDULE_DEFAULT: SpawnSchedule = {
+  intervalSec: 15,
+  onPickup: true,
+  enabled: true,
+};
+
+export function clampEnemyCount(value: number | undefined): number {
+  if (value === undefined || Number.isNaN(value)) return ENEMY_COUNT_DEFAULT;
+  if (value < ENEMY_COUNT_MIN) return ENEMY_COUNT_MIN;
+  if (value > ENEMY_COUNT_MAX) return ENEMY_COUNT_MAX;
+  return value;
+}
+
+export function isValidSurviveSeconds(value: number | undefined): value is SurviveSeconds {
+  return value !== undefined && (SURVIVE_SECONDS_VALUES as readonly number[]).includes(value);
+}
+
+export function normalizeSurviveSeconds(
+  value: number | undefined,
+): SurviveSeconds {
+  return isValidSurviveSeconds(value) ? value : SURVIVE_SECONDS_DEFAULT;
+}
+
+export function isValidEnemyPath(enemy: Pick<EnemySpawn, 'path'>): boolean {
+  return enemy.path.length >= 2;
 }

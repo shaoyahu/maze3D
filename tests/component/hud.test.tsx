@@ -9,6 +9,7 @@ const maze: MazeData = {
   start: { x: 0, z: 0 }, exit: { x: 2, z: 2 },
   walls: [[1,1,1],[1,0,1],[1,1,1]],
   pickups: [], rules: { initialTime: 60, maxHealth: 3, victory: 'reach-exit', timeOnPickup: 15 },
+  enemies: [],
 };
 
 describe('HUD', () => {

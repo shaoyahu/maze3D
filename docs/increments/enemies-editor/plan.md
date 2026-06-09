@@ -48,15 +48,15 @@
 ## 任务清单
 
 ### Task1: types 扩展
-- [ ] **Action**：`src/maze/types.ts`：
+- [x] **Action**：`src/maze/types.ts`：
   - 新增 `EnemyState = 'patrol' | 'dwell' | 'chase'`
   - 新增 `EnemySpawn`（id / x / z / path / dwellTime? / fovRange? / fovAngleDeg?）
   - 新增 `SpawnSchedule`（intervalSec=15 / onPickup=true / enabled=true）
   - 新增 `EnemyAggression = 'easy' | 'medium' | 'hard'`
   - 扩展 `StartLevelOptions`：`enemyCount?`（默认 3） / `spawnSchedule?` / `surviveSeconds?`（30/60/90/120，默认 90）
   - 扩展 `MazeData.enemies: EnemySpawn[]`（缺省 `[]`）
-- [ ] **Mirror**：`VictoryType` 加 `'survive'`（如尚未包含）。
-- [ ] **Validate**：`npm run typecheck` 通过；`tests/unit/maze/types.test.ts` 覆盖 enemyCount 范围 / surviveSeconds 枚举 / enemies path ≥2 节点。
+- [x] **Mirror**：`VictoryType` 加 `'survive'`（如尚未包含）— 已在 P2-3 引入，本次无变更。
+- [x] **Validate**：`npm run typecheck` 通过；`tests/unit/maze/types.test.ts` 覆盖 enemyCount 范围 / surviveSeconds 枚举 / enemies path ≥2 节点。
 
 ### Task2: Enemy.ts 实体 + 状态机
 - [ ] **Action**：`src/entities/Enemy.ts` 纯类（不 import react/store），字段：

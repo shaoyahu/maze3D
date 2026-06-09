@@ -44,6 +44,7 @@ export class AlgorithmMazeProvider implements MazeProvider {
         victory: 'reach-exit',
         timeOnPickup: 15,
       },
+      enemies: [],
     };
   }
 }

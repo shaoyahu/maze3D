@@ -16,6 +16,7 @@ const validMaze = {
   ],
   pickups: [],
   rules: { initialTime: 60, maxHealth: 3, victory: 'reach-exit', timeOnPickup: 15 },
+  enemies: [],
 };
 
 describe('JsonMazeProvider', () => {
