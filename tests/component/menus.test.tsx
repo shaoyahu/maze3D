@@ -110,6 +110,84 @@ describe('menu components', () => {
     });
   });
 
+  // P2-4a FR-13/FR-20: 4 procedural controls + last-seed persistence.
+  describe('P2-4a procedural controls', () => {
+    it('renders the 4 procedural controls (mode / survive seconds / enemy count / progressive)', () => {
+      render(<LevelSelect available={[]} onPick={() => {}} onBack={() => {}} />);
+      expect(screen.getByTestId('procedural-controls')).toBeInTheDocument();
+      expect(screen.getByTestId('mode-reach-exit')).toBeInTheDocument();
+      expect(screen.getByTestId('mode-time-trial')).toBeInTheDocument();
+      expect(screen.getByTestId('mode-survive')).toBeInTheDocument();
+      // survive-seconds only shows when mode === 'survive' (default is time-trial)
+      expect(screen.queryByTestId('survive-30')).toBeNull();
+      // enemy count slider (range) — the spec says 0..10 with default 3
+      const slider = screen.getByLabelText('敌人数量') as HTMLInputElement;
+      expect(slider.min).toBe('0');
+      expect(slider.max).toBe('10');
+      expect(slider.value).toBe('3');
+      // progressive toggle defaults to on
+      expect(screen.getByTestId('progressive-spawn')).toBeChecked();
+    });
+
+    it('switching to survive mode reveals the survive-seconds radio group', () => {
+      render(<LevelSelect available={[]} onPick={() => {}} onBack={() => {}} />);
+      expect(screen.queryByTestId('survive-30')).toBeNull();
+      fireEvent.click(screen.getByTestId('mode-survive'));
+      expect(screen.getByTestId('survive-30')).toBeInTheDocument();
+      expect(screen.getByTestId('survive-60')).toBeInTheDocument();
+      expect(screen.getByTestId('survive-90')).toBeInTheDocument();
+      expect(screen.getByTestId('survive-120')).toBeInTheDocument();
+    });
+
+    it('forwards mode + enemyCount + spawnSchedule on the start callback', () => {
+      const onPick = vi.fn();
+      render(<LevelSelect available={[]} onPick={onPick} onBack={() => {}} />);
+      fireEvent.click(screen.getByTestId('mode-survive'));
+      fireEvent.click(screen.getByTestId('survive-30'));
+      fireEvent.click(screen.getByTestId('progressive-spawn')); // toggle off
+      fireEvent.click(screen.getByRole('button', { name: /15/ }));
+      const [, options] = onPick.mock.calls[0];
+      expect(options?.mode).toBe('survive');
+      expect(options?.surviveSeconds).toBe(30);
+      expect(options?.enemyCount).toBe(3);
+      expect(options?.spawnSchedule?.enabled).toBe(false);
+    });
+
+    it('persists the last valid seed to localStorage on a successful start', () => {
+      const onPick = vi.fn();
+      render(<LevelSelect available={[]} onPick={onPick} onBack={() => {}} />);
+      const seedInput = screen.getByLabelText(/seed/i) as HTMLInputElement;
+      fireEvent.change(seedInput, { target: { value: '0123456789abcdef' } });
+      fireEvent.click(screen.getByRole('button', { name: /开始/ }));
+      expect(localStorage.getItem('maze3d.lastSeed')).toBe('0123456789abcdef');
+    });
+
+    it('does NOT persist a seed that fails the hex check (FR-20)', () => {
+      localStorage.setItem('maze3d.lastSeed', 'previoustoolongvalue');
+      const onPick = vi.fn();
+      render(<LevelSelect available={[]} onPick={onPick} onBack={() => {}} />);
+      const seedInput = screen.getByLabelText(/seed/i) as HTMLInputElement;
+      fireEvent.change(seedInput, { target: { value: 'not-hex' } });
+      fireEvent.click(screen.getByRole('button', { name: /开始/ }));
+      // Invalid seed must not clobber the prior value.
+      expect(localStorage.getItem('maze3d.lastSeed')).toBe('previoustoolongvalue');
+    });
+
+    it('pre-fills the seed input from localStorage on mount (FR-20 round-trip)', () => {
+      localStorage.setItem('maze3d.lastSeed', 'feedfacefeedface');
+      render(<LevelSelect available={[]} onPick={() => {}} onBack={() => {}} />);
+      const seedInput = screen.getByLabelText(/seed/i) as HTMLInputElement;
+      expect(seedInput.value).toBe('feedfacefeedface');
+    });
+
+    it('ignores a non-hex value in localStorage and leaves the input empty', () => {
+      localStorage.setItem('maze3d.lastSeed', 'totally-not-hex');
+      render(<LevelSelect available={[]} onPick={() => {}} onBack={() => {}} />);
+      const seedInput = screen.getByLabelText(/seed/i) as HTMLInputElement;
+      expect(seedInput.value).toBe('');
+    });
+  });
+
   it('Settings renders current sensitivity and updates via set', () => {
     const onBack = vi.fn();
     render(<Settings onBack={onBack} />);

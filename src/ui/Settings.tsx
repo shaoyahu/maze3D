@@ -1,10 +1,18 @@
 import { useSettingsStore } from '../store/settingsStore';
 import { Button } from './components/Button';
+import type { EnemyAggression } from '../maze/types';
+
+const AGGRESSION_OPTIONS: readonly { value: EnemyAggression; label: string }[] = [
+  { value: 'easy', label: '简单 (1.2x)' },
+  { value: 'medium', label: '中等 (1.5x)' },
+  { value: 'hard', label: '困难 (1.8x)' },
+];
 
 export function Settings({ onBack }: { onBack: () => void }) {
   const sens = useSettingsStore((s) => s.pointerSensitivity);
   const fov = useSettingsStore((s) => s.fov);
   const darkMode = useSettingsStore((s) => s.darkMode);
+  const aggression = useSettingsStore((s) => s.enemyAggression);
   const set = useSettingsStore((s) => s.set);
   return (
     <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, padding: 20 }}>
@@ -37,6 +45,26 @@ export function Settings({ onBack }: { onBack: () => void }) {
           />
           深色模式
         </label>
+      </fieldset>
+      <fieldset
+        role="radiogroup"
+        aria-label="敌人追击速度"
+        style={{ border: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 6 }}
+      >
+        <legend style={{ padding: 0, fontSize: 14, fontWeight: 600 }}>敌人追击速度</legend>
+        {AGGRESSION_OPTIONS.map((opt) => (
+          <label key={opt.value} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+            <input
+              type="radio"
+              name="enemy-aggression"
+              value={opt.value}
+              checked={aggression === opt.value}
+              onChange={() => set('enemyAggression', opt.value)}
+              data-testid={`aggression-${opt.value}`}
+            />
+            {opt.label}
+          </label>
+        ))}
       </fieldset>
       <Button onClick={onBack} variant="secondary">返回</Button>
     </div>

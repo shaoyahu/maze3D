@@ -30,4 +30,29 @@ describe('Settings (P2-2 #6)', () => {
     await user.click(checkbox);
     expect(useSettingsStore.getState().darkMode).toBe(false);
   });
+
+  describe('enemyAggression radio (P2-4a)', () => {
+    it('reflects the current store value (default medium)', () => {
+      render(<Settings onBack={() => {}} />);
+      expect(screen.getByTestId('aggression-medium')).toBeChecked();
+      expect(screen.getByTestId('aggression-easy')).not.toBeChecked();
+      expect(screen.getByTestId('aggression-hard')).not.toBeChecked();
+    });
+
+    it('clicking a different aggression updates the store', async () => {
+      const user = userEvent.setup();
+      render(<Settings onBack={() => {}} />);
+      await user.click(screen.getByTestId('aggression-hard'));
+      expect(useSettingsStore.getState().enemyAggression).toBe('hard');
+      await user.click(screen.getByTestId('aggression-easy'));
+      expect(useSettingsStore.getState().enemyAggression).toBe('easy');
+    });
+
+    it('reflects a non-default value loaded from the store', () => {
+      useSettingsStore.getState().set('enemyAggression', 'hard');
+      render(<Settings onBack={() => {}} />);
+      expect(screen.getByTestId('aggression-hard')).toBeChecked();
+      expect(screen.getByTestId('aggression-medium')).not.toBeChecked();
+    });
+  });
 });

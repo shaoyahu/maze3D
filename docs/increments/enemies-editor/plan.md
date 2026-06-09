@@ -140,20 +140,17 @@
   - `tests/unit/maze/types.test.ts` 追加 `enemyChaseMultiplier` 三档对应 1.2/1.5/1.8
 
 ### Task10: LevelSelect 4 控件 + Settings radio + seed 持久化
-- [ ] **Action**：
-  - `LevelSelect.tsx` 每个 procedural 入口下方加 4 控件：
-    - mode radio（reach-exit / time-trial / survive）
-    - survive seconds radio（30/60/90/120，mode=survive 时 enabled）
+- [x] **Action**：
+  - `LevelSelect.tsx` 4 控件（共享给两个 procedural 入口，hand-crafted 关卡仍忽略）：
+    - mode radio（reach-exit / time-trial / survive，默认 time-trial）
+    - survive seconds radio（30/60/90/120，mode=survive 时显示，默认 90）
     - enemy count slider（0-10，默认 3）
     - progressive spawn toggle（默认 on）
-  - "指定种子关卡" 输入框 localStorage 持久化（key=`maze3d.lastSeed`），刷新后回填；非法 seed 不写
+  - "指定种子关卡" 输入框 localStorage 持久化（key=`maze3d.lastSeed`），刷新后回填；非法 seed 不写（保留旧值）
   - `Settings.tsx` 新增 `enemyAggression` radio（简单 1.2x / 中等 1.5x / 困难 1.8x）
-- [ ] **Validate**：`tests/component/LevelSelect.test.tsx` 覆盖：
-  - 4 控件显示
-  - mode 切换联动 surviveSeconds 显示
-  - 非法 seed 不写 localStorage
-  - 合法 seed 刷新后回填
-  - `Settings.tsx` 单测：enemyAggression radio 切换触发 store 更新
+- [x] **Validate**：
+  - `tests/component/menus.test.tsx` 追加 7 case（4 控件渲染 / survive 联动 / options 透传 / 合法 seed 写 localStorage / 非法 seed 不写 / 合法 seed 回填 / 非法 seed 忽略）
+  - `tests/component/settings.test.tsx` 追加 3 case（默认 medium / 切换 hard/easy 触发 store / 非默认值回显）
 
 ### Task11: HUD + Overlays
 - [ ] **Action**：
