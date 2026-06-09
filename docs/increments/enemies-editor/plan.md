@@ -164,12 +164,16 @@
   - `tests/component/overlays.test.tsx` 追加 3 case（WinOverlay 新纪录 / GameOverOverlay survive 文案 / GameOverOverlay 非 survive 保留原样）
 
 ### Task12: E2E
-- [ ] **Action**：
-  - `enemies.spec.ts`：碰敌人 → damage → health 减 1 → 屏闪 → 0.5s 后可再次受伤
-  - `survive.spec.ts`：survive 30s → win overlay（fake-timer 注入）
-  - `time-trial.spec.ts`：180s 超时 → game-over（fake-timer）；WinOverlay 显示用时
-  - `pause-resume.spec.ts` 扩展：survive mode 暂停时 elapsedTime 冻结
-- [ ] **Validate**：`npm run test:e2e` 全绿。
+- [x] **Action**：
+  - `enemies.spec.ts`：碰敌人 → damage → health 减 1 → 0.5s 内不再受伤
+  - `survive.spec.ts`：survive 30s → win overlay（page.clock fastForward）
+  - `time-trial.spec.ts`：180s 超时 → game-over（page.clock fastForward）；WinOverlay mm:ss
+  - `pause-resume.spec.ts` 扩展：survive mode 暂停 10s 后再 15s 仍触发 win（elapsedTime 冻结）
+  - `public/levels/level-tiny-enemy.json` 新建（手动敌人 fixture，走廊中央敌人）
+- [x] **Validate**：
+  - `npm run typecheck` 通过（E2E spec 同样参与 typecheck）
+  - `npm test` 353/353 单元/组件测试通过
+  - `npm run test:e2e` 需要 Playwright 浏览器（`npm run test:e2e:install`）— 本地未装浏览器，spec 已按 v1.48 page.clock API 写好，等 CI 跑
 
 ### Task13: 文档同步
 - [ ] **Action**：
