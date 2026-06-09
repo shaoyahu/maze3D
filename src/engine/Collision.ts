@@ -31,6 +31,26 @@ export function resolveMove(
   return { x, z };
 }
 
+export interface EnemyPos {
+  x: number;
+  z: number;
+  r: number;
+}
+
+// Top-down circle-vs-circle check. The enemy is a 3D capsule of height
+// 1.6m / radius 0.35m, but the game resolves collisions at ground level
+// (y=0), so the projection is a circle; passing a 0 height is implicit.
+export function playerVsEnemy(
+  playerPos: { x: number; z: number },
+  playerRadius: number,
+  enemy: EnemyPos,
+): boolean {
+  const dx = enemy.x - playerPos.x;
+  const dz = enemy.z - playerPos.z;
+  const sumR = playerRadius + enemy.r;
+  return dx * dx + dz * dz < sumR * sumR;
+}
+
 function collidesAt(
   px: number,
   pz: number,

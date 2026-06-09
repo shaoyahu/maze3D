@@ -74,8 +74,8 @@
   - path < 2 节点构造抛错
 
 ### Task3: Collision.playerVsEnemy
-- [ ] **Action**：`src/engine/Collision.ts` 新增 `playerVsEnemy(playerPos, playerRadius, enemy)`：圆形 vs 胶囊 AABB（敌人 = 高度 1.6m / 半径 0.35m）。返回 boolean。
-- [ ] **Validate**：`tests/unit/engine/Collision.test.ts` 覆盖：
+- [x] **Action**：`src/engine/Collision.ts` 新增 `playerVsEnemy(playerPos, playerRadius, enemy)`：圆形 vs 胶囊 AABB（敌人 = 高度 1.6m / 半径 0.35m）。返回 boolean。
+- [x] **Validate**：`tests/unit/collision.test.ts` 覆盖（追加 4 case）：
   - 距离 = 半径（相切，false）
   - 距离 < 半径（true）
   - 距离 > 半径（false）

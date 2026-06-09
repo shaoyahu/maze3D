@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { resolveMove, type WallGrid } from '../../src/engine/Collision';
+import { resolveMove, playerVsEnemy, type WallGrid } from '../../src/engine/Collision';
+import { Enemy } from '../../src/entities/Enemy';
 
 const grid: WallGrid = (() => {
   const w = [
@@ -56,5 +57,49 @@ describe('resolveMove', () => {
     const next = resolveMove(p, { dx: 0, dz: 0 }, grid);
     expect(next.x).toBeCloseTo(5);
     expect(next.z).toBeCloseTo(5);
+  });
+});
+
+describe('playerVsEnemy', () => {
+  // Player radius follows PLAYER_RADIUS (0.2). Enemy radius is 0.35.
+  // Sum = 0.55; the tangent threshold for the boundary cases.
+  const playerRadius = 0.2;
+  const enemyRadius = 0.35;
+
+  it('returns false when player and enemy are exactly tangent (distance = sum radius)', () => {
+    const player = { x: 0, z: 0 };
+    const enemy = { x: 0.55, z: 0, r: enemyRadius };
+    expect(playerVsEnemy(player, playerRadius, enemy)).toBe(false);
+  });
+
+  it('returns true when player and enemy overlap (distance < sum radius)', () => {
+    const player = { x: 0, z: 0 };
+    const enemy = { x: 0.5, z: 0, r: enemyRadius };
+    expect(playerVsEnemy(player, playerRadius, enemy)).toBe(true);
+  });
+
+  it('returns false when player and enemy are clearly apart (distance > sum radius)', () => {
+    const player = { x: 0, z: 0 };
+    const enemy = { x: 2, z: 0, r: enemyRadius };
+    expect(playerVsEnemy(player, playerRadius, enemy)).toBe(false);
+  });
+
+  it('reflects an enemy that has moved along its facing direction (cross-node)', () => {
+    // Enemy spawned at (0,0) patrols toward (2,0). With patrolSpeed=2
+    // (playerSpeed=10/6 * 0.6, but use 2 for a clean step), one tick of
+    // 0.5s moves the enemy to (1, 0).
+    const enemy = new Enemy(
+      { id: 'e1', x: 0, z: 0, path: [{ x: 2, z: 0 }, { x: 2, z: 2 }] },
+      { playerSpeed: 2 / 0.6, chaseMultiplier: 1.5 },
+    );
+    enemy.update(0.5, { position: { x: 1000, z: 1000 } });
+    expect(enemy.position.x).toBeCloseTo(1);
+    // Player at (1, 0) — same cell as the enemy. Sum of radii 0.55.
+    const hit = playerVsEnemy(
+      { x: 1, z: 0 },
+      playerRadius,
+      { x: enemy.position.x, z: enemy.position.z, r: enemyRadius },
+    );
+    expect(hit).toBe(true);
   });
 });
