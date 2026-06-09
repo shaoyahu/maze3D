@@ -127,8 +127,74 @@ describe('gameStore', () => {
     useGameStore.getState().startLevel(initialMaze);
     useGameStore.getState().damage(1);
     expect(useGameStore.getState().health).toBe(2);
+    // Advance past the 0.5s invulnerable window so the second damage lands.
+    useGameStore.getState().tick(0.6);
     useGameStore.getState().damage(2);
     expect(useGameStore.getState().screen).toBe('game-over');
+  });
+
+  it('damage within the 0.5s invulnerable window does not apply again (P2-4a)', () => {
+    useGameStore.getState().startLevel(initialMaze);
+    useGameStore.getState().damage(1);
+    expect(useGameStore.getState().health).toBe(2);
+    expect(useGameStore.getState().invulnerableUntil).toBeCloseTo(0.5);
+    // Second hit inside the window — should be a no-op.
+    useGameStore.getState().damage(1);
+    expect(useGameStore.getState().health).toBe(2);
+    // After the window elapses, a new hit lands.
+    useGameStore.getState().tick(0.6);
+    useGameStore.getState().damage(1);
+    expect(useGameStore.getState().health).toBe(1);
+  });
+
+  describe('survive mode (P2-4a)', () => {
+    it('in survive mode, reaching currentSurviveSeconds transitions to win', () => {
+      useGameStore.getState().startLevel(initialMaze, { mode: 'survive', surviveSeconds: 30 });
+      expect(useGameStore.getState().currentMode).toBe('survive');
+      expect(useGameStore.getState().currentSurviveSeconds).toBe(30);
+      useGameStore.getState().tick(30);
+      expect(useGameStore.getState().screen).toBe('win');
+      expect(useGameStore.getState().elapsedTime).toBe(30);
+    });
+
+    it('in survive mode, timeRemaining is not used and the countdown is gone', () => {
+      useGameStore.getState().startLevel(initialMaze, { mode: 'survive', surviveSeconds: 60 });
+      // The maze declares initialTime: 60; survive mode keeps it but doesn't
+      // countdown on tick. timeRemaining is irrelevant for win detection.
+      useGameStore.getState().tick(30);
+      expect(useGameStore.getState().timeRemaining).toBe(60);
+      expect(useGameStore.getState().elapsedTime).toBeCloseTo(30);
+    });
+  });
+
+  describe('progressive spawn (P2-4a)', () => {
+    it('starts with progressiveEnemyCount from options.enemyCount', () => {
+      useGameStore.getState().startLevel(initialMaze, { enemyCount: 7 });
+      expect(useGameStore.getState().progressiveEnemyCount).toBe(7);
+    });
+
+    it('triggers a time-based spawn after intervalSec seconds', () => {
+      useGameStore.getState().startLevel(initialMaze, { enemyCount: 3 });
+      expect(useGameStore.getState().progressiveEnemyCount).toBe(3);
+      useGameStore.getState().tick(15);
+      expect(useGameStore.getState().progressiveEnemyCount).toBe(4);
+    });
+
+    it('triggers a pickup-based spawn when a pickup is collected', () => {
+      useGameStore.getState().startLevel(initialMaze, { enemyCount: 3 });
+      useGameStore.getState().pickup({ x: 1, z: 1, type: 'time', value: 5 });
+      // tick is required for the trigger to commit; pickupCount advances
+      // synchronously, but the store's tick is what re-runs the trigger.
+      useGameStore.getState().tick(0.01);
+      expect(useGameStore.getState().progressiveEnemyCount).toBe(4);
+    });
+
+    it('clamps progressiveEnemyCount to ENEMY_COUNT_MAX (10)', () => {
+      useGameStore.getState().startLevel(initialMaze, { enemyCount: 10 });
+      // Even after multiple time intervals, count stays at 10.
+      useGameStore.getState().tick(60);
+      expect(useGameStore.getState().progressiveEnemyCount).toBe(10);
+    });
   });
 
   it('reachExit transitions to win', () => {

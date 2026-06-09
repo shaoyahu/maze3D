@@ -1,13 +1,24 @@
 import { create } from 'zustand';
 import {
   INVENTORY_SIZE,
+  SPAWN_SCHEDULE_DEFAULT,
+  SURVIVE_SECONDS_DEFAULT,
   type InventorySlot,
   type MazeData,
   type Pickup,
+  type SpawnSchedule,
   type StartLevelOptions,
+  type SurviveSeconds,
   type VictoryType,
+  clampEnemyCount,
+  normalizeSurviveSeconds,
 } from '../maze/types';
-import { onUseItem } from '../game/Rules';
+import {
+  applyDamage,
+  onUseItem,
+  shouldProgressSpawn,
+  shouldSurviveWin,
+} from '../game/Rules';
 
 // P2-3 spec §5/FR-8: time-trial mode forces a 180s budget regardless of
 // the maze's own initialTime. reach-exit (and any future mode that doesn't
@@ -46,6 +57,22 @@ export interface GameState {
   // whatever initialTime the maze declares.
   currentMode: VictoryType;
 
+  // P2-4a: survive-mode target in seconds. time-trial uses timeRemaining;
+  // survive uses elapsedTime >= currentSurviveSeconds -> win.
+  currentSurviveSeconds: SurviveSeconds;
+  // P2-4a: invulnerability window. Wall-clock time the player is
+  // protected until, so a second enemy contact in the same window
+  // collapses into a no-op. Updated by damage(); 0 = not invulnerable.
+  invulnerableUntil: number;
+  // P2-4a: progressive spawn scheduler state. SpawnSchedule comes from
+  // StartLevelOptions.spawnSchedule; initial count is
+  // StartLevelOptions.enemyCount (default 3). The counter increments up
+  // to ENEMY_COUNT_MAX (10) on each fire of shouldProgressSpawn.
+  spawnSchedule: SpawnSchedule;
+  progressiveEnemyCount: number;
+  nextSpawnAt: number;
+  lastPickupCountForSpawn: number;
+
   startLevel: (maze: MazeData, options?: StartLevelOptions) => void;
   pause: () => void;
   resume: () => void;
@@ -70,23 +97,42 @@ export const useGameStore = create<GameState>((set, get) => ({
   restartKey: 0,
   useItemFlash: null,
   currentMode: 'reach-exit',
+  currentSurviveSeconds: SURVIVE_SECONDS_DEFAULT,
+  invulnerableUntil: 0,
+  spawnSchedule: { ...SPAWN_SCHEDULE_DEFAULT },
+  progressiveEnemyCount: 0,
+  nextSpawnAt: 0,
+  lastPickupCountForSpawn: 0,
 
   startLevel: (maze, options) =>
-    set((s) => ({
-      screen: 'playing',
-      currentLevelId: maze.id,
-      currentMaze: maze,
-      timeRemaining:
-        options?.mode === 'time-trial' ? TIME_TRIAL_INITIAL_TIME : maze.rules.initialTime,
-      health: maze.rules.maxHealth,
-      pickupCount: { collected: 0, total: maze.pickups.length },
-      inventory: Array(INVENTORY_SIZE).fill(null),
-      lastWinIsNewRecord: null,
-      elapsedTime: 0,
-      restartKey: s.restartKey + 1,
-      useItemFlash: null,
-      currentMode: options?.mode ?? maze.rules.victory,
-    })),
+    set((s) => {
+      const surviveSeconds = normalizeSurviveSeconds(options?.surviveSeconds);
+      const initialEnemyCount = clampEnemyCount(options?.enemyCount);
+      return {
+        screen: 'playing',
+        currentLevelId: maze.id,
+        currentMaze: maze,
+        timeRemaining:
+          options?.mode === 'time-trial' ? TIME_TRIAL_INITIAL_TIME : maze.rules.initialTime,
+        health: maze.rules.maxHealth,
+        pickupCount: { collected: 0, total: maze.pickups.length },
+        inventory: Array(INVENTORY_SIZE).fill(null),
+        lastWinIsNewRecord: null,
+        elapsedTime: 0,
+        restartKey: s.restartKey + 1,
+        useItemFlash: null,
+        currentMode: options?.mode ?? maze.rules.victory,
+        currentSurviveSeconds: surviveSeconds,
+        invulnerableUntil: 0,
+        spawnSchedule: { ...(options?.spawnSchedule ?? SPAWN_SCHEDULE_DEFAULT) },
+        progressiveEnemyCount: initialEnemyCount,
+        // First interval-based spawn fires `intervalSec` seconds into the
+        // level; pairing with lastPickupCountForSpawn = 0 makes the
+        // pickup trigger arm the moment a pickup is collected.
+        nextSpawnAt: (options?.spawnSchedule ?? SPAWN_SCHEDULE_DEFAULT).intervalSec,
+        lastPickupCountForSpawn: 0,
+      };
+    }),
 
   pause: () => {
     if (get().screen === 'playing') set({ screen: 'paused' });
@@ -98,18 +144,56 @@ export const useGameStore = create<GameState>((set, get) => ({
   tick: (dt) => {
     const s = get();
     if (s.screen !== 'playing') return;
-    // Both reach-exit and time-trial share the same countdown→game-over
-    // path; the mode only differs in the initial timeRemaining that
-    // startLevel seeded (see TIME_TRIAL_INITIAL_TIME).
-    const newElapsed = s.elapsedTime + dt;
-    const next = s.timeRemaining - dt;
-    if (next <= 0) {
-      // Player was only alive for s.timeRemaining seconds of this frame —
-      // the (dt - s.timeRemaining) tail is wall-clock time after they were
-      // already dead, so don't count it.
-      set({ timeRemaining: 0, screen: 'game-over', elapsedTime: s.elapsedTime + s.timeRemaining });
+    // P2-4a: survive mode's win condition runs on elapsedTime instead
+    // of timeRemaining. Win is checked before the per-mode countdown
+    // so the winning frame doesn't also push timeRemaining to zero on
+    // a level that doesn't use it.
+    if (s.currentMode === 'survive') {
+      const newElapsed = s.elapsedTime + dt;
+      if (shouldSurviveWin(newElapsed, s.currentSurviveSeconds)) {
+        set({
+          screen: 'win',
+          elapsedTime: s.currentSurviveSeconds,
+        });
+        return;
+      }
+      set({ elapsedTime: newElapsed });
+      // Fall through to the progressive-spawn check below.
     } else {
+      // reach-exit and time-trial share the countdown→game-over path;
+      // the mode only differs in the initial timeRemaining that
+      // startLevel seeded (see TIME_TRIAL_INITIAL_TIME).
+      const newElapsed = s.elapsedTime + dt;
+      const next = s.timeRemaining - dt;
+      if (next <= 0) {
+        // Player was only alive for s.timeRemaining seconds of this frame —
+        // the (dt - s.timeRemaining) tail is wall-clock time after they were
+        // already dead, so don't count it.
+        set({ timeRemaining: 0, screen: 'game-over', elapsedTime: s.elapsedTime + s.timeRemaining });
+        return;
+      }
       set({ timeRemaining: next, elapsedTime: newElapsed });
+    }
+    // Progressive spawn trigger — both time-based and pickup-based fire
+    // here, with pickup handled implicitly via the pickupCount delta
+    // (lastPickupCountForSpawn only advances on a successful pickup
+    // action, see pickup() below). The count caps at ENEMY_COUNT_MAX
+    // inside shouldProgressSpawn.
+    const trigger = shouldProgressSpawn({
+      enabled: true,
+      schedule: s.spawnSchedule,
+      elapsedTime: get().elapsedTime,
+      lastSpawnAt: s.nextSpawnAt - s.spawnSchedule.intervalSec,
+      pickupCount: get().pickupCount.collected,
+      lastPickupCount: s.lastPickupCountForSpawn,
+      currentEnemyCount: get().progressiveEnemyCount,
+    });
+    if (trigger.triggered) {
+      set({
+        progressiveEnemyCount: trigger.nextEnemyCount,
+        nextSpawnAt: get().elapsedTime + s.spawnSchedule.intervalSec,
+        lastPickupCountForSpawn: get().pickupCount.collected,
+      });
     }
   },
 
@@ -153,9 +237,17 @@ export const useGameStore = create<GameState>((set, get) => ({
   damage: (n) => {
     const s = get();
     if (s.screen !== 'playing') return;
-    const next = s.health - n;
-    if (next <= 0) set({ health: 0, screen: 'game-over' });
-    else set({ health: next });
+    // P2-4a: invulnerable window collapses multiple contacts into a
+    // single damage event. The engine passes its `now` via the bridge
+    // in the future; for v1 the store uses elapsedTime as the clock
+    // (same units as dt, so the 0.5s window matches the spec).
+    const result = applyDamage(s.health, n, s.invulnerableUntil, s.elapsedTime);
+    if (!result.damaged) return;
+    if (result.health <= 0) {
+      set({ health: 0, screen: 'game-over', invulnerableUntil: result.invulnerableUntil });
+    } else {
+      set({ health: result.health, invulnerableUntil: result.invulnerableUntil });
+    }
   },
 
   useItem: (slot) => {
@@ -193,5 +285,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       elapsedTime: 0,
       restartKey: 0,
       useItemFlash: null,
+      currentSurviveSeconds: SURVIVE_SECONDS_DEFAULT,
+      invulnerableUntil: 0,
+      spawnSchedule: { ...SPAWN_SCHEDULE_DEFAULT },
+      progressiveEnemyCount: 0,
+      nextSpawnAt: 0,
+      lastPickupCountForSpawn: 0,
     }),
 }));

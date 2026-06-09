@@ -111,18 +111,18 @@
 - [x] **附**：settingsStore 加 `enemyAggression` 字段（默认 `'medium'`，与 Task9 共享持久化槽位；Task9 会补全 UI radio + 三档对应 1.2/1.5/1.8 倍率映射）
 
 ### Task7: Rules.damage + 视野 + survive timer
-- [ ] **Action**：`Rules.ts`：
-  - `damage(n)` action：health = max(0, health + n)；health=0 → state='game-over'；0.5s invulnerable 时间窗（已有框架，强化）
-  - 每帧 `enemy.update(dt, player)` → 状态机切换
-  - `Collision.playerVsEnemy` 命中 → DAMAGE 事件（invulnerable 期内不触发）
-  - survive mode：`elapsedTime += dt`；`elapsedTime >= surviveSeconds` → state='win'
-  - 渐进 spawn 调度：`spawnSchedule.enabled` 时，每 `intervalSec` OR 每 pickup → enemyCount++（上限 10）
-- [ ] **Validate**：`tests/unit/game/Rules.test.ts` 覆盖：
-  - damage 累加到 0 → game-over
-  - invulnerable 0.5s 期内不重复触发
-  - 视野触发 chase / 脱离 patrol
+- [x] **Action**：`Rules.ts`：
+  - `applyDamage` 纯函数（health = max(0, health - n)，invulnerable 期内不应用）+ `ENEMY_INVULNERABLE_SECONDS=0.5`
+  - `shouldSurviveWin(elapsed, surviveSeconds)`
+  - `shouldProgressSpawn`（time 触发 + pickup 触发 + 上限截断）
+  - `gameStore` 集成：`damage` 用 `applyDamage`；`tick` 处理 survive 胜利条件 + 渐进 spawn；新增 `invulnerableUntil` / `currentSurviveSeconds` / `spawnSchedule` / `progressiveEnemyCount` / `nextSpawnAt` / `lastPickupCountForSpawn` 字段
+- [x] **Validate**：`tests/unit/rules.test.ts` 追加 12 case + `tests/unit/gameStore.test.ts` 追加 7 case：
+  - applyDamage 累加到 0 / invulnerable 0.5s 期内不触发 / 边界条件
+  - shouldSurviveWin 阈值
+  - shouldProgressSpawn time / pickup / cap / onPickup=false / disabled
   - survive 30s 触发 win
-  - 渐进 spawn 15s 触发 + pickup 触发 + 上限 10 截断
+  - progressive 15s 触发 + pickup 触发 + cap 10
+  - 视野触发 chase（覆盖在 Enemy.test.ts，Task2 完成）
 
 ### Task8: gameStore 扩展
 - [ ] **Action**：`gameStore.ts`：

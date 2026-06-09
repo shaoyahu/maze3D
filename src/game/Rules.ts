@@ -1,4 +1,5 @@
-import type { InventorySlot, MazeData, Pickup } from '../maze/types';
+import type { InventorySlot, MazeData, Pickup, SpawnSchedule } from '../maze/types';
+import { ENEMY_COUNT_MAX, clampEnemyCount } from '../maze/types';
 
 // Cell convention: cell i owns [i*cs, (i+1)*cs). floor() matches Collision.
 // collidesAt's convention. Round-based "nearest center" disagrees at exact
@@ -53,3 +54,84 @@ export function onUseItem(
   if (!inventory[slot]) return { flash: false, consumed: false };
   return { flash: true, consumed: false };
 }
+
+// ---------------------------------------------------------------------------
+// P2-4a: damage + survive + progressive spawn
+// ---------------------------------------------------------------------------
+
+// Window after a hit during which the player is invulnerable. Multiple
+// enemy contacts in the same window collapse into one damage event.
+export const ENEMY_INVULNERABLE_SECONDS = 0.5;
+
+// Pure damage calculator: if the player is still inside the invulnerable
+// window, returns the existing health + an `damaged: false` flag. The
+// engine's tick must pass a monotonically increasing `now` (in seconds)
+// for the window to advance.
+export function applyDamage(
+  currentHealth: number,
+  n: number,
+  invulnerableUntil: number,
+  now: number,
+): { health: number; invulnerableUntil: number; damaged: boolean } {
+  if (now < invulnerableUntil) {
+    return { health: currentHealth, invulnerableUntil, damaged: false };
+  }
+  const health = Math.max(0, currentHealth - n);
+  return {
+    health,
+    invulnerableUntil: now + ENEMY_INVULNERABLE_SECONDS,
+    damaged: health < currentHealth,
+  };
+}
+
+export function shouldSurviveWin(elapsedTime: number, surviveSeconds: number): boolean {
+  return elapsedTime >= surviveSeconds;
+}
+
+export interface SpawnTriggerInput {
+  enabled: boolean;
+  schedule: SpawnSchedule;
+  elapsedTime: number;
+  lastSpawnAt: number;
+  pickupCount: number;
+  lastPickupCount: number;
+  currentEnemyCount: number;
+}
+
+export interface SpawnTriggerResult {
+  triggered: boolean;
+  reason: 'time' | 'pickup' | null;
+  // Incremented by 1 (subject to the max). Returns the unchanged current
+  // count when triggered is false or the cap is hit.
+  nextEnemyCount: number;
+}
+
+// One-frame spawn trigger decision. Two independent triggers fire on
+// `elapsedTime - lastSpawnAt >= intervalSec` (time) or
+// `pickupCount > lastPickupCount` (pickup, when onPickup is true). Both
+// clamp the result to the enemy-count maximum — the spec says enemies
+// cap at 10, so even a flurry of pickups past the cap must not push
+// past it. `enabled: false` short-circuits everything.
+export function shouldProgressSpawn(input: SpawnTriggerInput): SpawnTriggerResult {
+  if (!input.enabled) return { triggered: false, reason: null, nextEnemyCount: input.currentEnemyCount };
+  if (input.currentEnemyCount >= ENEMY_COUNT_MAX) {
+    return { triggered: false, reason: null, nextEnemyCount: input.currentEnemyCount };
+  }
+  if (input.schedule.onPickup && input.pickupCount > input.lastPickupCount) {
+    return {
+      triggered: true,
+      reason: 'pickup',
+      nextEnemyCount: Math.min(ENEMY_COUNT_MAX, input.currentEnemyCount + 1),
+    };
+  }
+  if (input.elapsedTime - input.lastSpawnAt >= input.schedule.intervalSec) {
+    return {
+      triggered: true,
+      reason: 'time',
+      nextEnemyCount: Math.min(ENEMY_COUNT_MAX, input.currentEnemyCount + 1),
+    };
+  }
+  return { triggered: false, reason: null, nextEnemyCount: input.currentEnemyCount };
+}
+
+export { ENEMY_COUNT_MAX, clampEnemyCount };

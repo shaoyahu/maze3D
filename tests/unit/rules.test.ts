@@ -1,6 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import { findPickupAt, crossesExit, onUseItem } from '../../src/game/Rules';
-import type { MazeData } from '../../src/maze/types';
+import {
+  findPickupAt,
+  crossesExit,
+  onUseItem,
+  applyDamage,
+  shouldSurviveWin,
+  shouldProgressSpawn,
+  ENEMY_INVULNERABLE_SECONDS,
+} from '../../src/game/Rules';
+import { SPAWN_SCHEDULE_DEFAULT } from '../../src/maze/types';
+import type { MazeData, SpawnSchedule } from '../../src/maze/types';
 
 const maze: MazeData = {
   id: 'm', name: 't', size: { width: 3, depth: 3 }, cellSize: 2,
@@ -67,6 +76,134 @@ describe('Rules', () => {
 
     it('works for slot 1 as well', () => {
       expect(onUseItem(1, [null, keyPickup], maze)).toEqual({ flash: true, consumed: false });
+    });
+  });
+
+  describe('applyDamage (P2-4a)', () => {
+    it('decrements health and arms the invulnerable window', () => {
+      const r = applyDamage(3, 1, 0, 0);
+      expect(r.health).toBe(2);
+      expect(r.damaged).toBe(true);
+      expect(r.invulnerableUntil).toBeCloseTo(ENEMY_INVULNERABLE_SECONDS);
+    });
+
+    it('clamps health to 0 when the hit would go below', () => {
+      const r = applyDamage(1, 5, 0, 0);
+      expect(r.health).toBe(0);
+      expect(r.damaged).toBe(true);
+    });
+
+    it('refuses to apply damage inside the invulnerable window', () => {
+      const r = applyDamage(3, 1, /* invulnerableUntil */ 1.0, /* now */ 0.5);
+      expect(r.health).toBe(3);
+      expect(r.damaged).toBe(false);
+      expect(r.invulnerableUntil).toBe(1.0);
+    });
+
+    it('applies damage at the exact boundary (now === invulnerableUntil)', () => {
+      // Strict < on `now < invulnerableUntil`, so a hit at the exact
+      // boundary goes through and pushes the window forward.
+      const r = applyDamage(3, 1, 0.5, 0.5);
+      expect(r.health).toBe(2);
+      expect(r.invulnerableUntil).toBeCloseTo(1.0);
+    });
+  });
+
+  describe('shouldSurviveWin (P2-4a)', () => {
+    it('returns false while elapsed < surviveSeconds', () => {
+      expect(shouldSurviveWin(29, 30)).toBe(false);
+    });
+    it('returns true at or above the threshold', () => {
+      expect(shouldSurviveWin(30, 30)).toBe(true);
+      expect(shouldSurviveWin(31, 30)).toBe(true);
+    });
+  });
+
+  describe('shouldProgressSpawn (P2-4a)', () => {
+    const baseSchedule: SpawnSchedule = { ...SPAWN_SCHEDULE_DEFAULT };
+
+    it('does nothing when disabled', () => {
+      const r = shouldProgressSpawn({
+        enabled: false,
+        schedule: baseSchedule,
+        elapsedTime: 100,
+        lastSpawnAt: 0,
+        pickupCount: 0,
+        lastPickupCount: 0,
+        currentEnemyCount: 3,
+      });
+      expect(r.triggered).toBe(false);
+      expect(r.reason).toBeNull();
+    });
+
+    it('does nothing once the cap is reached', () => {
+      const r = shouldProgressSpawn({
+        enabled: true,
+        schedule: baseSchedule,
+        elapsedTime: 100,
+        lastSpawnAt: 0,
+        pickupCount: 5,
+        lastPickupCount: 0,
+        currentEnemyCount: 10,
+      });
+      expect(r.triggered).toBe(false);
+    });
+
+    it('triggers on the time interval', () => {
+      const r = shouldProgressSpawn({
+        enabled: true,
+        schedule: baseSchedule,
+        elapsedTime: 15,
+        lastSpawnAt: 0,
+        pickupCount: 0,
+        lastPickupCount: 0,
+        currentEnemyCount: 3,
+      });
+      expect(r.triggered).toBe(true);
+      expect(r.reason).toBe('time');
+      expect(r.nextEnemyCount).toBe(4);
+    });
+
+    it('triggers on a pickup when onPickup is true', () => {
+      const r = shouldProgressSpawn({
+        enabled: true,
+        schedule: { ...baseSchedule, onPickup: true },
+        elapsedTime: 1,
+        lastSpawnAt: 0,
+        pickupCount: 1,
+        lastPickupCount: 0,
+        currentEnemyCount: 3,
+      });
+      expect(r.triggered).toBe(true);
+      expect(r.reason).toBe('pickup');
+      expect(r.nextEnemyCount).toBe(4);
+    });
+
+    it('does not trigger on a pickup when onPickup is false', () => {
+      const r = shouldProgressSpawn({
+        enabled: true,
+        schedule: { ...baseSchedule, onPickup: false },
+        elapsedTime: 1,
+        lastSpawnAt: 0,
+        pickupCount: 1,
+        lastPickupCount: 0,
+        currentEnemyCount: 3,
+      });
+      expect(r.triggered).toBe(false);
+    });
+
+    it('caps the increment to ENEMY_COUNT_MAX when one short of the cap', () => {
+      const r = shouldProgressSpawn({
+        enabled: true,
+        schedule: baseSchedule,
+        elapsedTime: 15,
+        lastSpawnAt: 0,
+        pickupCount: 0,
+        lastPickupCount: 0,
+        currentEnemyCount: 9,
+      });
+      expect(r.triggered).toBe(true);
+      expect(r.nextEnemyCount).toBe(10);
     });
   });
 });
