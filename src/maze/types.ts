@@ -137,3 +137,19 @@ export function normalizeSurviveSeconds(
 export function isValidEnemyPath(enemy: Pick<EnemySpawn, 'path'>): boolean {
   return enemy.path.length >= 2;
 }
+
+export const ENEMY_CHASE_MULTIPLIER_EASY = 1.2;
+export const ENEMY_CHASE_MULTIPLIER_MEDIUM = 1.5;
+export const ENEMY_CHASE_MULTIPLIER_HARD = 1.8;
+
+export function enemyChaseMultiplier(aggression: EnemyAggression): number {
+  switch (aggression) {
+    case 'easy':
+      return ENEMY_CHASE_MULTIPLIER_EASY;
+    case 'hard':
+      return ENEMY_CHASE_MULTIPLIER_HARD;
+    case 'medium':
+    default:
+      return ENEMY_CHASE_MULTIPLIER_MEDIUM;
+  }
+}

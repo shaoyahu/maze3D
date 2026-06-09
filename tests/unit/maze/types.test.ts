@@ -3,10 +3,14 @@ import {
   ENEMY_COUNT_MIN,
   ENEMY_COUNT_MAX,
   ENEMY_COUNT_DEFAULT,
+  ENEMY_CHASE_MULTIPLIER_EASY,
+  ENEMY_CHASE_MULTIPLIER_MEDIUM,
+  ENEMY_CHASE_MULTIPLIER_HARD,
   SURVIVE_SECONDS_VALUES,
   SURVIVE_SECONDS_DEFAULT,
   SPAWN_SCHEDULE_DEFAULT,
   clampEnemyCount,
+  enemyChaseMultiplier,
   isValidSurviveSeconds,
   normalizeSurviveSeconds,
   isValidEnemyPath,
@@ -125,5 +129,19 @@ describe('P2-4a enemy type contracts', () => {
     expect(states).toContain('patrol');
     expect(states).toContain('dwell');
     expect(states).toContain('chase');
+  });
+});
+
+describe('enemyChaseMultiplier (P2-4a)', () => {
+  it('maps the three aggression brackets to the documented multipliers', () => {
+    expect(enemyChaseMultiplier('easy')).toBe(ENEMY_CHASE_MULTIPLIER_EASY);
+    expect(enemyChaseMultiplier('medium')).toBe(ENEMY_CHASE_MULTIPLIER_MEDIUM);
+    expect(enemyChaseMultiplier('hard')).toBe(ENEMY_CHASE_MULTIPLIER_HARD);
+  });
+
+  it('exposes 1.2 / 1.5 / 1.8 as the canonical easy / medium / hard rates', () => {
+    expect(ENEMY_CHASE_MULTIPLIER_EASY).toBe(1.2);
+    expect(ENEMY_CHASE_MULTIPLIER_MEDIUM).toBe(1.5);
+    expect(ENEMY_CHASE_MULTIPLIER_HARD).toBe(1.8);
   });
 });

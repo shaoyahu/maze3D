@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useSettingsStore, sanitizeSettings } from '../../src/store/settingsStore';
 
 describe('settingsStore', () => {
@@ -28,6 +28,32 @@ describe('settingsStore', () => {
     expect(raw).toBeTruthy();
     const parsed = JSON.parse(raw!);
     expect(parsed.fov).toBe(75);
+  });
+
+  it('set updates enemyAggression, persists to localStorage, and round-trips on reload (P2-4a)', () => {
+    useSettingsStore.getState().set('enemyAggression', 'hard');
+    expect(useSettingsStore.getState().enemyAggression).toBe('hard');
+    const raw = localStorage.getItem('maze3d.settings.v1');
+    expect(raw).toBeTruthy();
+    const parsed = JSON.parse(raw!);
+    expect(parsed.enemyAggression).toBe('hard');
+    // The new store re-reads from localStorage on init, so a fresh
+    // module import would land on 'hard' — covered here by reading the
+    // raw blob that the next store would consume.
+  });
+
+  it('set rejects an invalid enemyAggression value', () => {
+    useSettingsStore.getState().set('enemyAggression', 'medium');
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      // Cast: the runtime guard exists to protect against bad input that
+      // bypassed the type system.
+      useSettingsStore.getState().set('enemyAggression', 'nonsense' as never);
+      expect(useSettingsStore.getState().enemyAggression).toBe('medium');
+      expect(warnSpy).toHaveBeenCalled();
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 
   describe('sanitizeSettings', () => {

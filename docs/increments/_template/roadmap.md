@@ -10,9 +10,9 @@
 
 | 字段 | 值 |
 |---|---|
-| 活跃增量 | **P2-4a**（巡逻敌人 + survive mode；spec 2/16 ✅，ship 8/16） |
-| 已完成 | P2-2 14/14 ✅ + P2-3 14/14 ✅ + P2-4a Task1 ✅ + Task2 ✅ + Task3 ✅ + Task4 ✅ + Task5 ✅ + Task6 ✅ + Task7 ✅ + Task8 ✅ |
-| 下一个任务 | **开始 P2-4a Task9 settingsStore.enemyAggression**（或用户决策：先 P2-4b / 插入其他增量） |
+| 活跃增量 | **P2-4a**（巡逻敌人 + survive mode；spec 2/16 ✅，ship 9/16） |
+| 已完成 | P2-2 14/14 ✅ + P2-3 14/14 ✅ + P2-4a Task1 ✅ + Task2 ✅ + Task3 ✅ + Task4 ✅ + Task5 ✅ + Task6 ✅ + Task7 ✅ + Task8 ✅ + Task9 ✅ |
+| 下一个任务 | **开始 P2-4a Task10 LevelSelect 4 控件 + Settings radio + seed 持久化**（或用户决策：先 P2-4b / 插入其他增量） |
 | 最后更新 | 2026-06-09 |
 | 最近 commit | 见 `git log --oneline -1`（避免追尾，由 Claude 主动查） |
 

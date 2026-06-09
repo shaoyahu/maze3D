@@ -133,11 +133,11 @@
 - [x] **Validate**：`tests/unit/gameStore.test.ts` 追加 7 case（invulnerable / survive 30s win / survive 忽略 timeRemaining / progressive 15s / pickup / cap 10 / enemyCount 来自 options）— 已在 Task7 commit 中包含。
 
 ### Task9: settingsStore.enemyAggression
-- [ ] **Action**：`settingsStore.ts` 新增 `enemyAggression: EnemyAggression`，默认 `'medium'`，持久化到 localStorage。
-- [ ] **Validate**：`tests/unit/store/settingsStore.test.ts` 覆盖：
-  - 默认 `'medium'`
-  - 持久化往返
-  - 三档对应 1.2 / 1.5 / 1.8 倍率
+- [x] **Action**：`settingsStore.ts` 新增 `enemyAggression: EnemyAggression`，默认 `'medium'`，持久化到 localStorage（Task6 已加字段 + 校验，Task9 加倍率映射 + 完整测试）。
+  - `types.ts` 加 `ENEMY_CHASE_MULTIPLIER_EASY/MEDIUM/HARD` + `enemyChaseMultiplier(aggression)` 纯函数
+- [x] **Validate**：
+  - `tests/unit/settingsStore.test.ts` 追加 enemyAggression 默认 / 持久化往返 / 拒绝非法值
+  - `tests/unit/maze/types.test.ts` 追加 `enemyChaseMultiplier` 三档对应 1.2/1.5/1.8
 
 ### Task10: LevelSelect 4 控件 + Settings radio + seed 持久化
 - [ ] **Action**：
