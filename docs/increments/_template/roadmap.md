@@ -10,9 +10,9 @@
 
 | 字段 | 值 |
 |---|---|
-| 活跃增量 | **P2-4a 待展开**（巡逻敌人 + survive mode；P2-3 14/14 ✅ done 2026-06-09） |
+| 活跃增量 | **P2-4a**（巡逻敌人 + survive mode；spec 2/16 ✅，ship 0/16） |
 | 已完成 | P2-2 14/14 ✅ + P2-3 14/14 ✅ |
-| 下一个任务 | **展开 P2-4a 任务清单**（待用户决策：是否立刻开始，或先做 P2-4b 编辑器，或插入其他增量） |
+| 下一个任务 | **开始 P2-4a 实施 task #3**（或用户决策：先 P2-4b / 插入其他增量） |
 | 最后更新 | 2026-06-09 |
 | 最近 commit | 见 `git log --oneline -1`（避免追尾，由 Claude 主动查） |
 
@@ -128,9 +128,29 @@
 
 ### P2-4a: 巡逻敌人 + survive mode（Large）
 
-> 依赖 P2-3。`MazeData.enemies: EnemySpawn[]`；`gameStore.damage` 已在但需要强化；survive mode 框架在 P2-3 ship。
+> 范围：敌人系统（实体 + 状态机 patrol/dwell/chase + 视野侦测 FOV 60°/range 3 + 0.5s 无敌）+ survive mode（30/60/90/120s 计时胜利，默认 90s）+ 渐进 spawn（每 15s OR pickup +1 enemy，上限 10，默认 on）+ LevelSelect 4 控件（mode/surviveSeconds/enemyCount slider 0-10 默认 3/progressive toggle）+ Settings enemyAggression（1.2x/1.5x/1.8x 默认 medium）+ 承接 P2-3 deferred 5 项（WinOverlay time-trial 用时 / GameOverOverlay survive 击中数 / pause-resume survive case / time-trial 超时 E2E fake-timer / seed 输入 localStorage 持久化）。Spawn 阶段：算法 provider 输出空 `enemies: []`，由 `engine.startLevel` 注入。巡逻速度 = 玩家速度 × 0.6；追击速度 = 玩家速度 × enemyAggression。
 
-> **待 P2-3 完成后展开任务清单**。
+| # | 任务 | 工作量 | 状态 |
+|---|---|---|---|
+| 1 | 升级 roadmap.md（**本任务**） | XS | [x] |
+| 2 | 重写 P2-4a spec.md（敌人+survive；含 P2-3 deferred 5 项 → FR-18~FR-20） | XS | [x] |
+| 3 | `maze/types.ts` 扩展（EnemySpawn/EnemyState/SpawnSchedule/EnemyAggression/StartLevelOptions/MazeData.enemies） | XS | [ ] |
+| 4 | `entities/Enemy.ts` 纯实体 + 状态机 patrol/dwell/chase (TDD: ≥6 case 状态机) | S | [ ] |
+| 5 | `engine/Collision.ts` `playerVsEnemy` 圆形 vs 胶囊 AABB (TDD: 距离 = 半径 / +ε / 跨节点) | S | [ ] |
+| 6 | `maze/JsonMazeProvider.ts` 解析 `enemies` 字段（缺省 `[]`） | XS | [ ] |
+| 7 | `engine/Scene.ts` 注册敌人 mesh + dispose | S | [ ] |
+| 8 | `engine/Game.ts` `startLevel` 注入 EnemySpawn（enemyCount + 迷宫布局） (TDD) | M | [ ] |
+| 9 | `game/Rules.ts` `damage` + 0.5s 无敌 + 视野侦测 + survive timer (TDD) | M | [ ] |
+| 10 | `store/gameStore.ts` `elapsedTime` + survive win 条件 + 渐进 spawn 调度 (TDD) | M | [ ] |
+| 11 | `store/settingsStore.ts` `enemyAggression` 持久化（默认 medium） (TDD) | XS | [ ] |
+| 12 | `ui/LevelSelect.tsx` 4 控件（mode/surviveSeconds/enemyCount/progressive toggle）+ seed 输入 localStorage 回填 (FR-20) + `Settings.tsx` enemyAggression radio | M | [ ] |
+| 13 | `ui/components/EnemyCounter.tsx` + `InvulnerableFlash.tsx` + `HealthBar` 闪红（FR-15/16） | S | [ ] |
+| 14 | `ui/WinOverlay.tsx` time-trial 用时显示 + `GameOverOverlay.tsx` survive 坚持时间 + 击中数（FR-18） | S | [ ] |
+| 15 | E2E：`enemies.spec.ts` + `survive.spec.ts` + `time-trial.spec.ts`（fake-timer）+ `pause-resume.spec.ts` 扩展 survive case | M | [ ] |
+| 16 | 文档同步：README / roadmap / spec / plan 全部同步至 ship 状态 | XS | [ ] |
+
+> 进度：2/16
+> 关键模块走 TDD（任务 4、5、8、9、10、11），其它快速完成（任务 3、6、7、12、13、14、15、16）。
 
 ### P2-4b: 关卡编辑器（Large）
 
