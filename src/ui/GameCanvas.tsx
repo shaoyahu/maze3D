@@ -5,9 +5,9 @@ import { useLevelStore } from '../store/levelStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { Crosshair } from './components/Crosshair';
 import { Minimap } from './components/Minimap';
-import type { MazeData } from '../maze/types';
+import type { MazeData, StartLevelOptions } from '../maze/types';
 
-export function GameCanvas({ maze }: { maze: MazeData }) {
+export function GameCanvas({ maze, options }: { maze: MazeData; options?: StartLevelOptions }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const gameRef = useRef<Game | null>(null);
   // The crosshair is a gameplay cue — hide it the moment the screen is no
@@ -65,7 +65,7 @@ export function GameCanvas({ maze }: { maze: MazeData }) {
       // read settings + game state without importing any store itself.
       getInitialFov: () => useSettingsStore.getState().fov,
       getInitialPointerSensitivity: () => useSettingsStore.getState().pointerSensitivity,
-      getInitialDarkMode: () => useSettingsStore.getState().darkMode,
+      getCurrentDarkMode: () => useSettingsStore.getState().darkMode,
       isActiveLevel: (levelId) => useGameStore.getState().currentLevelId === levelId,
       isPlaying: () => useGameStore.getState().screen === 'playing',
       onUseItem: (slot) => useGameStore.getState().useItem(slot),
@@ -104,10 +104,14 @@ export function GameCanvas({ maze }: { maze: MazeData }) {
   const restartKey = useGameStore((s) => s.restartKey);
   useEffect(() => {
     if (gameRef.current) {
-      gameRef.current.startLevel(maze);
+      // P2-3: forward the StartLevelOptions (mode + seed) so the engine
+      // can snapshot the mode via getCurrentMode() for HUD/UI consumers.
+      // The store has already been seeded by App.tsx; we don't call
+      // store.startLevel here to avoid double-seeding.
+      gameRef.current.startLevel(maze, options);
     }
     // gameRef.current is set by Effect 1 before Effect 2 runs (declaration order).
-  }, [maze.id, restartKey]);
+  }, [maze.id, restartKey, options]);
 
   useEffect(() => {
     // Subscriptions read gameRef.current lazily so they survive a level

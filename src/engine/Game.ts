@@ -7,7 +7,7 @@ import { Loop } from './Loop';
 import { resolveMove, type WallGrid } from './Collision';
 import { createPlayer, applyLook, updatePlayerCamera, type PlayerState } from '../entities/Player';
 import { findPickupAt, crossesExit } from '../game/Rules';
-import type { MazeData, Pickup } from '../maze/types';
+import type { InventorySlot, MazeData, Pickup, StartLevelOptions, VictoryType } from '../maze/types';
 
 // Module-level scratch objects to avoid per-frame allocation in the hot
 // update() path. Updated in place each frame; never store the references
@@ -33,16 +33,20 @@ export interface GameBridge {
   onReachExit: () => void;
   // Q3 / DoD §14.2: the engine never imports a store. The App layer
   // (GameCanvas) implements these by reading the relevant Zustand store.
-  // getInitial* are snapshotted at init / startLevel; the predicates are
-  // called per frame from update() — both are cheap single-property reads.
+  // Fov + pointerSensitivity are snapshotted at init / startLevel; the
+  // remaining predicates and accessors are called per frame from update()
+  // and read the **current** store value (renamed from getInitialDarkMode
+  // per P2-2 F11 — its old name implied a snapshot, but the impl reads
+  // live state, which is what update() needs). All are cheap single-
+  // property reads.
   getInitialFov: () => number;
   getInitialPointerSensitivity: () => number;
-  getInitialDarkMode: () => boolean;
+  getCurrentDarkMode: () => boolean;
   isActiveLevel: (levelId: string) => boolean;
   isPlaying: () => boolean;
   // P2-2 #8: fired by InputManager on Digit1 / Digit2 (no repeat).
   // Wired to the useItem action by GameCanvas in #9.
-  onUseItem: (slot: 0 | 1) => void;
+  onUseItem: (slot: InventorySlot) => void;
 }
 
 export class Game {
@@ -64,6 +68,15 @@ export class Game {
   getCameraFov(): number {
     return this.camera?.fov ?? 60;
   }
+  // P2-3: the active victory mode for the current level. Snapshotted in
+  // startLevel() so HUD/UI components that need to know the mode (e.g. to
+  // label the timer as "TIME TRIAL" or pick a different overlay) can read
+  // it without going through the Zustand store. The store still owns the
+  // authoritative value; this is just a mirror for engine-side consumers.
+  getCurrentMode(): VictoryType {
+    return this.currentMode;
+  }
+  private currentMode: VictoryType = 'reach-exit';
   private input?: InputManager;
   private loop?: Loop;
   private remainingPickups: Pickup[] = [];
@@ -122,13 +135,20 @@ export class Game {
     return Promise.resolve();
   }
 
-  startLevel(maze: MazeData) {
+  startLevel(maze: MazeData, options?: StartLevelOptions) {
     if (!this.renderer || !this.camera) throw new Error('Game not initialized');
     if (this.sceneRefs) {
       disposeScene(this.sceneRefs.scene, this.sceneRefs.walls, this.sceneRefs.pickups);
     }
-    this.sceneRefs = buildScene(maze);
-    this.sceneRefs.setDarkMode(this.bridge.getInitialDarkMode());
+    // P2-3: snapshot the mode so getCurrentMode() callers (HUD/UI) see
+    // the level's active mode without having to reach into the store. The
+    // engine itself doesn't branch on mode — the store's tick() handles
+    // countdown semantics — but the mode is needed for display purposes.
+    this.currentMode = options?.mode ?? 'reach-exit';
+    // F4: buildScene applies the palette exactly once based on the dark
+    // mode flag, so the follow-up setDarkMode() (which would re-run
+    // applyPalette a second time) is no longer needed.
+    this.sceneRefs = buildScene(maze, this.bridge.getCurrentDarkMode());
     this.player = createPlayer(maze.start, maze.cellSize);
     updatePlayerCamera(this.camera, this.player);
     this.currentMaze = maze;
