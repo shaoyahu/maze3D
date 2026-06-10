@@ -16,6 +16,7 @@ import {
 } from '../maze/types';
 import { encodeSeed } from '../utils/seed';
 import { isStorageAvailable } from '../store/persist';
+import { useLevelStore } from '../store/levelStore';
 
 export interface LevelDef { id: string; name: string; }
 
@@ -82,6 +83,16 @@ export function LevelSelect({
     const last = localStorage.getItem(LAST_SEED_KEY);
     if (last && HEX_RE.test(last)) setSeedInput(last);
   }, []);
+
+  // P2-4b FR-40: "我的关卡" group shows user-saved custom levels, sorted
+  // by name for a stable order. Each entry uses the level's id (a
+  // `custom-<uuid>` prefix is enforced by the editor's `newLevel` /
+  // `importJson`) so EditorMazeProvider can resolve it on the way out.
+  const customLevels = useLevelStore((s) => s.customLevels);
+  const deleteCustom = useLevelStore((s) => s.deleteCustom);
+  const customDefs = Object.values(customLevels)
+    .map((lv) => ({ id: lv.id, name: lv.name, size: `${lv.size.width}×${lv.size.depth}` }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'zh'));
 
   const buildOptions = (seed?: Seed): StartLevelOptions => {
     const opts: StartLevelOptions = {
@@ -231,6 +242,48 @@ export function LevelSelect({
         {seedError && <p style={{ color: 'var(--danger)', fontSize: 13 }}>{seedError}</p>}
         <Button onClick={startSpecified}>开始</Button>
       </section>
+
+      {/* P2-4b FR-40/41: "我的关卡" — user-saved custom levels. Hidden when
+          none exist so the menu doesn't show an empty section. */}
+      {customDefs.length > 0 && (
+        <section
+          data-testid="custom-levels-group"
+          style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}
+        >
+          <h3>我的关卡</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {customDefs.map((lv) => (
+              <div
+                key={lv.id}
+                data-testid={`custom-level-${lv.id}`}
+                style={{ display: 'flex', alignItems: 'center', gap: 8 }}
+              >
+                <Button onClick={() => onPick(lv.id)}>{lv.name}</Button>
+                <span style={{ fontSize: 12, opacity: 0.7 }}>{lv.size}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (window.confirm(`删除关卡「${lv.name}」？`)) deleteCustom(lv.id);
+                  }}
+                  aria-label={`删除 ${lv.name}`}
+                  data-testid={`delete-custom-${lv.id}`}
+                  style={{
+                    background: 'transparent',
+                    color: 'var(--danger)',
+                    border: '1px solid var(--danger)',
+                    borderRadius: 4,
+                    padding: '4px 8px',
+                    fontSize: 12,
+                    cursor: 'pointer',
+                  }}
+                >
+                  删除
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {!error && available.length === 0 && (
         <p style={{ fontSize: 13, color: 'var(--muted)' }}>暂无固定关卡，可以试试上方随机关卡。</p>
