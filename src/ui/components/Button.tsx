@@ -5,13 +5,15 @@ export interface ButtonProps {
   children: ReactNode;
   variant?: 'primary' | 'secondary' | 'danger';
   disabled?: boolean;
+  'data-testid'?: string;
 }
 
-export function Button({ onClick, children, variant = 'primary', disabled }: ButtonProps) {
+export function Button({ onClick, children, variant = 'primary', disabled, ...rest }: ButtonProps) {
   return (
     <button
       onClick={onClick}
       disabled={disabled}
+      data-testid={rest['data-testid']}
       className={`btn btn-${variant}`}
       style={{
         padding: '10px 22px',

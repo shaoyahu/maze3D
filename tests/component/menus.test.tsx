@@ -27,6 +27,15 @@ describe('menu components', () => {
     expect(onSettings).toHaveBeenCalled();
   });
 
+  it('MainMenu shows the level editor button only when onEditor is provided (P2-4b FR-1)', () => {
+    const { rerender } = render(<MainMenu onStart={() => {}} onSettings={() => {}} />);
+    expect(screen.queryByTestId('main-menu-editor')).not.toBeInTheDocument();
+    const onEditor = vi.fn();
+    rerender(<MainMenu onStart={() => {}} onSettings={() => {}} onEditor={onEditor} />);
+    fireEvent.click(screen.getByTestId('main-menu-editor'));
+    expect(onEditor).toHaveBeenCalled();
+  });
+
   it('LevelSelect renders available levels and triggers onPick and onBack', () => {
     const onPick = vi.fn();
     const onBack = vi.fn();
