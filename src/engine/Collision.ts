@@ -51,6 +51,28 @@ export function playerVsEnemy(
   return dx * dx + dz * dz < sumR * sumR;
 }
 
+// P2-4a F1: per-frame "is the player touching ANY enemy?" check used by
+// Game.update() to fire bridge.onEnemyContact. Returns true the moment
+// one enemy overlaps the player. The 0.5s invulnerable window lives in
+// the store (gameStore.damage), so this helper does NOT debounce — the
+// engine fires onEnemyContact(1) every frame the player is in contact,
+// and the store collapses the burst. Centralizing the loop here keeps
+// Game.update() glue-only and lets the rule be unit-tested without
+// Three.js / WebGL.
+export function hasEnemyContact(
+  playerPos: { x: number; z: number },
+  playerRadius: number,
+  enemies: ReadonlyArray<{ x: number; z: number }>,
+  enemyRadius: number,
+): boolean {
+  for (const e of enemies) {
+    if (playerVsEnemy(playerPos, playerRadius, { x: e.x, z: e.z, r: enemyRadius })) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function collidesAt(
   px: number,
   pz: number,

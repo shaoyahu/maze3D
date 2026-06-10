@@ -70,6 +70,14 @@ export function GameCanvas({ maze, options }: { maze: MazeData; options?: StartL
       isActiveLevel: (levelId) => useGameStore.getState().currentLevelId === levelId,
       isPlaying: () => useGameStore.getState().screen === 'playing',
       onUseItem: (slot) => useGameStore.getState().useItem(slot),
+      // P2-4a F1: forward every per-frame enemy contact to the store's
+      // damage action. The store owns the 0.5s invulnerability window
+      // (see gameStore.damage), so calling this every frame the player
+      // overlaps an enemy is safe — repeat hits inside the window
+      // collapse into hitCount-only no-ops, letting the HealthBar /
+      // InvulnerableFlash UI still re-trigger their flash animation
+      // without dropping health a second time.
+      onEnemyContact: (n) => useGameStore.getState().damage(n),
     };
     const game = new Game(bridge);
     game.init(ref.current);

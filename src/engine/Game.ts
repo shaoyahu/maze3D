@@ -4,8 +4,9 @@ import { createCamera } from './Camera';
 import { buildScene, disposeScene, type SceneRefs } from './Scene';
 import { InputManager } from './InputManager';
 import { Loop } from './Loop';
-import { resolveMove, type WallGrid } from './Collision';
+import { resolveMove, hasEnemyContact, type WallGrid } from './Collision';
 import { createPlayer, applyLook, updatePlayerCamera, type PlayerState } from '../entities/Player';
+import { Enemy, ENEMY_RADIUS } from '../entities/Enemy';
 import { findPickupAt, crossesExit } from '../game/Rules';
 import { injectEnemySpawns } from '../maze/enemySpawner';
 import type {
@@ -17,7 +18,7 @@ import type {
   VictoryType,
   SurviveSeconds,
 } from '../maze/types';
-import { normalizeSurviveSeconds, SURVIVE_SECONDS_DEFAULT } from '../maze/types';
+import { enemyChaseMultiplier, normalizeSurviveSeconds, SURVIVE_SECONDS_DEFAULT } from '../maze/types';
 
 // Module-level scratch objects to avoid per-frame allocation in the hot
 // update() path. Updated in place each frame; never store the references
@@ -65,6 +66,10 @@ export interface GameBridge {
   // P2-2 #8: fired by InputManager on Digit1 / Digit2 (no repeat).
   // Wired to the useItem action by GameCanvas in #9.
   onUseItem: (slot: InventorySlot) => void;
+  // P2-4a F1: fired by Game.update() every frame the player overlaps an
+  // enemy. The store's 0.5s invulnerable window collapses the per-frame
+  // burst into one logical hit. Wired to gameStore.damage in GameCanvas.
+  onEnemyContact: (damage: number) => void;
 }
 
 export class Game {
@@ -113,6 +118,12 @@ export class Game {
   private loop?: Loop;
   private remainingPickups: Pickup[] = [];
   private currentMaze?: MazeData;
+  // P2-4a F1: list of Enemy state machines, one per MazeData.enemies entry
+  // (post-injection). Their order matches sceneRefs.enemies[i] so the
+  // per-frame mesh sync can be a simple index-aligned loop. The 3D capsule
+  // meshes in sceneRefs are decorative; collision runs against the Enemy
+  // instances here, which hold the authoritative position.
+  private enemies: Enemy[] = [];
   private bridge: GameBridge;
 
   constructor(bridge: GameBridge) {
@@ -195,6 +206,28 @@ export class Game {
     updatePlayerCamera(this.camera, this.player);
     this.currentMaze = injectedMaze;
     this.remainingPickups = [...injectedMaze.pickups];
+    // P2-4a F1: instantiate an Enemy state machine per maze.enemies entry.
+    // spawn.x/z/path are in CELL coordinates; Enemy + collision work in
+    // WORLD METERS (same as player.position). Translate once here so
+    // subsequent per-frame math compares apples to apples. The conversion
+    // mirrors what buildScene does for the decorative capsule mesh, but
+    // is duplicated here intentionally — Scene.ts is engine presentation
+    // and shouldn't be the source of truth for the collision-shape
+    // translation. If drift bites, extract a shared helper.
+    // F6: chaseMultiplier is derived from the user's enemyAggression
+    // setting snapshot at startLevel. Mid-run aggression changes (if
+    // a future UI exposes a runtime toggle) affect future spawns only.
+    const chaseMultiplier = enemyChaseMultiplier(this.bridge.getCurrentEnemyAggression());
+    const cs = injectedMaze.cellSize;
+    this.enemies = injectedMaze.enemies.map((spawn) => {
+      const meterSpawn = {
+        ...spawn,
+        x: spawn.x * cs + cs / 2,
+        z: spawn.z * cs + cs / 2,
+        path: spawn.path.map((p) => ({ x: p.x * cs + cs / 2, z: p.z * cs + cs / 2 })),
+      };
+      return new Enemy(meterSpawn, { playerSpeed: this.player!.speed, chaseMultiplier });
+    });
     // Discard any mouse delta that accumulated between pointer-lock acquire
     // and the first update tick (spurious browser events, page-focus events,
     // HMR-triggered remounts). Without this, the first few frames can carry
@@ -232,6 +265,11 @@ export class Game {
     if (this.sceneRefs) {
       disposeScene(this.sceneRefs.scene, this.sceneRefs.walls, this.sceneRefs.pickups, this.sceneRefs.enemies);
     }
+    // P2-4a F1: drop the Enemy refs along with the scene. They hold no
+    // GPU resources (Three.js capsule meshes live in sceneRefs.enemies
+    // and are disposed above), but leaving a stale list around would let
+    // the next update() iterate ghosts after a dispose/reinit cycle.
+    this.enemies = [];
     this.renderer?.dispose();
   }
 
@@ -283,6 +321,33 @@ export class Game {
     // wall leaves the camera one frame past it, rendering the world on the
     // far side of the wall.
     updatePlayerCamera(this.camera, this.player);
+
+    // P2-4a F1: tick each enemy against the current player position, then
+    // mirror the result into the corresponding decorative mesh. The order
+    // here matches the order in sceneRefs.enemies (built in Scene.ts from
+    // injectedMaze.enemies, which is the same order we iterated in
+    // startLevel). The collision check is a single batched call against
+    // hasEnemyContact — the 0.5s invuln window in gameStore.damage
+    // collapses any per-frame burst into one hit, so the engine fires
+    // onEnemyContact(1) every frame the player overlaps an enemy.
+    for (let i = 0; i < this.enemies.length; i++) {
+      const enemy = this.enemies[i];
+      enemy.update(dt, { position: this.player.position });
+      const mesh = this.sceneRefs.enemies[i];
+      mesh.position.x = enemy.position.x;
+      mesh.position.z = enemy.position.z;
+    }
+    if (
+      this.enemies.length > 0 &&
+      hasEnemyContact(
+        this.player.position,
+        this.player.radius,
+        this.enemies.map((e) => ({ x: e.position.x, z: e.position.z })),
+        ENEMY_RADIUS,
+      )
+    ) {
+      this.bridge.onEnemyContact(1);
+    }
 
     const hit = findPickupAt(this.player.position, this.currentMaze, this.remainingPickups);
     if (hit) {

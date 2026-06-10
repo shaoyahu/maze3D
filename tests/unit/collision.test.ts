@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { resolveMove, playerVsEnemy, type WallGrid } from '../../src/engine/Collision';
+import {
+  resolveMove,
+  playerVsEnemy,
+  hasEnemyContact,
+  type WallGrid,
+} from '../../src/engine/Collision';
 import { Enemy } from '../../src/entities/Enemy';
 
 const grid: WallGrid = (() => {
@@ -101,5 +106,68 @@ describe('playerVsEnemy', () => {
       { x: enemy.position.x, z: enemy.position.z, r: enemyRadius },
     );
     expect(hit).toBe(true);
+  });
+});
+
+// P2-4a F1: per-frame contact check used by Game.update() to fire
+// bridge.onEnemyContact. A list-based helper keeps the loop in a pure
+// function so the engine can stay glue-only (the actual Three.js /
+// sceneRefs work is in Game.ts). hasEnemyContact returns true the moment
+// ANY enemy overlaps the player — the engine should debounce via the
+// 0.5s invulnerable window in the store, not here.
+describe('hasEnemyContact', () => {
+  const playerRadius = 0.2;
+  const enemyRadius = 0.35;
+
+  it('returns false when the enemy list is empty', () => {
+    expect(hasEnemyContact({ x: 0, z: 0 }, playerRadius, [], enemyRadius)).toBe(false);
+  });
+
+  it('returns false when no enemy is within the collision range', () => {
+    expect(
+      hasEnemyContact(
+        { x: 0, z: 0 },
+        playerRadius,
+        [{ x: 5, z: 0 }],
+        enemyRadius,
+      ),
+    ).toBe(false);
+  });
+
+  it('returns true when an enemy overlaps the player', () => {
+    expect(
+      hasEnemyContact(
+        { x: 0, z: 0 },
+        playerRadius,
+        [{ x: 0.1, z: 0 }],
+        enemyRadius,
+      ),
+    ).toBe(true);
+  });
+
+  it('returns true if any enemy in the list is in contact (not just the first)', () => {
+    expect(
+      hasEnemyContact(
+        { x: 0, z: 0 },
+        playerRadius,
+        [
+          { x: 100, z: 0 }, // far
+          { x: 0.05, z: 0 }, // close — overlap
+        ],
+        enemyRadius,
+      ),
+    ).toBe(true);
+  });
+
+  it('treats tangent (distance === sum radius) as no contact (matches playerVsEnemy strict-<)', () => {
+    // playerRadius 0.2 + enemyRadius 0.35 = 0.55. Distance 0.55 -> tangent.
+    expect(
+      hasEnemyContact(
+        { x: 0, z: 0 },
+        playerRadius,
+        [{ x: 0.55, z: 0 }],
+        enemyRadius,
+      ),
+    ).toBe(false);
   });
 });
