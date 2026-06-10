@@ -176,9 +176,10 @@
 | 16 | `ui/MainMenu.tsx` 新增"关卡编辑器"按钮 → `/editor` | XS | [ ] |
 | 17 | `ui/LevelSelect.tsx` 新增"我的关卡"分组（从 `EditorMazeProvider.list` 过滤 custom） + 可选"删除"按钮（带确认） | S | [ ] |
 | 18 | `App.tsx` 路由：新增 `/editor` 路径 → `EditorPage`；其余路径沿用 `useGame` 接入；切换 provider 为 `EditorMazeProvider` 注入到 `gameStore` | S | [ ] |
-| 19 | E2E：`editor.spec.ts`（进入编辑器 → 画墙 → 放 start/exit → 放 pickup/enemy → Save → 退出 → LevelSelect 看到 → 进入试玩 → 通关）+ 文档同步 | M | [ ] |
+| 19 | E2E：`editor.spec.ts`（进入编辑器 → 画墙 → 放 start/exit → 放 pickup/enemy → Save → 退出 → LevelSelect 看到 → 进入试玩 → 通关） | M | [ ] |
+| 20 | 文档同步：README 移除 P2-4b；roadmap P2-4b 行 → done；活跃锚点更新；`git grep P2-4b` 仅命中历史 commit | XS | [ ] |
 
-> 进度：1/19
+> 进度：1/20
 > 关键模块走 TDD（任务 9 状态机、4 history、5 import/export、10 validation、7 levelStore 持久化），其它快速完成。
 > 依赖图：1→2→3→4→5（基础）→6→7→8（provider）→9（state）→10（validation）→11/12/13/14（UI 4 件）→15（组合）→16/17/18（接入）→19（E2E）。
 
