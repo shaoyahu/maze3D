@@ -42,7 +42,7 @@
 | P2-2 | 深色模式 + 新 pickup 视觉 + UseItem 数字键 | P0 | — | Small | `docs/increments/dark-mode-pickups/` | ✅ done (2026-06-08) |
 | P2-3 | 算法关卡（4 算法 × 3 尺寸 × time-trial） | P1 | — | Large | `docs/increments/procedural-modes/` | ✅ done (2026-06-08) |
 | P2-4a | 巡逻敌人 + survive mode | P2 | P2-3 | Large | `docs/increments/enemies-editor/` | ✅ done (2026-06-09) |
-| P2-4b | 关卡编辑器 | P2 | — | Large | `docs/increments/enemies-editor/` | pending |
+| P2-4b | 关卡编辑器 | P2 | — | Large | `docs/increments/level-editor/` | spec written (2026-06-10) |
 
 > **P2-1 已删除**：原计划"多关卡 JSON（中/大尺寸）"被 P2-3 算法生成取代。MVP 保留 `level-small.json` 作为"教学关"，`level-tiny.json` 留 E2E。
 > **P2-4 拆分**：原"敌人 + 编辑器"X-Large 拆成 P2-4a（敌人+survive mode，依赖 P2-3）和 P2-4b（编辑器，独立）。
