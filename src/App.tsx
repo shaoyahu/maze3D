@@ -174,7 +174,13 @@ export function App() {
       )}
       {uiScreen === 'levels' && (
         <LevelSelect
-          available={levels.map(({ id, name }) => ({ id, name }))}
+          // P2-4b: the EditorMazeProvider merges custom + builtin into a
+          // single id list. Custom levels already have their own group
+          // ("我的关卡") rendered by LevelSelect, so we strip them from
+          // the built-in list to avoid rendering the same level twice.
+          available={levels
+            .filter(({ id }) => !id.startsWith('custom-'))
+            .map(({ id, name }) => ({ id, name }))}
           error={loadError}
           onPick={startLevel}
           onBack={() => setUiScreen('menu')}
