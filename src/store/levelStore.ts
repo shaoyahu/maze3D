@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { loadJSON, saveJSON } from './persist';
-import type { Algorithm, MazeSize, Seed } from '../maze/types';
+import { validateMaze } from '../maze/JsonMazeProvider';
+import type { Algorithm, MazeData, MazeSize, Seed } from '../maze/types';
 
 const VALID_ALGORITHMS: readonly Algorithm[] = [
   'recursive-backtracker',
@@ -31,9 +32,22 @@ interface LevelStore {
   // Pure read: would `record(r)` actually store r? Single source of truth
   // shared with the win-overlay bridge so the two cannot drift.
   peekIsBetter: (r: BestRecord) => boolean;
+  // P2-4b: user-authored levels saved by the in-browser level editor.
+  // Kept in a separate localStorage key from bestByLevel so an editor wipe
+  // can never erase best records (and vice versa).
+  customLevels: Record<string, MazeData>;
+  saveCustom: (level: MazeData) => void;
+  getCustom: (id: string) => MazeData | undefined;
+  deleteCustom: (id: string) => void;
+  listCustom: () => string[];
 }
 
 const STORAGE_KEY = 'maze3d.levels.v1';
+// P2-4b: custom-level storage. Distinct key on purpose: an editor reset or
+// a corrupted customLevels entry must never cascade into wiping the user's
+// best records. Versioned (v1) so a future schema change can migrate or
+// reset in isolation.
+const CUSTOM_STORAGE_KEY = 'maze3d.customLevels.v1';
 
 function isValidSeed(raw: unknown): raw is Seed {
   if (typeof raw !== 'object' || raw === null) return false;
@@ -76,6 +90,25 @@ export function sanitizeBestRecordMap(raw: unknown): Record<string, BestRecord> 
   return out;
 }
 
+// P2-4b: best-effort load of custom levels on init. We can't rely on
+// `validateMaze` to know the id a-priori — for each entry the id is the
+// map key, so we re-validate the value against that key. Anything that
+// fails to parse (malformed JSON, missing walls, start on a wall, etc.)
+// is dropped with a console.warn so a bad hand-edit in localStorage
+// doesn't brick the editor on next page load.
+export function sanitizeCustomLevelsMap(raw: unknown): Record<string, MazeData> {
+  if (typeof raw !== 'object' || raw === null) return {};
+  const out: Record<string, MazeData> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    try {
+      out[k] = validateMaze(v, k);
+    } catch (e) {
+      console.warn(`levelStore: dropped invalid custom level '${k}':`, e instanceof Error ? e.message : e);
+    }
+  }
+  return out;
+}
+
 export const useLevelStore = create<LevelStore>((set, get) => ({
   bestByLevel: (() => {
     const raw = loadJSON<unknown>(STORAGE_KEY, null);
@@ -101,4 +134,31 @@ export const useLevelStore = create<LevelStore>((set, get) => ({
     set({ bestByLevel: next });
   },
   getBest: (levelId) => get().bestByLevel[levelId],
+
+  // ---- P2-4b: custom (editor-authored) levels ----
+  customLevels: (() => {
+    const raw = loadJSON<unknown>(CUSTOM_STORAGE_KEY, null);
+    return raw ? sanitizeCustomLevelsMap(raw) : {};
+  })(),
+  // Throws on structural failure (delegated to validateMaze) so the editor
+  // can surface a user-facing error before any persistence happens. On
+  // success the level is idempotently merged into both state and storage.
+  saveCustom: (level) => {
+    const validated = validateMaze(level, level.id);
+    const next = { ...get().customLevels, [validated.id]: validated };
+    saveJSON(CUSTOM_STORAGE_KEY, next);
+    set({ customLevels: next });
+  },
+  getCustom: (id) => get().customLevels[id],
+  // No-op when the id is unknown. Deleting a missing key from a plain
+  // object is safe; localStorage.removeItem on a missing key is a no-op,
+  // so this stays consistent with the state path.
+  deleteCustom: (id) => {
+    if (!(id in get().customLevels)) return;
+    const next = { ...get().customLevels };
+    delete next[id];
+    saveJSON(CUSTOM_STORAGE_KEY, next);
+    set({ customLevels: next });
+  },
+  listCustom: () => Object.keys(get().customLevels),
 }));
