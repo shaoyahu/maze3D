@@ -1,5 +1,6 @@
-import { useEffect, useLayoutEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { useGameStore } from './store/gameStore';
+import { useLevelStore } from './store/levelStore';
 import { useSettingsStore } from './store/settingsStore';
 import { MainMenu } from './ui/MainMenu';
 import { LevelSelect } from './ui/LevelSelect';
@@ -10,29 +11,15 @@ import { GameOverOverlay } from './ui/GameOverOverlay';
 import { WinOverlay } from './ui/WinOverlay';
 import { GameCanvas } from './ui/GameCanvas';
 import { JsonMazeProvider } from './maze/JsonMazeProvider';
-import { AlgorithmMazeProvider } from './maze/AlgorithmMazeProvider';
+import { EditorMazeProvider } from './maze/EditorMazeProvider';
+import { EditorPage } from './ui/editor/EditorPage';
 import type { MazeData, StartLevelOptions } from './maze/types';
 
-type UiScreen = 'menu' | 'levels' | 'settings' | 'game';
+type UiScreen = 'menu' | 'levels' | 'settings' | 'game' | 'editor';
 
-async function loadAllLevels(): Promise<{ id: string; name: string; data: MazeData }[]> {
-  // Non-eager glob: level JSONs parse on demand when the user picks one,
-  // instead of blocking the initial JS chunk with every level at startup.
-  const modules = import.meta.glob('/public/levels/*.json');
-  const provider = new JsonMazeProvider(
-    Object.fromEntries(
-      Object.entries(modules).map(([path, loader]) => {
-        const id = path.split('/').pop()!.replace('.json', '');
-        return [
-          id,
-          async () => {
-            const mod = await loader();
-            return (mod as { default?: unknown }).default ?? mod;
-          },
-        ];
-      }),
-    ),
-  );
+async function loadAllLevels(
+  provider: EditorMazeProvider,
+): Promise<{ id: string; name: string; data: MazeData }[]> {
   const ids = await provider.list();
   const out: { id: string; name: string; data: MazeData }[] = [];
   for (const id of ids) {
@@ -57,6 +44,31 @@ export function App() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const gameScreen = useGameStore((s) => s.screen);
   const darkMode = useSettingsStore((s) => s.darkMode);
+  const customLevels = useLevelStore((s) => s.customLevels);
+
+  // P2-4b: wrap the built-in JsonMazeProvider in an EditorMazeProvider so a
+  // custom level and a built-in level with the same id both resolve, and so
+  // the same lookup path is used for `startLevel` and the level list. The
+  // loaders (one per public/levels/*.json) are stable; only `customLevels`
+  // changes at runtime.
+  const provider = useMemo(() => {
+    const modules = import.meta.glob('/public/levels/*.json');
+    const jsonProvider = new JsonMazeProvider(
+      Object.fromEntries(
+        Object.entries(modules).map(([path, loader]) => {
+          const id = path.split('/').pop()!.replace('.json', '');
+          return [
+            id,
+            async () => {
+              const mod = await loader();
+              return (mod as { default?: unknown }).default ?? mod;
+            },
+          ];
+        }),
+      ),
+    );
+    return new EditorMazeProvider(customLevels, jsonProvider);
+  }, [customLevels]);
 
   useLayoutEffect(() => {
     const root = document.documentElement;
@@ -65,51 +77,67 @@ export function App() {
   }, [darkMode]);
 
   useEffect(() => {
-    loadAllLevels()
+    setLoadError(null);
+    loadAllLevels(provider)
       .then((lv) => {
         setLevels(lv);
-        // Empty list is a benign state, not an error — LevelSelect renders
-        // a neutral "暂无可用关卡" message in that case. Only network/parse
-        // failures should paint the red error style.
       })
       .catch((e) => {
         const msg = e instanceof Error ? e.message : String(e);
         console.error('Failed to load levels', e);
         setLoadError(`关卡加载失败：${msg}`);
       });
-  }, []);
+  }, [provider]);
 
   const startLevel = (id: string, options?: StartLevelOptions) => {
     // P2-3: ids starting with 'algo-v1-' are procedural seeds — we generate
     // the MazeData on demand via AlgorithmMazeProvider instead of looking
-    // it up in the hand-crafted `levels` list. Anything else is a
-    // hand-crafted level id.
+    // it up in the hand-crafted `levels` list. Anything else goes through
+    // the EditorMazeProvider (custom + built-in).
     const isProcedural = id.startsWith('algo-v1-');
     if (isProcedural) {
-      const algoProvider = new AlgorithmMazeProvider();
-      algoProvider
-        .load(id)
-        .then((maze) => {
-          useGameStore.getState().startLevel(maze, options);
-          setActiveMaze(maze);
-          setActiveOptions(options);
-          setUiScreen('game');
-        })
-        .catch((e) => {
-          // Bad seed id or generator failure — surface as a load error and
-          // leave the UI on the levels screen so the user can retry.
-          const msg = e instanceof Error ? e.message : String(e);
-          console.error('Failed to load procedural level', e);
-          setLoadError(`关卡生成失败：${msg}`);
-        });
+      import('./maze/AlgorithmMazeProvider').then(({ AlgorithmMazeProvider }) => {
+        const algoProvider = new AlgorithmMazeProvider();
+        algoProvider
+          .load(id)
+          .then((maze) => {
+            useGameStore.getState().startLevel(maze, options);
+            setActiveMaze(maze);
+            setActiveOptions(options);
+            setUiScreen('game');
+          })
+          .catch((e) => {
+            const msg = e instanceof Error ? e.message : String(e);
+            console.error('Failed to load procedural level', e);
+            setLoadError(`关卡生成失败：${msg}`);
+          });
+      });
       return;
     }
-    const lv = levels.find((l) => l.id === id);
-    if (!lv) return;
-    useGameStore.getState().startLevel(lv.data, options);
-    setActiveMaze(lv.data);
-    setActiveOptions(options);
-    setUiScreen('game');
+    provider
+      .load(id)
+      .then((maze) => {
+        useGameStore.getState().startLevel(maze, options);
+        setActiveMaze(maze);
+        setActiveOptions(options);
+        setUiScreen('game');
+      })
+      .catch((e) => {
+        // Fall back to the in-memory list so a stale closure (e.g. a level
+        // was deleted after the level list rendered) surfaces a useful
+        // message instead of a raw provider error.
+        const lv = levels.find((l) => l.id === id);
+        if (lv) {
+          useGameStore.getState().startLevel(lv.data, options);
+          setActiveMaze(lv.data);
+          setActiveOptions(options);
+          setUiScreen('game');
+          return;
+        }
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error('Failed to load level', e);
+        setLoadError(`关卡加载失败：${msg}`);
+      });
   };
 
   const quitToMenu = () => {
@@ -138,7 +166,11 @@ export function App() {
         <WinOverlay onRetry={() => activeMaze && startLevel(activeMaze.id)} onQuit={quitToMenu} />
       )}
       {uiScreen === 'menu' && (
-        <MainMenu onStart={() => setUiScreen('levels')} onSettings={() => setUiScreen('settings')} />
+        <MainMenu
+          onStart={() => setUiScreen('levels')}
+          onSettings={() => setUiScreen('settings')}
+          onEditor={() => setUiScreen('editor')}
+        />
       )}
       {uiScreen === 'levels' && (
         <LevelSelect
@@ -149,6 +181,7 @@ export function App() {
         />
       )}
       {uiScreen === 'settings' && <Settings onBack={() => setUiScreen('menu')} />}
+      {uiScreen === 'editor' && <EditorPage onExit={() => setUiScreen('menu')} />}
     </div>
   );
 }
