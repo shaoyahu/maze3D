@@ -42,13 +42,14 @@ import { useLevelStore } from './levelStore';
 // isolation. The `Editor` prefix avoids the DOM `Selection` shadow.
 export type { EditorSelection } from './editorHistory';
 
-// Editor-local camera position. Kept here (rather than in the runtime
-// gameStore) because the editor's orbit/pan state is independent from
-// the in-game player camera.
+// Editor-local camera state. Kept here (rather than in the runtime
+// gameStore) because the editor's pan/zoom is independent from the
+// in-game player camera. The viewport is 2D (no 3D orbit) — `x`/`y` are
+// pan offsets in screen pixels and `zoom` is the CSS scale factor.
 export interface EditorCamera {
   x: number;
   y: number;
-  z: number;
+  zoom: number;
 }
 
 // Local alias: only the slice fields we replace on each commit. We pass
@@ -131,7 +132,7 @@ const DEFAULT_RULES: LevelRules = {
   victory: 'reach-exit',
   timeOnPickup: 10,
 };
-const DEFAULT_CAMERA: EditorCamera = { x: 0, y: 10, z: 0 };
+const DEFAULT_CAMERA: EditorCamera = { x: 0, y: 0, zoom: 1 };
 
 // ---------------------------------------------------------------------------
 // helpers — all operate on plain data so they can be unit-tested without

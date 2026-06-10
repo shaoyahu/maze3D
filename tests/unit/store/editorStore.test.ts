@@ -49,7 +49,7 @@ beforeEach(() => {
     level: makeMaze(),
     tool: 'select',
     selection: null,
-    camera: { x: 0, y: 10, z: 0 },
+    camera: { x: 0, y: 0, zoom: 1 },
     past: [],
     future: [],
     dirty: false,
@@ -197,12 +197,12 @@ describe('useEditorStore', () => {
 
     it('setCamera merges a partial patch and does NOT push history', () => {
       // Arrange
-      useEditorStore.setState({ camera: { x: 0, y: 5, z: 0 } });
+      useEditorStore.setState({ camera: { x: 0, y: 5, zoom: 1 } });
       const past = useEditorStore.getState().past.length;
       // Act
       useEditorStore.getState().setCamera({ y: 12 });
       // Assert
-      expect(useEditorStore.getState().camera).toEqual({ x: 0, y: 12, z: 0 });
+      expect(useEditorStore.getState().camera).toEqual({ x: 0, y: 12, zoom: 1 });
       expect(useEditorStore.getState().past.length).toBe(past);
     });
 
