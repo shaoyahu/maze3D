@@ -53,6 +53,7 @@ beforeEach(() => {
     past: [],
     future: [],
     dirty: false,
+    lastSavedAt: null,
   });
 });
 

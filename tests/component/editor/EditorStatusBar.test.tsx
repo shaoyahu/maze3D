@@ -1,0 +1,105 @@
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { render, screen, act } from '@testing-library/react';
+import { EditorStatusBar } from '../../../src/ui/editor/EditorStatusBar';
+import { useEditorStore } from '../../../src/store/editorStore';
+import { useLevelStore } from '../../../src/store/levelStore';
+import type { MazeData } from '../../../src/maze/types';
+
+function makeMaze(overrides: Partial<MazeData> = {}): MazeData {
+  return {
+    id: 'test-level',
+    name: 'Test',
+    size: { width: 5, depth: 4 },
+    cellSize: 2,
+    start: { x: 0, z: 0 },
+    exit: { x: 4, z: 3 },
+    walls: [
+      [0, 0, 0, 0, 0],
+      [0, 1, 0, 0, 0],
+      [0, 0, 0, 1, 0],
+      [0, 0, 0, 0, 0],
+    ],
+    pickups: [],
+    enemies: [],
+    rules: { initialTime: 60, maxHealth: 3, victory: 'reach-exit', timeOnPickup: 10 },
+    ...overrides,
+  };
+}
+
+function resetEditor(overrides: Partial<MazeData> = {}): void {
+  localStorage.clear();
+  useLevelStore.setState({ customLevels: {} });
+  useEditorStore.setState({
+    level: makeMaze(overrides),
+    tool: 'select',
+    selection: null,
+    camera: { x: 0, y: 0, zoom: 1 },
+    past: [],
+    future: [],
+    dirty: false,
+    lastSavedAt: null,
+  });
+}
+
+describe('EditorStatusBar (P2-4b #14)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-10T13:07:42Z'));
+    resetEditor();
+  });
+
+  it('renders the dirty / saved / not-modified indicator', () => {
+    // 1. Pristine: shows "未保存（未改动）" because dirty=false and no save.
+    const { rerender } = render(<EditorStatusBar />);
+    expect(screen.getByTestId('status-dirty').textContent).toBe('未保存（未改动）');
+
+    // 2. Dirty: shows "● 未保存".
+    useEditorStore.setState({ dirty: true });
+    rerender(<EditorStatusBar />);
+    expect(screen.getByTestId('status-dirty').textContent).toBe('● 未保存');
+
+    // 3. Saved: shows "已保存于 HH:MM:SS".
+    useEditorStore.setState({ dirty: false, lastSavedAt: Date.now() });
+    rerender(<EditorStatusBar />);
+    expect(screen.getByTestId('status-dirty').textContent).toMatch(/^已保存于 \d{2}:\d{2}:\d{2}$/);
+  });
+
+  it('counts walls, pickups, and enemies from the level', () => {
+    resetEditor({
+      pickups: [
+        { id: 'p1', x: 1, z: 1, type: 'time', value: 5 },
+        { id: 'p2', x: 2, z: 1, type: 'key', value: 1 },
+      ],
+      enemies: [
+        { id: 'e1', x: 2, z: 2, path: [{ x: 2, z: 2 }, { x: 3, z: 2 }] },
+      ],
+    });
+    render(<EditorStatusBar />);
+    // 2 walls in the default fixture.
+    expect(screen.getByTestId('status-stats').textContent).toBe('墙 2 · 拾取 2 · 敌人 1');
+  });
+
+  it('shows the warning count from validateDesign', () => {
+    // No pickups → 1 warning (no pickups).
+    // All walls in start/exit bounds, so no "on wall" errors.
+    resetEditor();
+    render(<EditorStatusBar />);
+    expect(screen.getByTestId('status-warnings').textContent).toBe('警告 1');
+  });
+
+  it('shows the schema version', () => {
+    render(<EditorStatusBar />);
+    expect(screen.getByTestId('status-schema').textContent).toBe('schema v1');
+  });
+
+  it('saveLevel updates lastSavedAt and the status reflects the new timestamp', () => {
+    render(<EditorStatusBar />);
+    act(() => {
+      useEditorStore.getState().saveLevel();
+    });
+    expect(useEditorStore.getState().lastSavedAt).toBe(Date.now());
+    // 13:07:42 UTC, but the format is local time. The status bar is local
+    // — the assertion just verifies the format HH:MM:SS.
+    expect(screen.getByTestId('status-dirty').textContent).toMatch(/^已保存于 \d{2}:\d{2}:\d{2}$/);
+  });
+});

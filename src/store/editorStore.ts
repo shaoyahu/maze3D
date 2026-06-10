@@ -74,6 +74,9 @@ export interface EditorStoreState {
   past: Snapshot[];
   future: Snapshot[];
   dirty: boolean;
+  /** Wall-clock ms of the most recent successful save. null when never
+   *  saved in this session. The status bar formats this as HH:MM:SS. */
+  lastSavedAt: number | null;
 
   // session lifecycle
   newLevel: (width: number, depth: number) => void;
@@ -221,6 +224,7 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
     past: [],
     future: [],
     dirty: false,
+    lastSavedAt: null,
 
     // ---- session lifecycle ----
     newLevel: (width, depth) => {
@@ -230,11 +234,12 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
         future: [],
         selection: null,
         dirty: false,
+        lastSavedAt: null,
       });
     },
 
     loadLevel: (maze) => {
-      set({ level: maze, past: [], future: [], selection: null, dirty: false });
+      set({ level: maze, past: [], future: [], selection: null, dirty: false, lastSavedAt: null });
     },
 
     saveLevel: () => {
@@ -251,7 +256,7 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
       // last persisted version.
       try {
         useLevelStore.getState().saveCustom(get().level);
-        set({ dirty: false });
+        set({ dirty: false, lastSavedAt: Date.now() });
         return true;
       } catch (e) {
         // Defensive: validateMaze is the documented thrower, but we don't
@@ -549,7 +554,7 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
       // validated level where name has already been normalized).
       const { level } = parseImport(raw);
       const renamed: MazeData = { ...level, id: `custom-${generateId()}` };
-      set({ level: renamed, past: [], future: [], selection: null, dirty: false });
+      set({ level: renamed, past: [], future: [], selection: null, dirty: false, lastSavedAt: null });
     },
 
     exportJson: () => exportLevel(get().level),
