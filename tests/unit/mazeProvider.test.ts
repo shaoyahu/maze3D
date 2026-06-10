@@ -198,4 +198,32 @@ describe('JsonMazeProvider', () => {
       warnSpy.mockRestore();
     }
   });
+
+  // P2-4b Task 1: backward-compat with pre-Pickup.id JSON. Hand-crafted
+  // levels saved before P2-4b don't carry a `pickup.id`; loading them must
+  // auto-assign a non-empty id so the editor can later refer to that
+  // pickup by id. Existing ids must be preserved verbatim.
+  describe('pickup id (P2-4b backward compat)', () => {
+    it('assigns a non-empty id to a pickup that omits the id field', async () => {
+      const maze = {
+        ...validMaze,
+        pickups: [{ x: 2, z: 0, type: 'time', value: 10 }], // no `id`
+      };
+      const provider = new JsonMazeProvider({ 'm1': maze });
+      const loaded = await provider.load('m1');
+      expect(loaded.pickups).toHaveLength(1);
+      expect(typeof loaded.pickups[0].id).toBe('string');
+      expect(loaded.pickups[0].id.length).toBeGreaterThan(0);
+    });
+
+    it('preserves the explicit id when the JSON provides one', async () => {
+      const maze = {
+        ...validMaze,
+        pickups: [{ id: 'pickup-foo', x: 2, z: 0, type: 'health', value: 1 }],
+      };
+      const provider = new JsonMazeProvider({ 'm1': maze });
+      const loaded = await provider.load('m1');
+      expect(loaded.pickups[0].id).toBe('pickup-foo');
+    });
+  });
 });

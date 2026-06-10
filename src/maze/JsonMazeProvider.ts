@@ -102,6 +102,11 @@ function validateMaze(raw: unknown, id: string): MazeData {
 
   const pickups = Array.isArray(m.pickups) ? m.pickups : [];
   const seenCells = new Set<string>();
+  // P2-4b backward compat: hand-crafted JSON levels saved before Pickup.id
+  // existed have no `id` field. We mint a UUID here so the resulting
+  // MazeData satisfies the new required field, and the editor can later
+  // refer to the pickup by id. Explicit ids are preserved verbatim.
+  const normalizedPickups: Array<Record<string, unknown>> = [];
   for (const p of pickups) {
     if (typeof p !== 'object' || p === null) {
       throw new LevelLoadError(`Maze '${id}': invalid pickup`);
@@ -128,6 +133,9 @@ function validateMaze(raw: unknown, id: string): MazeData {
       throw new LevelLoadError(`Maze '${id}': duplicate pickup at (${pp.x}, ${pp.z})`);
     }
     seenCells.add(cellKey);
+    const pickupId = typeof pp.id === 'string' && pp.id.length > 0 ? pp.id : crypto.randomUUID();
+    // Preserve all the original fields; only inject the id when missing.
+    normalizedPickups.push({ ...pp, id: pickupId });
   }
 
   requireObject(m, 'rules', id);
@@ -153,7 +161,7 @@ function validateMaze(raw: unknown, id: string): MazeData {
 
   const enemies = parseEnemies(m.enemies, id, width, depth);
 
-  return { ...m, enemies } as unknown as MazeData;
+  return { ...m, pickups: normalizedPickups, enemies } as unknown as MazeData;
 }
 
 // Returns [] when the field is missing or not an array, drops any enemy

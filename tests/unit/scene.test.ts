@@ -12,7 +12,7 @@ const maze: MazeData = {
   // Exit (2,1) is on a wall in this fixture, but buildScene does not validate
   // that — JsonMazeProvider handles that concern.
   walls,
-  pickups: [{ x: 1, z: 1, type: 'time', value: 15 }],
+  pickups: [{ id: crypto.randomUUID(), x: 1, z: 1, type: 'time', value: 15 }],
   rules: { initialTime: 30, maxHealth: 3, victory: 'reach-exit', timeOnPickup: 15 },
   enemies: [],
 };

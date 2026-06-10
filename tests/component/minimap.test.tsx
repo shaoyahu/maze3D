@@ -10,7 +10,7 @@ const maze: MazeData = {
   start: { x: 0, z: 1 }, exit: { x: 2, z: 1 },
   // 5 walls total: row 0 + row 2 are all walls, row 1 (middle) is open.
   walls: [[1, 1, 1], [0, 0, 0], [1, 1, 1]],
-  pickups: [{ x: 1, z: 1, type: 'time', value: 15 }],
+  pickups: [{ id: crypto.randomUUID(), x: 1, z: 1, type: 'time', value: 15 }],
   rules: { initialTime: 30, maxHealth: 3, victory: 'reach-exit', timeOnPickup: 15 },
   enemies: [],
 };

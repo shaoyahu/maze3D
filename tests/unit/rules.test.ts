@@ -15,7 +15,7 @@ const maze: MazeData = {
   id: 'm', name: 't', size: { width: 3, depth: 3 }, cellSize: 2,
   start: { x: 0, z: 0 }, exit: { x: 2, z: 1 },
   walls: [[1, 1, 1], [1, 0, 1], [1, 1, 1]],
-  pickups: [{ x: 1, z: 1, type: 'time', value: 5 }],
+  pickups: [{ id: crypto.randomUUID(), x: 1, z: 1, type: 'time', value: 5 }],
   rules: { initialTime: 60, maxHealth: 3, victory: 'reach-exit', timeOnPickup: 15 },
   enemies: [],
 };
@@ -23,7 +23,7 @@ const maze: MazeData = {
 describe('Rules', () => {
   it('findPickupAt returns the matching pickup or null', () => {
     const hit = findPickupAt({ x: 3, z: 3 }, maze, maze.pickups);
-    expect(hit).toEqual({ x: 1, z: 1, type: 'time', value: 5 });
+    expect(hit).toEqual(maze.pickups[0]);
     const miss = findPickupAt({ x: 1, z: 1 }, maze, []);
     expect(miss).toBeNull();
   });
@@ -51,7 +51,7 @@ describe('Rules', () => {
   });
 
   describe('onUseItem (P2-2 #10)', () => {
-    const keyPickup = { x: 0, z: 0, type: 'key' as const, value: 1 };
+    const keyPickup = { id: crypto.randomUUID(), x: 0, z: 0, type: 'key' as const, value: 1 };
 
     it('returns flash=false when maze is null', () => {
       expect(onUseItem(0, [keyPickup, null], null)).toEqual({ flash: false, consumed: false });

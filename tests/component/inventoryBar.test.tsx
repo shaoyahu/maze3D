@@ -4,8 +4,8 @@ import { InventoryBar } from '../../src/ui/components/InventoryBar';
 import { useGameStore } from '../../src/store/gameStore';
 import type { Pickup } from '../../src/maze/types';
 
-const sampleKey: Pickup = { x: 0, z: 0, type: 'key', value: 1 };
-const sampleHealth: Pickup = { x: 1, z: 0, type: 'health', value: 1 };
+const sampleKey: Pickup = { id: crypto.randomUUID(), x: 0, z: 0, type: 'key', value: 1 };
+const sampleHealth: Pickup = { id: crypto.randomUUID(), x: 1, z: 0, type: 'health', value: 1 };
 
 describe('InventoryBar (P2-2 #12)', () => {
   beforeEach(() => {

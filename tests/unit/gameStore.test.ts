@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useGameStore } from '../../src/store/gameStore';
-import type { MazeData } from '../../src/maze/types';
+import type { MazeData, Pickup } from '../../src/maze/types';
 
 const initialMaze: MazeData = {
   id: 'm1', name: 't', size: { width: 3, depth: 3 }, cellSize: 2,
@@ -80,7 +80,7 @@ describe('gameStore', () => {
   it('pickup adds time and increments collected count', () => {
     useGameStore.getState().startLevel(initialMaze);
     useGameStore.setState({ timeRemaining: 30 });
-    useGameStore.getState().pickup({ x: 1, z: 1, type: 'time', value: 15 });
+    useGameStore.getState().pickup({ id: crypto.randomUUID(), x: 1, z: 1, type: 'time', value: 15 });
     const s = useGameStore.getState();
     expect(s.timeRemaining).toBe(45);
     expect(s.pickupCount.collected).toBe(1);
@@ -88,19 +88,19 @@ describe('gameStore', () => {
 
   it('does not increment collected when inventory is full', () => {
     useGameStore.getState().startLevel(initialMaze);
-    useGameStore.setState({
-      inventory: [{ x: 0, z: 0, type: 'key', value: 1 }, { x: 0, z: 0, type: 'key', value: 1 }],
-    });
-    useGameStore.getState().pickup({ x: 1, z: 1, type: 'key', value: 1 });
+    const keyA: Pickup = { id: crypto.randomUUID(), x: 0, z: 0, type: 'key', value: 1 };
+    const keyB: Pickup = { id: crypto.randomUUID(), x: 0, z: 0, type: 'key', value: 1 };
+    useGameStore.setState({ inventory: [keyA, keyB] });
+    useGameStore.getState().pickup({ id: crypto.randomUUID(), x: 1, z: 1, type: 'key', value: 1 });
     expect(useGameStore.getState().pickupCount.collected).toBe(0);
-    expect(useGameStore.getState().inventory[0]).toEqual({ x: 0, z: 0, type: 'key', value: 1 });
+    expect(useGameStore.getState().inventory[0]).toEqual(keyA);
   });
 
   it('pickup with unknown type logs a warning and does not increment collected', () => {
     useGameStore.getState().startLevel(initialMaze);
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     // Bypass the Pickup union to simulate a future type not yet handled.
-    useGameStore.getState().pickup({ x: 1, z: 1, type: 'unknown' as never, value: 1 });
+    useGameStore.getState().pickup({ id: crypto.randomUUID(), x: 1, z: 1, type: 'unknown' as never, value: 1 });
     expect(warnSpy).toHaveBeenCalled();
     expect(useGameStore.getState().pickupCount.collected).toBe(0);
     warnSpy.mockRestore();
@@ -109,7 +109,7 @@ describe('gameStore', () => {
   it('health pickup adds health and increments collected', () => {
     useGameStore.getState().startLevel(initialMaze);
     useGameStore.setState({ health: 1 });
-    useGameStore.getState().pickup({ x: 1, z: 1, type: 'health', value: 1 });
+    useGameStore.getState().pickup({ id: crypto.randomUUID(), x: 1, z: 1, type: 'health', value: 1 });
     const s = useGameStore.getState();
     expect(s.health).toBe(2);
     expect(s.pickupCount.collected).toBe(1);
@@ -118,7 +118,7 @@ describe('gameStore', () => {
   it('health pickup caps at maxHealth', () => {
     useGameStore.getState().startLevel(initialMaze);
     useGameStore.setState({ health: 3 });
-    useGameStore.getState().pickup({ x: 1, z: 1, type: 'health', value: 5 });
+    useGameStore.getState().pickup({ id: crypto.randomUUID(), x: 1, z: 1, type: 'health', value: 5 });
     expect(useGameStore.getState().health).toBe(3);
     expect(useGameStore.getState().pickupCount.collected).toBe(1);
   });
@@ -180,7 +180,7 @@ describe('gameStore', () => {
 
     it('triggers a pickup-based spawn when a pickup is collected', () => {
       useGameStore.getState().startLevel(initialMaze, { enemyCount: 3 });
-      useGameStore.getState().pickup({ x: 1, z: 1, type: 'time', value: 5 });
+      useGameStore.getState().pickup({ id: crypto.randomUUID(), x: 1, z: 1, type: 'time', value: 5 });
       // tick is required for the trigger to commit; pickupCount advances
       // synchronously, but the store's tick is what re-runs the trigger.
       useGameStore.getState().tick(0.01);
@@ -320,7 +320,7 @@ it('logs a debug message when useItem is called while not playing (F3)', () => {
 it('bumps useItemFlash.version when the slot is filled', () => {
       useGameStore.getState().startLevel(initialMaze);
       useGameStore.setState({
-        inventory: [{ x: 0, z: 0, type: 'key', value: 1 }, null],
+        inventory: [{ id: crypto.randomUUID(), x: 0, z: 0, type: 'key', value: 1 }, null],
         useItemFlash: null,
       });
       useGameStore.getState().useItem(0);
@@ -333,7 +333,7 @@ it('bumps useItemFlash.version when the slot is filled', () => {
     it('increments the version on repeated use', () => {
       useGameStore.getState().startLevel(initialMaze);
       useGameStore.setState({
-        inventory: [{ x: 0, z: 0, type: 'key', value: 1 }, null],
+        inventory: [{ id: crypto.randomUUID(), x: 0, z: 0, type: 'key', value: 1 }, null],
       });
       useGameStore.getState().useItem(0);
       useGameStore.getState().useItem(0);
@@ -350,7 +350,7 @@ it('bumps useItemFlash.version when the slot is filled', () => {
     it('startLevel clears useItemFlash so it does not carry across runs', () => {
       useGameStore.getState().startLevel(initialMaze);
       useGameStore.setState({
-        inventory: [{ x: 0, z: 0, type: 'key', value: 1 }, null],
+        inventory: [{ id: crypto.randomUUID(), x: 0, z: 0, type: 'key', value: 1 }, null],
         useItemFlash: { slot: 0, version: 5 },
       });
       useGameStore.getState().startLevel(initialMaze);

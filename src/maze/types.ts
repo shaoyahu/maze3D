@@ -13,6 +13,10 @@ export const INVENTORY_SIZE = 2;
 export type InventorySlot = 0 | 1;
 
 export interface Pickup {
+  // P2-4b: stable per-pickup identifier. The editor assigns new ids via
+  // crypto.randomUUID() at construction time; JsonMazeProvider auto-fills
+  // a UUID for hand-crafted JSON levels saved before this field existed.
+  id: string;
   x: number;
   z: number;
   type: PickupType;
@@ -153,3 +157,41 @@ export function enemyChaseMultiplier(aggression: EnemyAggression): number {
       return ENEMY_CHASE_MULTIPLIER_MEDIUM;
   }
 }
+
+// ---------------------------------------------------------------------------
+// P2-4b: level editor
+// ---------------------------------------------------------------------------
+
+// Active tool in the editor viewport. The runtime game does not import this
+// union; it lives here because the editor types module re-uses the maze
+// types barrel.
+export type EditorTool =
+  | 'select'
+  | 'wall'
+  | 'start'
+  | 'exit'
+  | 'pickup'
+  | 'enemy'
+  | 'pan';
+
+// Bump this when MazeData gains a breaking field. ExportEnvelope consumers
+// reject anything whose schemaVersion is not exactly this value. Initial
+// release = 1, the version that introduces EditorTool / Pickup.id /
+// ExportEnvelope.
+export const SCHEMA_VERSION = 1 as const;
+export type SchemaVersion = typeof SCHEMA_VERSION;
+
+// On-disk / on-clipboard envelope for a hand-edited or exported level. The
+// `level` field is the same MazeData the engine consumes; the envelope
+// wrapper leaves room for future cross-cutting fields (signature, author)
+// without breaking readers that know only the current schema.
+export interface ExportEnvelope {
+  schemaVersion: SchemaVersion;
+  level: MazeData;
+}
+
+// Prefix for ids of custom (user-edited) levels. Custom ids are scoped
+// with this prefix so the editor's localStorage store can never collide
+// with a built-in level id; downstream code can use startsWith() to
+// distinguish the two universes without a separate registry.
+export const CUSTOM_LEVEL_PREFIX = 'custom-';
