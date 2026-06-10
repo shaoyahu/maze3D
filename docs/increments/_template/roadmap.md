@@ -160,7 +160,7 @@
 |---|---|---|---|
 | 1 | 升级 roadmap.md（**本任务**） | XS | [x] |
 | 2 | `maze/types.ts` 扩展（`Pickup.id`、`EditorTool` 枚举、`ExportEnvelope`、`SCHEMA_VERSION=1`、`CUSTOM_LEVEL_PREFIX`） | XS | [x] |
-| 3 | `utils/id.ts` `generateId()`（`crypto.randomUUID` + 降级 `Date.now()+Math.random`） | XS | [ ] |
+| 3 | `utils/id.ts` `generateId()`（`crypto.randomUUID` + 降级 `Date.now()+Math.random`） | XS | [x] |
 | 4 | `editor/editorHistory.ts` snapshot 栈（`HISTORY_LIMIT=50`，`push/undo/redo/canUndo/canRedo`，`structuredClone`） | S | [ ] |
 | 5 | `editor/importExport.ts` `exportLevel()` / `parseImport()`（Blob + File + `{schemaVersion,level}` envelope 校验） | S | [ ] |
 | 6 | `maze/JsonMazeProvider.ts` 导出 `validateMaze()`（复用现有解析失败检测） | XS | [ ] |
@@ -179,7 +179,7 @@
 | 19 | E2E：`editor.spec.ts`（进入编辑器 → 画墙 → 放 start/exit → 放 pickup/enemy → Save → 退出 → LevelSelect 看到 → 进入试玩 → 通关） | M | [ ] |
 | 20 | 文档同步：README 移除 P2-4b；roadmap P2-4b 行 → done；活跃锚点更新；`git grep P2-4b` 仅命中历史 commit | XS | [ ] |
 
-> 进度：2/20
+> 进度：3/20
 > 关键模块走 TDD（任务 9 状态机、4 history、5 import/export、10 validation、7 levelStore 持久化），其它快速完成。
 > 依赖图：1→2→3→4→5（基础）→6→7→8（provider）→9（state）→10（validation）→11/12/13/14（UI 4 件）→15（组合）→16/17/18（接入）→19（E2E）。
 
