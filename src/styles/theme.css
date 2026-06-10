@@ -30,10 +30,11 @@
 
 @keyframes invulnerable-fade {
   /* P2-4a: 0.5s red fade for the post-hit invulnerable window. The
-     animation is mounted only while `invulnerableUntil > elapsedTime`,
-     so its 0.5s duration matches the 0.5s server-side window and the
-     element unmounts exactly when the animation ends — no jump, no
-     re-trigger flicker. */
+     animation is mounted only while `invulnerableUntil > Date.now()/1000`
+     (wall-clock seconds), so its 0.5s duration matches the 0.5s server-
+     side window and the element unmounts when the window expires. The
+     wall-clock comparison (vs. elapsedTime game-time) is required so a
+     backgrounded tab's throttled rAF can't pin the overlay in the DOM. */
   0%   { opacity: 1; }
   100% { opacity: 0; }
 }

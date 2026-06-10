@@ -4,22 +4,24 @@ import { useGameStore } from '../../store/gameStore';
 // invulnerable window after taking a hit. pointerEvents: none so the
 // overlay doesn't intercept clicks meant for the canvas. The fade-out
 // animation is defined in theme.css; the 0.5s duration matches the
-// ENEMY_INVULNERABLE_SECONDS contract, so by the time the animation
-// finishes the store has already moved `invulnerableUntil` into the
-// past and the next render returns null — no flicker, no manual timer.
+// ENEMY_INVULNERABLE_SECONDS contract.
 //
-// P2-4a F4 / F10: hitCount is the monotonic counter store.damage() bumps
-// on every enemy contact, even when the call is absorbed by the 0.5s
-// invulnerable window. Using it as the element key (and exposing it via
-// data-hit-count) forces a fresh mount on every contact, which restarts
-// the CSS fade animation. Without this, a second hit inside the same
-// window would re-render with the same props and the animation would
-// stay stuck on its first frame.
+// P2-4a F4 / F10 (fix): `invulnerableUntil` is set by gameStore.damage to
+// wall-clock seconds (Date.now()/1000 + 0.5) so a backgrounded tab's
+// throttled rAF can't freeze the invulnerability window. We compare
+// against the current wall-clock — the previous code compared against
+// `elapsedTime` (game-time seconds), which made the condition always
+// true and left the overlay mounted forever after the first hit.
+//
+// The component re-renders only when `invulnerableUntil` or `hitCount`
+// changes; the CSS animation is one-shot (0.5s linear forwards), so
+// after the window expires the div stays in the DOM at opacity 0. The
+// next hit bumps hitCount, the key={hitCount} re-mounts the element,
+// and the animation restarts.
 export function InvulnerableFlash() {
   const invulnerableUntil = useGameStore((s) => s.invulnerableUntil);
-  const elapsedTime = useGameStore((s) => s.elapsedTime);
   const hitCount = useGameStore((s) => s.hitCount);
-  const active = invulnerableUntil > elapsedTime;
+  const active = invulnerableUntil > Date.now() / 1000;
   if (!active) return null;
   return (
     <div

@@ -51,40 +51,47 @@ describe('HUD', () => {
       expect(screen.getByTestId('enemy-counter').textContent).toContain('敌人 4 / 10');
     });
 
+    // F1 (fix): invulnerableUntil is in wall-clock seconds (set via
+    // Date.now()/1000 + 0.5 by gameStore.damage). The UI compares against
+    // Date.now()/1000, not elapsedTime (game-time). Tests use values
+    // relative to the current wall-clock so the comparison is meaningful.
+    const invulnNow = () => Date.now() / 1000 + 0.5;
+    const invulnExpired = () => Date.now() / 1000 - 0.1;
+
     it('does NOT render InvulnerableFlash when invulnerableUntil has passed', () => {
-      useGameStore.setState({ invulnerableUntil: 0, elapsedTime: 5 });
+      useGameStore.setState({ invulnerableUntil: 0 });
       render(<HUD />);
       expect(screen.queryByTestId('invulnerable-flash')).toBeNull();
     });
 
-    it('renders InvulnerableFlash when invulnerableUntil > elapsedTime', () => {
-      useGameStore.setState({ invulnerableUntil: 1.0, elapsedTime: 0.5 });
+    it('renders InvulnerableFlash when invulnerableUntil is in the future', () => {
+      useGameStore.setState({ invulnerableUntil: invulnNow() });
       render(<HUD />);
       expect(screen.getByTestId('invulnerable-flash')).toBeInTheDocument();
     });
 
     it('HealthBar gains the flashing class during the invulnerable window', () => {
-      useGameStore.setState({ invulnerableUntil: 1.0, elapsedTime: 0.5 });
+      useGameStore.setState({ invulnerableUntil: invulnNow() });
       render(<HUD />);
       const bar = screen.getByTestId('health-bar');
       expect(bar.className).toContain('health-bar--flashing');
     });
 
     it('HealthBar drops the flashing class once the window elapses', () => {
-      useGameStore.setState({ invulnerableUntil: 0, elapsedTime: 5 });
+      useGameStore.setState({ invulnerableUntil: invulnExpired() });
       render(<HUD />);
       const bar = screen.getByTestId('health-bar');
       expect(bar.className).not.toContain('health-bar--flashing');
     });
 
     // F4: when a second enemy contact lands inside the 0.5s invulnerable
-    // window, invulnerableUntil/elapsedTime don't change much, so the
-    // overlay/HealthBar would normally not re-render — leaving the CSS
-    // flash animation stuck on its first frame. Subscribing to hitCount
-    // and using it as a key (or marking it on the element) forces a re-
-    // render so the animation restarts on every contact.
+    // window, invulnerableUntil doesn't change much, so the overlay/
+    // HealthBar would normally not re-render — leaving the CSS flash
+    // animation stuck on its first frame. Subscribing to hitCount and
+    // using it as a key (or marking it on the element) forces a re-mount
+    // so the animation restarts on every contact.
     it('InvulnerableFlash re-renders on every hit (re-mount via hitCount, F4)', () => {
-      useGameStore.setState({ hitCount: 1, invulnerableUntil: 1.0, elapsedTime: 0.5 });
+      useGameStore.setState({ hitCount: 1, invulnerableUntil: invulnNow() });
       render(<HUD />);
       const first = screen.getByTestId('invulnerable-flash');
       expect(first.getAttribute('data-hit-count')).toBe('1');
@@ -92,19 +99,19 @@ describe('HUD', () => {
       // overlay must re-render with the new hitCount so the CSS animation
       // restarts.
       act(() => {
-        useGameStore.setState({ hitCount: 2, invulnerableUntil: 1.0, elapsedTime: 0.55 });
+        useGameStore.setState({ hitCount: 2, invulnerableUntil: invulnNow() });
       });
       const second = screen.getByTestId('invulnerable-flash');
       expect(second.getAttribute('data-hit-count')).toBe('2');
     });
 
     it('HealthBar re-renders on every hit (re-mount via hitCount, F4)', () => {
-      useGameStore.setState({ hitCount: 1, invulnerableUntil: 1.0, elapsedTime: 0.5 });
+      useGameStore.setState({ hitCount: 1, invulnerableUntil: invulnNow() });
       render(<HUD />);
       const first = screen.getByTestId('health-bar');
       expect(first.getAttribute('data-hit-count')).toBe('1');
       act(() => {
-        useGameStore.setState({ hitCount: 2, invulnerableUntil: 1.0, elapsedTime: 0.55 });
+        useGameStore.setState({ hitCount: 2, invulnerableUntil: invulnNow() });
       });
       const second = screen.getByTestId('health-bar');
       expect(second.getAttribute('data-hit-count')).toBe('2');
