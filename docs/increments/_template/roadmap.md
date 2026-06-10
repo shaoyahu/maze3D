@@ -10,10 +10,10 @@
 
 | 字段 | 值 |
 |---|---|
-| 活跃增量 | **P2-4b**（关卡编辑器；subagent-driven 模式；10/20 实施+审查进度） |
-| 已完成 | P2-2 14/14 ✅ + P2-3 14/14 ✅ + P2-4a 16/16 ✅ + P2-4b 9/20 实施 ✅ + Task 10 (editorValidation) spec review ✅ |
-| 下一个任务 | **P2-4b Task 10 (editorValidation) code quality review**（spec ✅，待 code review） |
-| 最后更新 | 2026-06-10（paused for handoff；新会话从 code review 继续） |
+| 活跃增量 | **P2-4b**（关卡编辑器；11/20 实施+审查进度） |
+| 已完成 | P2-2 14/14 ✅ + P2-3 14/14 ✅ + P2-4a 16/16 ✅ + P2-4b 10/20 实施 ✅ + Task 11 (EditorViewport) |
+| 下一个任务 | **P2-4b Task 11 (EditorViewport.tsx)** |
+| 最后更新 | 2026-06-10 |
 | 最近 commit | 见 `git log --oneline -1`（避免追尾，由 Claude 主动查） |
 
 **约束**：
@@ -167,7 +167,7 @@
 | 7 | `store/levelStore.ts` 新增 `customLevels: Record<string, JsonMaze>` + `addCustomLevel/updateCustomLevel/removeCustomLevel/listCustom` + 持久化 `maze3d.customLevels.v1` | S | [x] |
 | 8 | `maze/EditorMazeProvider.ts` 合并 custom + `JsonMazeProvider`（custom id 前缀 `custom-<uuid>`，`load` 优先 custom，回退 builtin） | S | [x] |
 | 9 | `store/useEditorStore.ts` 核心状态机（TDD ≥25 case：tool/grid/cells/start/exit/pickups/enemies/selection/hover/history/dirty/draft） | L | [x] |
-| 10 | `editor/editorValidation.ts` warn-only 检查（孤岛/无 start-exit/无 exit/重名/越界）返回 `ValidationWarning[]` | S | [ ] |
+| 10 | `editor/editorValidation.ts` warn-only 检查（孤岛/无 start-exit/无 exit/重名/越界）返回 `ValidationWarning[]` | S | [x] |
 | 11 | `ui/editor/EditorViewport.tsx` HTML/CSS Grid 渲染（cell 颜色：墙黑/通路白/start 绿/exit 红/pickup 黄/key 蓝/health 红粉/enemy 橙；hover 高亮；selection outline） | M | [ ] |
 | 12 | `ui/editor/EditorPropertiesPanel.tsx` 右侧 sidebar（根据 selection.type 渲染字段：gridSize/width/height/start/exit/pickup 子属性/enemy 子属性/路径） | M | [ ] |
 | 13 | `ui/editor/EditorToolbar.tsx` 7 工具按钮 + Save/Export/Import/Undo/Redo + 标题 dirty 标记（`* 未保存`） | S | [ ] |
@@ -179,7 +179,7 @@
 | 19 | E2E：`editor.spec.ts`（进入编辑器 → 画墙 → 放 start/exit → 放 pickup/enemy → Save → 退出 → LevelSelect 看到 → 进入试玩 → 通关） | M | [ ] |
 | 20 | 文档同步：README 移除 P2-4b；roadmap P2-4b 行 → done；活跃锚点更新；`git grep P2-4b` 仅命中历史 commit | XS | [ ] |
 
-> 进度：9/20
+> 进度：10/20
 > 关键模块走 TDD（任务 9 状态机、4 history、5 import/export、10 validation、7 levelStore 持久化），其它快速完成。
 > 依赖图：1→2→3→4→5（基础）→6→7→8（provider）→9（state）→10（validation）→11/12/13/14（UI 4 件）→15（组合）→16/17/18（接入）→19（E2E）。
 
