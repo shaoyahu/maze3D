@@ -1,0 +1,270 @@
+import { describe, it, expect, beforeEach } from 'vitest';
+import {
+  exportLevel,
+  parseImport,
+  ImportError,
+  sanitizeFilename,
+  downloadAsJsonFile,
+  readJsonFile,
+} from '../../../src/maze/importExport';
+import type { MazeData } from '../../../src/maze/types';
+
+// Minimal well-formed level fixture. Mirrors the factory used in
+// JsonMazeProvider.test.ts so the parser/validator sees the same shape it
+// sees at runtime.
+function makeValidLevel(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: 'level-test',
+    name: 'Test Level',
+    size: { width: 5, depth: 3 },
+    cellSize: 2,
+    start: { x: 0, z: 0 },
+    exit: { x: 4, z: 2 },
+    walls: [
+      [0, 0, 0, 0, 0],
+      [0, 0, 0, 0, 0],
+      [0, 0, 0, 0, 0],
+    ],
+    pickups: [],
+    rules: {
+      initialTime: 30,
+      maxHealth: 3,
+      victory: 'reach-exit',
+      timeOnPickup: 10,
+    },
+    ...overrides,
+  };
+}
+
+describe('importExport', () => {
+  describe('exportLevel + parseImport roundtrip', () => {
+    it('roundtrips a well-formed level and preserves all top-level fields', () => {
+      // Arrange
+      const level = makeValidLevel() as unknown as MazeData;
+
+      // Act
+      const json = exportLevel(level);
+      const parsed = JSON.parse(json);
+      const { level: parsedLevel, nameToPreserve } = parseImport(json);
+
+      // Assert — envelope shape
+      expect(parsed.schemaVersion).toBe(1);
+      expect(parsed.level).toBeDefined();
+
+      // Assert — roundtripped fields
+      expect(parsedLevel.id).toBe(level.id);
+      expect(parsedLevel.name).toBe(level.name);
+      expect(parsedLevel.size).toEqual(level.size);
+      expect(parsedLevel.cellSize).toBe(level.cellSize);
+      expect(parsedLevel.start).toEqual(level.start);
+      expect(parsedLevel.exit).toEqual(level.exit);
+      expect(parsedLevel.walls).toEqual(level.walls);
+      expect(parsedLevel.pickups).toEqual(level.pickups);
+      expect(parsedLevel.rules).toEqual(level.rules);
+
+      // Assert — nameToPreserve is the original level name
+      expect(nameToPreserve).toBe(level.name);
+    });
+
+    it('produces pretty-printed JSON (indent of 2)', () => {
+      // Arrange
+      const level = makeValidLevel() as unknown as MazeData;
+
+      // Act
+      const json = exportLevel(level);
+
+      // Assert — a newline after the opening brace signals pretty-print
+      expect(json).toContain('\n  "schemaVersion"');
+    });
+  });
+
+  describe('parseImport error handling', () => {
+    it('throws ImportError when schemaVersion is not 1', () => {
+      // Arrange — schemaVersion = 2 is the rejection case from the spec
+      const json = JSON.stringify({ schemaVersion: 2, level: makeValidLevel() });
+
+      // Act + Assert
+      expect(() => parseImport(json)).toThrow(ImportError);
+    });
+
+    it('throws ImportError when schemaVersion is missing entirely', () => {
+      // Arrange — no schemaVersion key at all
+      const json = JSON.stringify({ level: makeValidLevel() });
+
+      // Act + Assert
+      expect(() => parseImport(json)).toThrow(ImportError);
+    });
+
+    it('throws ImportError when the level field is missing', () => {
+      // Arrange — envelope present, but no `level` key
+      const json = JSON.stringify({ schemaVersion: 1 });
+
+      // Act + Assert
+      expect(() => parseImport(json)).toThrow(ImportError);
+    });
+
+    it('wraps a validateMaze failure (missing size) in ImportError', () => {
+      // Arrange — level lacks `size`; validateMaze will reject it.
+      const broken = { ...makeValidLevel() } as Record<string, unknown>;
+      delete broken.size;
+      const json = JSON.stringify({ schemaVersion: 1, level: broken });
+
+      // Act + Assert — must be ImportError, not a raw Error or LevelLoadError
+      expect(() => parseImport(json)).toThrow(ImportError);
+    });
+
+    it('throws ImportError when the input is not valid JSON', () => {
+      // Arrange
+      const raw = '{not valid json';
+
+      // Act + Assert
+      expect(() => parseImport(raw)).toThrow(ImportError);
+    });
+
+    it('ImportError is a subclass of Error', () => {
+      // Arrange + Act
+      const e = new ImportError('test');
+
+      // Assert
+      expect(e).toBeInstanceOf(Error);
+      expect(e.name).toBe('ImportError');
+      expect(e.message).toBe('test');
+    });
+  });
+
+  describe('sanitizeFilename', () => {
+    it('replaces Chinese characters with underscores', () => {
+      // Arrange
+      const name = '我的关卡';
+
+      // Act
+      const result = sanitizeFilename(name);
+
+      // Assert — each CJK char is outside [\w-], so all 4 become underscores
+      expect(result).toBe('____');
+    });
+
+    it('replaces spaces with underscores', () => {
+      // Arrange
+      const name = 'my level';
+
+      // Act
+      const result = sanitizeFilename(name);
+
+      // Assert
+      expect(result).toBe('my_level');
+    });
+
+    it('preserves word chars, hyphens, and underscores unchanged', () => {
+      // Arrange
+      const name = 'my-level_v2';
+
+      // Act
+      const result = sanitizeFilename(name);
+
+      // Assert
+      expect(result).toBe('my-level_v2');
+    });
+
+    it('replaces a mix of punctuation, spaces, and unicode with underscores', () => {
+      // Arrange
+      const name = 'Level 1! (final) — boss';
+
+      // Act
+      const result = sanitizeFilename(name);
+
+      // Assert — every char outside [\w-] becomes `_`
+      expect(result).toBe('Level_1___final____boss');
+    });
+  });
+
+  describe('downloadAsJsonFile', () => {
+    beforeEach(() => {
+      // happy-dom's createObjectURL is a no-op stub by default; we don't
+      // assert on the URL, only that the function does not throw and does
+      // not leak the temporary URL after revoking.
+      if (typeof URL.createObjectURL !== 'function') {
+        URL.createObjectURL = () => 'blob:mock';
+      }
+      if (typeof URL.revokeObjectURL !== 'function') {
+        URL.revokeObjectURL = () => undefined;
+      }
+    });
+
+    it('does not throw when given a valid filename and content', () => {
+      // Arrange
+      const filename = 'level.maze3d.json';
+      const content = '{"hello":"world"}';
+
+      // Act + Assert
+      expect(() => downloadAsJsonFile(filename, content)).not.toThrow();
+    });
+
+    it('calls URL.createObjectURL with a Blob whose contents match the input', () => {
+      // Arrange
+      let captured: Blob | null = null;
+      const original = URL.createObjectURL;
+      URL.createObjectURL = (obj: Blob | MediaSource): string => {
+        captured = obj as Blob;
+        return 'blob:mock';
+      };
+      const filename = 'level.maze3d.json';
+      const content = '{"hello":"world"}';
+
+      // Act
+      try {
+        downloadAsJsonFile(filename, content);
+      } finally {
+        URL.createObjectURL = original;
+      }
+
+      // Assert — a Blob was created
+      expect(captured).not.toBeNull();
+      expect(captured).toBeInstanceOf(Blob);
+    });
+  });
+
+  describe('readJsonFile', () => {
+    function makeFile(name: string, content: string, type = 'application/json'): File {
+      return new File([content], name, { type });
+    }
+
+    it('returns the file text for a .json extension', async () => {
+      // Arrange
+      const file = makeFile('level.json', '{"a":1}');
+
+      // Act
+      const result = await readJsonFile(file);
+
+      // Assert
+      expect(result).toBe('{"a":1}');
+    });
+
+    it('returns the file text for a .maze3d.json extension', async () => {
+      // Arrange
+      const file = makeFile('level.maze3d.json', '{"a":2}');
+
+      // Act
+      const result = await readJsonFile(file);
+
+      // Assert
+      expect(result).toBe('{"a":2}');
+    });
+
+    it('throws ImportError for a non-json extension', async () => {
+      // Arrange
+      const file = makeFile('level.txt', '{"a":3}');
+
+      // Act + Assert
+      await expect(readJsonFile(file)).rejects.toThrow(ImportError);
+    });
+
+    it('throws ImportError for a file with no extension', async () => {
+      // Arrange
+      const file = makeFile('level', '{"a":4}');
+
+      // Act + Assert
+      await expect(readJsonFile(file)).rejects.toThrow(ImportError);
+    });
+  });
+});
