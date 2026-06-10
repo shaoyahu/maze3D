@@ -10,10 +10,10 @@
 
 | 字段 | 值 |
 |---|---|
-| 活跃增量 | **P2-4b**（关卡编辑器；spec ✅ + plan ✅，待选执行模式） |
-| 已完成 | P2-2 14/14 ✅ + P2-3 14/14 ✅ + P2-4a 13/13 ✅ + P2-4b plan |
-| 下一个任务 | **选 P2-4b plan 执行模式**（subagent-driven vs inline） |
-| 最后更新 | 2026-06-10 |
+| 活跃增量 | **P2-4b**（关卡编辑器；subagent-driven 模式；10/20 实施+审查进度） |
+| 已完成 | P2-2 14/14 ✅ + P2-3 14/14 ✅ + P2-4a 16/16 ✅ + P2-4b 9/20 实施 ✅ + Task 10 (editorValidation) spec review ✅ |
+| 下一个任务 | **P2-4b Task 10 (editorValidation) code quality review**（spec ✅，待 code review） |
+| 最后更新 | 2026-06-10（paused for handoff；新会话从 code review 继续） |
 | 最近 commit | 见 `git log --oneline -1`（避免追尾，由 Claude 主动查） |
 
 **约束**：
