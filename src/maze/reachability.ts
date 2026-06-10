@@ -1,9 +1,8 @@
-import type { CellType } from '../types';
+import type { CellType } from './types';
 
-// BFS over open cells (walls[z][x] === 0). Used by the 4 generator tests to
-// assert the algorithm's "fully connected maze" guarantee. Lives in a
-// leading-underscore file to signal "test-only helper, not part of the
-// provider surface".
+// BFS over open cells (walls[z][x] === 0). Used by the generator tests to
+// assert the algorithm's "fully connected maze" guarantee, and by the
+// editor's design validator to flag unreachable exits. Public utility.
 export function isReachable(
   walls: CellType[][],
   start: { x: number; z: number },

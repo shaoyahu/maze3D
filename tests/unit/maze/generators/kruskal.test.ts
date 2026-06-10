@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { mulberry32, fnv1a } from '../../../../src/utils/seed';
 import { generateKruskal } from '../../../../src/maze/generators/kruskal';
-import { isReachable } from '../../../../src/maze/generators/_isReachable';
+import { isReachable } from '../../../../src/maze/reachability';
 import type { CellType } from '../../../../src/maze/types';
 
 function rngFromHexSeed(hex: string): () => number {

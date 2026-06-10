@@ -1,5 +1,5 @@
 import type { MazeData } from '../../maze/types';
-import { isReachable } from '../../maze/generators/_isReachable';
+import { isReachable } from '../../maze/reachability';
 
 export interface ValidationIssue {
   severity: 'error' | 'warning';
