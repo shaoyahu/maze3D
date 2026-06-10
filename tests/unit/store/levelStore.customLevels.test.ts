@@ -96,6 +96,10 @@ describe('levelStore.customLevels', () => {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(seed));
 
       // Re-import the module to trigger the IIFE re-read.
+      // The warnSpy from beforeEach patches the shared `console` global, so the
+      // freshly-evaluated module's `console.warn` reference still routes through
+      // the spy. vi.resetModules() only discards the module cache, not global
+      // patches; therefore warnSpy reliably observes the IIFE's warning here.
       vi.resetModules();
       const { useLevelStore: freshStore } = await import('../../../src/store/levelStore');
       // Act / Assert
