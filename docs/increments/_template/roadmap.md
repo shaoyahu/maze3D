@@ -10,9 +10,9 @@
 
 | 字段 | 值 |
 |---|---|
-| 活跃增量 | **P2-4b**（关卡编辑器；spec ✅，plan 待写） |
-| 已完成 | P2-2 14/14 ✅ + P2-3 14/14 ✅ + P2-4a 13/13 ✅ |
-| 下一个任务 | **写 P2-4b plan.md**（writing-plans） |
+| 活跃增量 | **P2-4b**（关卡编辑器；spec ✅ + plan ✅，待选执行模式） |
+| 已完成 | P2-2 14/14 ✅ + P2-3 14/14 ✅ + P2-4a 13/13 ✅ + P2-4b plan |
+| 下一个任务 | **选 P2-4b plan 执行模式**（subagent-driven vs inline） |
 | 最后更新 | 2026-06-10 |
 | 最近 commit | 见 `git log --oneline -1`（避免追尾，由 Claude 主动查） |
 
@@ -42,7 +42,7 @@
 | P2-2 | 深色模式 + 新 pickup 视觉 + UseItem 数字键 | P0 | — | Small | `docs/increments/dark-mode-pickups/` | ✅ done (2026-06-08) |
 | P2-3 | 算法关卡（4 算法 × 3 尺寸 × time-trial） | P1 | — | Large | `docs/increments/procedural-modes/` | ✅ done (2026-06-08) |
 | P2-4a | 巡逻敌人 + survive mode | P2 | P2-3 | Large | `docs/increments/enemies-editor/` | ✅ done (2026-06-09) |
-| P2-4b | 关卡编辑器 | P2 | — | Large | `docs/increments/level-editor/` | spec written (2026-06-10) |
+| P2-4b | 关卡编辑器 | P2 | — | Large | `docs/increments/level-editor/` | plan written (2026-06-10) |
 
 > **P2-1 已删除**：原计划"多关卡 JSON（中/大尺寸）"被 P2-3 算法生成取代。MVP 保留 `level-small.json` 作为"教学关"，`level-tiny.json` 留 E2E。
 > **P2-4 拆分**：原"敌人 + 编辑器"X-Large 拆成 P2-4a（敌人+survive mode，依赖 P2-3）和 P2-4b（编辑器，独立）。
@@ -154,9 +154,33 @@
 
 ### P2-4b: 关卡编辑器（Large）
 
-> 独立。`EditorMazeProvider` 实现完整 `MazeProvider` 接口；`levelStore.customLevels: Record<id, json>`；3D viewport 用独立 Scene 实例。
+> 范围：俯视 2D HTML/CSS viewport（不引 Three.js）+ 7 工具（select/wall/start/exit/pickup/enemy/erase）+ 右侧属性面板 + Undo/Redo（HISTORY_LIMIT=50，snapshot 栈）+ 显式 Save + draft autosave（localStorage）+ 导出/导入 JSON（`{schemaVersion:1, level:MazeData}` 包装）+ 警告但不拦截的 design validation（孤岛/无 start-exit/无 exit）+ `EditorMazeProvider` 合并 custom + builtin（id 前缀 `custom-<uuid>`）+ `levelStore.customLevels: Record<id, json>` + `maze3d.customLevels.v1` / `maze3d.editorDraft.v1` localStorage + `Pickup.id` 新增字段 + MainMenu 入口 + LevelSelect "我的关卡"分组 + 编辑器状态机与游戏运行时隔离（useEditorStore 独立 zustand store，不复用 gameStore）。
 
-> **待 P2-4a 排期时展开任务清单**。
+| # | 任务 | 工作量 | 状态 |
+|---|---|---|---|
+| 1 | 升级 roadmap.md（**本任务**） | XS | [x] |
+| 2 | `maze/types.ts` 扩展（`Pickup.id`、`EditorTool` 枚举、`ExportEnvelope`、`SCHEMA_VERSION=1`、`CUSTOM_LEVEL_PREFIX`） | XS | [ ] |
+| 3 | `utils/id.ts` `generateId()`（`crypto.randomUUID` + 降级 `Date.now()+Math.random`） | XS | [ ] |
+| 4 | `editor/editorHistory.ts` snapshot 栈（`HISTORY_LIMIT=50`，`push/undo/redo/canUndo/canRedo`，`structuredClone`） | S | [ ] |
+| 5 | `editor/importExport.ts` `exportLevel()` / `parseImport()`（Blob + File + `{schemaVersion,level}` envelope 校验） | S | [ ] |
+| 6 | `maze/JsonMazeProvider.ts` 导出 `validateMaze()`（复用现有解析失败检测） | XS | [ ] |
+| 7 | `store/levelStore.ts` 新增 `customLevels: Record<string, JsonMaze>` + `addCustomLevel/updateCustomLevel/removeCustomLevel/listCustom` + 持久化 `maze3d.customLevels.v1` | S | [ ] |
+| 8 | `maze/EditorMazeProvider.ts` 合并 custom + `JsonMazeProvider`（custom id 前缀 `custom-<uuid>`，`load` 优先 custom，回退 builtin） | S | [ ] |
+| 9 | `store/useEditorStore.ts` 核心状态机（TDD ≥25 case：tool/grid/cells/start/exit/pickups/enemies/selection/hover/history/dirty/draft） | L | [ ] |
+| 10 | `editor/editorValidation.ts` warn-only 检查（孤岛/无 start-exit/无 exit/重名/越界）返回 `ValidationWarning[]` | S | [ ] |
+| 11 | `ui/editor/EditorViewport.tsx` HTML/CSS Grid 渲染（cell 颜色：墙黑/通路白/start 绿/exit 红/pickup 黄/key 蓝/health 红粉/enemy 橙；hover 高亮；selection outline） | M | [ ] |
+| 12 | `ui/editor/EditorPropertiesPanel.tsx` 右侧 sidebar（根据 selection.type 渲染字段：gridSize/width/height/start/exit/pickup 子属性/enemy 子属性/路径） | M | [ ] |
+| 13 | `ui/editor/EditorToolbar.tsx` 7 工具按钮 + Save/Export/Import/Undo/Redo + 标题 dirty 标记（`* 未保存`） | S | [ ] |
+| 14 | `ui/editor/EditorStatusBar.tsx` 显示 warning 数 + dirty 状态 + schemaVersion | XS | [ ] |
+| 15 | `ui/editor/EditorPage.tsx` 组合 viewport/toolbar/properties/statusBar + 快捷键（B/W/Esc/Cmd-Z/Cmd-Shift-Z/Cmd-S）+ draft autosave debounce 500ms | M | [ ] |
+| 16 | `ui/MainMenu.tsx` 新增"关卡编辑器"按钮 → `/editor` | XS | [ ] |
+| 17 | `ui/LevelSelect.tsx` 新增"我的关卡"分组（从 `EditorMazeProvider.list` 过滤 custom） + 可选"删除"按钮（带确认） | S | [ ] |
+| 18 | `App.tsx` 路由：新增 `/editor` 路径 → `EditorPage`；其余路径沿用 `useGame` 接入；切换 provider 为 `EditorMazeProvider` 注入到 `gameStore` | S | [ ] |
+| 19 | E2E：`editor.spec.ts`（进入编辑器 → 画墙 → 放 start/exit → 放 pickup/enemy → Save → 退出 → LevelSelect 看到 → 进入试玩 → 通关）+ 文档同步 | M | [ ] |
+
+> 进度：1/19
+> 关键模块走 TDD（任务 9 状态机、4 history、5 import/export、10 validation、7 levelStore 持久化），其它快速完成。
+> 依赖图：1→2→3→4→5（基础）→6→7→8（provider）→9（state）→10（validation）→11/12/13/14（UI 4 件）→15（组合）→16/17/18（接入）→19（E2E）。
 
 ---
 
