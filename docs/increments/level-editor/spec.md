@@ -79,7 +79,7 @@
 - FR-14：start 工具：点击格子设置 `level.start = {x, z}`（与现有 JsonMazeProvider 校验一致：必须在界内且不在墙上）
 - FR-15：exit 工具：同 start，但目标是 `level.exit`
 - FR-16：pickup 工具：点击格子放置新 pickup（生成 `id`，type 默认 `time`，value 默认 `10`，立即清空 selection 让用户进属性面板设置）
-- FR-17：enemy 工具：点击格子放置 enemy 起点 + 临时 2 节点 path（同 cell + 右邻 cell），用户进属性面板编辑 path 节点
+- FR-17：enemy 工具：点击格子放置 enemy 起点 + 临时 2 节点 path（同 cell + 右邻 cell，若 width=1 则右邻 = width-1 clamp），用户进属性面板编辑 path 节点
 - FR-18：select 工具：点击对象 → 选中（pickup/enemy/wall cell 三种 selection 类型）；点击空白 → 清空 selection
 - FR-19：pan 工具：左键拖拽 = pan viewport（其他工具不受 pan 工具影响）
 
