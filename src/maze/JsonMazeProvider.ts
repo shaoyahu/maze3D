@@ -1,5 +1,6 @@
 import { LevelLoadError } from '../utils/errors';
 import { PLAYER_RADIUS } from '../entities/Player';
+import { generateId } from '../utils/id';
 import type { MazeData, MazeProvider, CellType, PickupType, VictoryType, EnemySpawn } from './types';
 
 const VALID_PICKUP_TYPES: PickupType[] = ['time', 'health', 'key'];
@@ -38,7 +39,7 @@ export class JsonMazeProvider implements MazeProvider {
   }
 }
 
-function validateMaze(raw: unknown, id: string): MazeData {
+export function validateMaze(raw: unknown, id: string): MazeData {
   if (typeof raw !== 'object' || raw === null) {
     throw new LevelLoadError(`Maze '${id}' is not an object`);
   }
@@ -133,7 +134,7 @@ function validateMaze(raw: unknown, id: string): MazeData {
       throw new LevelLoadError(`Maze '${id}': duplicate pickup at (${pp.x}, ${pp.z})`);
     }
     seenCells.add(cellKey);
-    const pickupId = typeof pp.id === 'string' && pp.id.length > 0 ? pp.id : crypto.randomUUID();
+    const pickupId = typeof pp.id === 'string' && pp.id.length > 0 ? pp.id : generateId();
     // Preserve all the original fields; only inject the id when missing.
     normalizedPickups.push({ ...pp, id: pickupId });
   }
