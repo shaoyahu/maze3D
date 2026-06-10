@@ -13,10 +13,11 @@ import {
   clampEnemyCount,
   normalizeSurviveSeconds,
 } from '../maze/types';
+import { injectEnemySpawns } from '../maze/enemySpawner';
 import {
   applyDamage,
+  applySpawnTrigger,
   onUseItem,
-  shouldProgressSpawn,
   shouldSurviveWin,
 } from '../game/Rules';
 
@@ -64,13 +65,28 @@ export interface GameState {
   // protected until, so a second enemy contact in the same window
   // collapses into a no-op. Updated by damage(); 0 = not invulnerable.
   invulnerableUntil: number;
+  // P2-4a F4: monotonic counter of damage events (real or absorbed by
+  // the invuln window). HealthBar / InvulnerableFlash subscribe to this
+  // so the flash animation re-triggers on every hit, even when the
+  // second hit lands inside the 0.5s window and is a no-op for health.
+  hitCount: number;
   // P2-4a: progressive spawn scheduler state. SpawnSchedule comes from
   // StartLevelOptions.spawnSchedule; initial count is
   // StartLevelOptions.enemyCount (default 3). The counter increments up
   // to ENEMY_COUNT_MAX (10) on each fire of shouldProgressSpawn.
   spawnSchedule: SpawnSchedule;
   progressiveEnemyCount: number;
-  nextSpawnAt: number;
+  // F9: the actual count of enemies in the current level after
+  // startLevel() injects hand-crafted + spawner-generated spawns. The
+  // HUD's EnemyCounter reads this; progressiveEnemyCount is a spawn-
+  // event tally, not a scene-reflected count, so the two diverge in
+  // any level that uses the progressive scheduler.
+  currentEnemyCount: number;
+  // P2-4a F12: dropped `nextSpawnAt` — it was just `lastSpawnAt + intervalSec`
+  // and required an off-by-one careful re-derivation. The trigger only needs
+  // the last fire time; the next fire is derived as `lastSpawnAt + intervalSec`
+  // on demand inside shouldProgressSpawn.
+  lastSpawnAt: number;
   lastPickupCountForSpawn: number;
 
   startLevel: (maze: MazeData, options?: StartLevelOptions) => void;
@@ -78,7 +94,10 @@ export interface GameState {
   resume: () => void;
   tick: (dt: number) => void;
   pickup: (p: Pickup) => boolean;
-  damage: (n: number) => void;
+  // P2-4a F5: `now` defaults to wall-clock seconds so backgrounded tabs
+  // (rAF throttled to 1Hz) cannot freeze the invulnerability window. Tests
+  // pass an explicit `now` to make the timing deterministic.
+  damage: (n: number, now?: number) => void;
   useItem: (slot: InventorySlot) => void;
   reachExit: (isNewRecord?: boolean) => void;
   goToMenu: () => void;
@@ -99,15 +118,23 @@ export const useGameStore = create<GameState>((set, get) => ({
   currentMode: 'reach-exit',
   currentSurviveSeconds: SURVIVE_SECONDS_DEFAULT,
   invulnerableUntil: 0,
+  hitCount: 0,
   spawnSchedule: { ...SPAWN_SCHEDULE_DEFAULT },
   progressiveEnemyCount: 0,
-  nextSpawnAt: 0,
+  currentEnemyCount: 0,
+  lastSpawnAt: 0,
   lastPickupCountForSpawn: 0,
 
   startLevel: (maze, options) =>
     set((s) => {
       const surviveSeconds = normalizeSurviveSeconds(options?.surviveSeconds);
       const initialEnemyCount = clampEnemyCount(options?.enemyCount);
+      // F9: compute the actual count of enemies after spawner injection.
+      // We call injectEnemySpawns here (mirroring Game.startLevel) so the
+      // HUD can show the real number; the function is pure and produces
+      // the same result for the same (maze, enemyCount) input.
+      const injectedEnemies = injectEnemySpawns(maze, initialEnemyCount);
+      const totalEnemyCount = maze.enemies.length + injectedEnemies.length;
       return {
         screen: 'playing',
         currentLevelId: maze.id,
@@ -124,12 +151,14 @@ export const useGameStore = create<GameState>((set, get) => ({
         currentMode: options?.mode ?? maze.rules.victory,
         currentSurviveSeconds: surviveSeconds,
         invulnerableUntil: 0,
+        hitCount: 0,
         spawnSchedule: { ...(options?.spawnSchedule ?? SPAWN_SCHEDULE_DEFAULT) },
         progressiveEnemyCount: initialEnemyCount,
-        // First interval-based spawn fires `intervalSec` seconds into the
-        // level; pairing with lastPickupCountForSpawn = 0 makes the
-        // pickup trigger arm the moment a pickup is collected.
-        nextSpawnAt: (options?.spawnSchedule ?? SPAWN_SCHEDULE_DEFAULT).intervalSec,
+        currentEnemyCount: totalEnemyCount,
+        // F12: `lastSpawnAt: 0` means the first interval-based trigger fires
+        // at elapsedTime === intervalSec (i.e. intervalSec seconds into the
+        // level). Pickup trigger arms immediately via lastPickupCountForSpawn.
+        lastSpawnAt: 0,
         lastPickupCountForSpawn: 0,
       };
     }),
@@ -179,20 +208,23 @@ export const useGameStore = create<GameState>((set, get) => ({
     // (lastPickupCountForSpawn only advances on a successful pickup
     // action, see pickup() below). The count caps at ENEMY_COUNT_MAX
     // inside shouldProgressSpawn.
-    const trigger = shouldProgressSpawn({
-      enabled: true,
+    // P2-4a F12 + F14: the helper combines the trigger decision with the
+    // state-update decision, so the store no longer needs to know the
+    // "nextSpawnAt" math. No-trigger path is a zero-write set() below.
+    const result = applySpawnTrigger({
+      enabled: s.spawnSchedule.enabled,
       schedule: s.spawnSchedule,
       elapsedTime: get().elapsedTime,
-      lastSpawnAt: s.nextSpawnAt - s.spawnSchedule.intervalSec,
-      pickupCount: get().pickupCount.collected,
-      lastPickupCount: s.lastPickupCountForSpawn,
+      lastSpawnAt: s.lastSpawnAt,
+      lastPickupCountForSpawn: s.lastPickupCountForSpawn,
+      pickupCountCollected: get().pickupCount.collected,
       currentEnemyCount: get().progressiveEnemyCount,
     });
-    if (trigger.triggered) {
+    if (result.triggered) {
       set({
-        progressiveEnemyCount: trigger.nextEnemyCount,
-        nextSpawnAt: get().elapsedTime + s.spawnSchedule.intervalSec,
-        lastPickupCountForSpawn: get().pickupCount.collected,
+        progressiveEnemyCount: result.nextEnemyCount,
+        lastSpawnAt: result.newLastSpawnAt,
+        lastPickupCountForSpawn: result.newLastPickupCountForSpawn,
       });
     }
   },
@@ -234,19 +266,41 @@ export const useGameStore = create<GameState>((set, get) => ({
     return false;
   },
 
-  damage: (n) => {
+  damage: (n, now) => {
     const s = get();
     if (s.screen !== 'playing') return;
-    // P2-4a: invulnerable window collapses multiple contacts into a
-    // single damage event. The engine passes its `now` via the bridge
-    // in the future; for v1 the store uses elapsedTime as the clock
-    // (same units as dt, so the 0.5s window matches the spec).
-    const result = applyDamage(s.health, n, s.invulnerableUntil, s.elapsedTime);
-    if (!result.damaged) return;
+    // P2-4a F4: bump the hit counter unconditionally. Even when the call
+    // collapses into an invuln-window no-op (no health change), the UI
+    // still needs to re-trigger the flash animation so a second contact
+    // during the window is visually acknowledged.
+    // P2-4a F5: wall-clock time, not elapsedTime. elapsedTime is advanced
+    // only inside tick(), which is driven by rAF — when the tab is back-
+    // grounded browsers throttle rAF to 1Hz, so elapsedTime would freeze
+    // and the player could be stuck invulnerable long after the 0.5s
+    // window. Date.now() keeps marching even when the tab is hidden.
+    const result = applyDamage(
+      s.health,
+      n,
+      s.invulnerableUntil,
+      now ?? Date.now() / 1000,
+    );
+    if (!result.damaged) {
+      set({ hitCount: s.hitCount + 1 });
+      return;
+    }
     if (result.health <= 0) {
-      set({ health: 0, screen: 'game-over', invulnerableUntil: result.invulnerableUntil });
+      set({
+        health: 0,
+        screen: 'game-over',
+        invulnerableUntil: result.invulnerableUntil,
+        hitCount: s.hitCount + 1,
+      });
     } else {
-      set({ health: result.health, invulnerableUntil: result.invulnerableUntil });
+      set({
+        health: result.health,
+        invulnerableUntil: result.invulnerableUntil,
+        hitCount: s.hitCount + 1,
+      });
     }
   },
 
@@ -287,9 +341,14 @@ export const useGameStore = create<GameState>((set, get) => ({
       useItemFlash: null,
       currentSurviveSeconds: SURVIVE_SECONDS_DEFAULT,
       invulnerableUntil: 0,
+      // P2-4a F4: hitCount is the monotonic counter HealthBar/InvulnerableFlash
+      // use to re-trigger the flash animation on every contact. Reset it
+      // here so a previous run's damage history doesn't carry into a fresh
+      // session and re-trigger a stale flash on the next level.
+      hitCount: 0,
       spawnSchedule: { ...SPAWN_SCHEDULE_DEFAULT },
       progressiveEnemyCount: 0,
-      nextSpawnAt: 0,
+      lastSpawnAt: 0,
       lastPickupCountForSpawn: 0,
     }),
 }));

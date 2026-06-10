@@ -125,25 +125,23 @@ describe('gameStore', () => {
 
   it('damage decrements health and triggers game-over at 0', () => {
     useGameStore.getState().startLevel(initialMaze);
-    useGameStore.getState().damage(1);
+    useGameStore.getState().damage(1, 0);
     expect(useGameStore.getState().health).toBe(2);
     // Advance past the 0.5s invulnerable window so the second damage lands.
-    useGameStore.getState().tick(0.6);
-    useGameStore.getState().damage(2);
+    useGameStore.getState().damage(2, 0.6);
     expect(useGameStore.getState().screen).toBe('game-over');
   });
 
   it('damage within the 0.5s invulnerable window does not apply again (P2-4a)', () => {
     useGameStore.getState().startLevel(initialMaze);
-    useGameStore.getState().damage(1);
+    useGameStore.getState().damage(1, 0);
     expect(useGameStore.getState().health).toBe(2);
     expect(useGameStore.getState().invulnerableUntil).toBeCloseTo(0.5);
     // Second hit inside the window — should be a no-op.
-    useGameStore.getState().damage(1);
+    useGameStore.getState().damage(1, 0.1);
     expect(useGameStore.getState().health).toBe(2);
     // After the window elapses, a new hit lands.
-    useGameStore.getState().tick(0.6);
-    useGameStore.getState().damage(1);
+    useGameStore.getState().damage(1, 0.6);
     expect(useGameStore.getState().health).toBe(1);
   });
 
@@ -208,6 +206,37 @@ describe('gameStore', () => {
     useGameStore.getState().reachExit();
     useGameStore.getState().goToMenu();
     expect(useGameStore.getState().screen).toBe('menu');
+  });
+
+  // F4: hitCount is the monotonic counter HealthBar/InvulnerableFlash use to
+  // re-trigger the flash animation on every contact. startLevel zeros it;
+  // goToMenu must also zero it so a previous run's damage history doesn't
+  // carry into a fresh session and immediately re-trigger a stale flash.
+  it('goToMenu resets hitCount to 0 (F4)', () => {
+    useGameStore.getState().startLevel(initialMaze);
+    useGameStore.getState().damage(1, 0);
+    expect(useGameStore.getState().hitCount).toBe(1);
+    useGameStore.getState().goToMenu();
+    expect(useGameStore.getState().hitCount).toBe(0);
+  });
+
+  // F4: hitCount must bump on every damage() call, even when the call is
+  // absorbed by the 0.5s invulnerable window. The UI subscribes to this so
+  // a second enemy contact in the same window still re-triggers the flash
+  // animation, even though health is unchanged.
+  it('damage bumps hitCount on every call, including invuln-window no-ops (F4)', () => {
+    useGameStore.getState().startLevel(initialMaze);
+    expect(useGameStore.getState().hitCount).toBe(0);
+    useGameStore.getState().damage(1, 0);
+    expect(useGameStore.getState().hitCount).toBe(1);
+    // Second hit inside the window — health unchanged, but hitCount still bumps.
+    useGameStore.getState().damage(1, 0.1);
+    expect(useGameStore.getState().health).toBe(2);
+    expect(useGameStore.getState().hitCount).toBe(2);
+    // Third hit inside the window — same.
+    useGameStore.getState().damage(1, 0.2);
+    expect(useGameStore.getState().health).toBe(2);
+    expect(useGameStore.getState().hitCount).toBe(3);
   });
 
   describe('startLevel options + time-trial (P2-3)', () => {

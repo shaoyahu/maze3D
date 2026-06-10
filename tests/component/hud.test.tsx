@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import { HUD } from '../../src/ui/HUD';
 import { useGameStore } from '../../src/store/gameStore';
 import type { MazeData } from '../../src/maze/types';
@@ -40,8 +40,13 @@ describe('HUD', () => {
   });
 
   describe('EnemyCounter + InvulnerableFlash (P2-4a)', () => {
-    it('renders the enemy counter as "敌人 X/Y" using progressiveEnemyCount', () => {
-      useGameStore.setState({ progressiveEnemyCount: 4 });
+    it('renders the enemy counter as "敌人 X/Y" using currentEnemyCount (F9)', () => {
+      // F9: the HUD now subscribes to currentEnemyCount (the actual count
+      // of enemies in the current level after startLevel injects spawns),
+      // not progressiveEnemyCount (the spawn-event tally from the
+      // scheduler). The two diverge: progressive spawn can fire without
+      // any new enemy mesh appearing in the scene.
+      useGameStore.setState({ currentEnemyCount: 4 });
       render(<HUD />);
       expect(screen.getByTestId('enemy-counter').textContent).toContain('敌人 4 / 10');
     });
@@ -70,6 +75,39 @@ describe('HUD', () => {
       render(<HUD />);
       const bar = screen.getByTestId('health-bar');
       expect(bar.className).not.toContain('health-bar--flashing');
+    });
+
+    // F4: when a second enemy contact lands inside the 0.5s invulnerable
+    // window, invulnerableUntil/elapsedTime don't change much, so the
+    // overlay/HealthBar would normally not re-render — leaving the CSS
+    // flash animation stuck on its first frame. Subscribing to hitCount
+    // and using it as a key (or marking it on the element) forces a re-
+    // render so the animation restarts on every contact.
+    it('InvulnerableFlash re-renders on every hit (re-mount via hitCount, F4)', () => {
+      useGameStore.setState({ hitCount: 1, invulnerableUntil: 1.0, elapsedTime: 0.5 });
+      render(<HUD />);
+      const first = screen.getByTestId('invulnerable-flash');
+      expect(first.getAttribute('data-hit-count')).toBe('1');
+      // Second contact inside the same window — health unchanged, but the
+      // overlay must re-render with the new hitCount so the CSS animation
+      // restarts.
+      act(() => {
+        useGameStore.setState({ hitCount: 2, invulnerableUntil: 1.0, elapsedTime: 0.55 });
+      });
+      const second = screen.getByTestId('invulnerable-flash');
+      expect(second.getAttribute('data-hit-count')).toBe('2');
+    });
+
+    it('HealthBar re-renders on every hit (re-mount via hitCount, F4)', () => {
+      useGameStore.setState({ hitCount: 1, invulnerableUntil: 1.0, elapsedTime: 0.5 });
+      render(<HUD />);
+      const first = screen.getByTestId('health-bar');
+      expect(first.getAttribute('data-hit-count')).toBe('1');
+      act(() => {
+        useGameStore.setState({ hitCount: 2, invulnerableUntil: 1.0, elapsedTime: 0.55 });
+      });
+      const second = screen.getByTestId('health-bar');
+      expect(second.getAttribute('data-hit-count')).toBe('2');
     });
   });
 });

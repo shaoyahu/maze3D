@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { MazeData } from '../maze/types';
 import { createPickupMaterial } from '../entities/Pickup';
+import { ENEMY_HEIGHT, ENEMY_RADIUS } from '../entities/Enemy';
 
 function createWallTexture(): THREE.CanvasTexture {
   // Brick pattern with visible horizontal & vertical mortar lines so the
@@ -296,9 +297,9 @@ export function buildScene(maze: MazeData, darkMode =false): SceneRefs {
   // Shared geometry + material across enemies (saves GPU memory and matches
   // the wall/pickup pattern) — disposeScene still releases the single
   // instance exactly once because the disposeMat/seenGeoms set dedupes.
+  // ENEMY_RADIUS/ENEMY_HEIGHT are imported from entities/Enemy so the
+  // hitbox and the visible mesh can't drift (review F11).
   const enemies: THREE.Mesh[] = [];
-  const ENEMY_RADIUS = 0.35;
-  const ENEMY_HEIGHT = 1.6;
   const enemyGeom = new THREE.CapsuleGeometry(ENEMY_RADIUS, ENEMY_HEIGHT - 2 * ENEMY_RADIUS);
   const enemyMat = new THREE.MeshLambertMaterial({ color: 0x553333 });
   for (const e of maze.enemies) {

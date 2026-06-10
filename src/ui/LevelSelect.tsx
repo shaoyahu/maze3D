@@ -15,6 +15,7 @@ import {
   type VictoryType,
 } from '../maze/types';
 import { encodeSeed } from '../utils/seed';
+import { isStorageAvailable } from '../store/persist';
 
 export interface LevelDef { id: string; name: string; }
 
@@ -74,8 +75,10 @@ export function LevelSelect({
   // P2-4a FR-20: read the last valid hex seed on mount so a returning
   // player doesn't have to retype it. localStorage values that don't
   // match HEX_RE are silently ignored (don't try to repair a corrupted
-  // entry, just leave the field blank).
+  // entry, just leave the field blank). Guard with isStorageAvailable
+  // so Safari private mode / disabled storage doesn't throw.
   useEffect(() => {
+    if (!isStorageAvailable()) return;
     const last = localStorage.getItem(LAST_SEED_KEY);
     if (last && HEX_RE.test(last)) setSeedInput(last);
   }, []);

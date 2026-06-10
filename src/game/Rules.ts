@@ -134,4 +134,58 @@ export function shouldProgressSpawn(input: SpawnTriggerInput): SpawnTriggerResul
   return { triggered: false, reason: null, nextEnemyCount: input.currentEnemyCount };
 }
 
+// P2-4a F14: combine the trigger decision with the state-update decision
+// so the store no longer has to know that "when triggered, also advance
+// lastSpawnAt / lastPickupCount". Without this, the store's tick carried
+// an off-by-one risk — the `nextSpawnAt = elapsedTime + intervalSec`
+// write used to live alongside the trigger check, and a future refactor
+// could easily delete the write thinking it was redundant. The helper
+// returns the new state only when triggered, so the store does a
+// zero-write set() in the no-trigger path.
+export interface ApplySpawnTriggerInput {
+  enabled: boolean;
+  schedule: SpawnSchedule;
+  elapsedTime: number;
+  lastSpawnAt: number;
+  lastPickupCountForSpawn: number;
+  pickupCountCollected: number;
+  currentEnemyCount: number;
+}
+
+export interface ApplySpawnTriggerResult {
+  triggered: boolean;
+  reason: 'time' | 'pickup' | null;
+  nextEnemyCount: number;
+  newLastSpawnAt: number;
+  newLastPickupCountForSpawn: number;
+}
+
+export function applySpawnTrigger(input: ApplySpawnTriggerInput): ApplySpawnTriggerResult {
+  const trigger = shouldProgressSpawn({
+    enabled: input.enabled,
+    schedule: input.schedule,
+    elapsedTime: input.elapsedTime,
+    lastSpawnAt: input.lastSpawnAt,
+    pickupCount: input.pickupCountCollected,
+    lastPickupCount: input.lastPickupCountForSpawn,
+    currentEnemyCount: input.currentEnemyCount,
+  });
+  if (!trigger.triggered) {
+    return {
+      triggered: false,
+      reason: null,
+      nextEnemyCount: input.currentEnemyCount,
+      newLastSpawnAt: input.lastSpawnAt,
+      newLastPickupCountForSpawn: input.lastPickupCountForSpawn,
+    };
+  }
+  return {
+    triggered: true,
+    reason: trigger.reason,
+    nextEnemyCount: trigger.nextEnemyCount,
+    newLastSpawnAt: input.elapsedTime,
+    newLastPickupCountForSpawn: input.pickupCountCollected,
+  };
+}
+
 export { ENEMY_COUNT_MAX, clampEnemyCount };

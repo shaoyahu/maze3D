@@ -4,13 +4,13 @@ import type { EnemySpawn, MazeData } from './types';
 // Walks every walkable cell, drops any cell within Chebyshev distance 1 of
 // the start or the exit (so an enemy can't spawn directly in front of the
 // player or block the goal), then picks up to `count` cells. Path is the
-// 2-node minimum the Enemy class requires; we always include a walkable
-// neighbor when one exists, so the enemy visibly patrols between two
-// cells instead of standing still on a single point. When no neighbor
-// is available (a single isolated walkable cell — shouldn't happen in
-// any real generated maze, but a malformed hand-crafted level could
-// produce it), the path collapses to a self-loop and the enemy dwells
-// in place.
+// 2-node minimum the Enemy class requires; we only emit a spawn when the
+// cell has at least one walkable neighbor, so the enemy visibly patrols
+// between two cells instead of standing still on a self-loop. A hand-
+// crafted level with a single isolated walkable cell is skipped — without
+// this, the spawner would emit a degenerate `path: [{x,z},{x,z}]` and the
+// enemy's `moveToward` would return `true` immediately, locking it in a
+// permanent dwell at the spawn cell.
 export function injectEnemySpawns(maze: MazeData, count: number | undefined): EnemySpawn[] {
   const target = clampEnemyCount(count);
   if (target === 0) return [];
@@ -50,13 +50,17 @@ export function injectEnemySpawns(maze: MazeData, count: number | undefined): En
   for (let i = 0; i < candidates.length && out.length < target; i++) {
     const c = candidates[i];
     const neighbor = findWalkableNeighbor(maze, c.x, c.z);
+    // Skip island cells — without a walkable neighbor the Enemy would
+    // dwell forever on its spawn point. Walk past the candidate and try
+    // the next one; the spec just needs up to `target` distinct cells.
+    if (!neighbor) continue;
     out.push({
       id: `gen-${out.length + 1}`,
       x: c.x,
       z: c.z,
       path: [
         { x: c.x, z: c.z },
-        { x: neighbor?.x ?? c.x, z: neighbor?.z ?? c.z },
+        { x: neighbor.x, z: neighbor.z },
       ],
     });
   }
