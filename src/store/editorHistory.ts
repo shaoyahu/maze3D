@@ -10,19 +10,22 @@ import type { MazeData } from '../maze/types';
 /** Maximum number of undo snapshots retained. Older entries are dropped. */
 export const HISTORY_LIMIT = 50;
 
-export type Selection =
+// EditorSelection is the union of "things the user can click on" in the
+// editor. Named with the `Editor` prefix to avoid shadowing the DOM's
+// `Selection` interface (lib.dom.d.ts exports its own `Selection`).
+export type EditorSelection =
   | { kind: 'pickup'; id: string }
   | { kind: 'enemy'; id: string }
   | { kind: 'wall'; x: number; z: number };
 
 export interface Snapshot {
   level: MazeData;
-  selection: Selection | null;
+  selection: EditorSelection | null;
 }
 
 export interface EditorState {
   level: MazeData;
-  selection: Selection | null;
+  selection: EditorSelection | null;
   past: Snapshot[];
   future: Snapshot[];
 }
@@ -36,7 +39,7 @@ export interface EditorState {
 export function pushHistory(
   state: EditorState,
   nextLevel: MazeData,
-  nextSelection: Selection | null,
+  nextSelection: EditorSelection | null,
 ): EditorState {
   const current: Snapshot = {
     level: structuredClone(state.level),

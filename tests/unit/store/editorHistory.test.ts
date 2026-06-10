@@ -7,7 +7,7 @@ import {
   canUndo,
   canRedo,
 } from '../../../src/store/editorHistory';
-import type { EditorState, Selection } from '../../../src/store/editorHistory';
+import type { EditorState, EditorSelection } from '../../../src/store/editorHistory';
 import type { MazeData, Pickup } from '../../../src/maze/types';
 
 function makeMaze(over: Partial<MazeData> = {}): MazeData {
@@ -46,9 +46,9 @@ function makeState(over: Partial<EditorState> = {}): EditorState {
   };
 }
 
-const PICKUP_SEL: Selection = { kind: 'pickup', id: 'p1' };
-const ENEMY_SEL: Selection = { kind: 'enemy', id: 'e1' };
-const WALL_SEL: Selection = { kind: 'wall', x: 2, z: 3 };
+const PICKUP_SEL: EditorSelection = { kind: 'pickup', id: 'p1' };
+const ENEMY_SEL: EditorSelection = { kind: 'enemy', id: 'e1' };
+const WALL_SEL: EditorSelection = { kind: 'wall', x: 2, z: 3 };
 
 describe('editorHistory', () => {
   describe('pushHistory', () => {

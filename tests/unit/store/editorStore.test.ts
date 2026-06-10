@@ -591,13 +591,17 @@ describe('useEditorStore', () => {
       expect(path[2]).toEqual({ x: 3, z: 3 });
     });
 
-    it('removeEnemyNode rejects the call when only 2 nodes remain (cannot go below 2)', () => {
+    it('removeEnemyNode silently no-ops when only 2 nodes remain (cannot go below 2)', () => {
       // Arrange — path is exactly 2 nodes.
       withEnemy();
-      // Act / Assert
-      expect(() => useEditorStore.getState().removeEnemyNode('e1', 0)).toThrow();
-      // Path untouched.
+      // Act — must not throw, matching the silent-reject idiom used by
+      // placeWall / placeStart / placePickup when the action would
+      // produce an invalid state.
+      useEditorStore.getState().removeEnemyNode('e1', 0);
+      // Assert — path untouched, no history push, no dirty flip.
       expect(useEditorStore.getState().level.enemies[0]!.path).toHaveLength(2);
+      expect(useEditorStore.getState().past).toEqual([]);
+      expect(useEditorStore.getState().dirty).toBe(false);
     });
   });
 
@@ -670,6 +674,29 @@ describe('useEditorStore', () => {
       // Assert
       expect(useEditorStore.getState().level.walls[1]![2]).toBe(1);
       expect(useEditorStore.getState().past.length).toBe(1);
+    });
+
+    it('is a no-op when selection is null', () => {
+      // Arrange — no selection, no history.
+      useEditorStore.setState({
+        level: makeMaze({
+          walls: [
+            [0, 0, 0, 0, 0],
+            [1, 1, 1, 1, 1],
+            [1, 1, 1, 1, 1],
+            [1, 1, 1, 1, 1],
+          ],
+        }),
+        selection: null,
+        past: [],
+        dirty: false,
+      });
+      // Act
+      useEditorStore.getState().deleteSelected();
+      // Assert
+      expect(useEditorStore.getState().level.walls[0]![0]).toBe(0);
+      expect(useEditorStore.getState().past).toEqual([]);
+      expect(useEditorStore.getState().dirty).toBe(false);
     });
   });
 

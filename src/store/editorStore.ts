@@ -29,16 +29,18 @@ import {
   canUndo as historyCanUndo,
   canRedo as historyCanRedo,
   type Snapshot,
+  type EditorSelection,
 } from './editorHistory';
 import { exportLevel, parseImport } from '../maze/importExport';
 import { validateMaze } from '../maze/JsonMazeProvider';
 import { generateId } from '../utils/id';
 import { useLevelStore } from './levelStore';
 
-// Re-export the Selection union from editorHistory so the rest of the
-// editor codebase can import it from a single place. Keeping the symbol
-// in editorHistory (a pure module) makes it trivial to test in isolation.
-export type { Selection } from './editorHistory';
+// Re-export the EditorSelection union from editorHistory so the rest of
+// the editor codebase can import it from a single place. Keeping the
+// symbol in editorHistory (a pure module) makes it trivial to test in
+// isolation. The `Editor` prefix avoids the DOM `Selection` shadow.
+export type { EditorSelection } from './editorHistory';
 
 // Editor-local camera position. Kept here (rather than in the runtime
 // gameStore) because the editor's orbit/pan state is independent from
@@ -62,7 +64,11 @@ type LevelSlice = {
 export interface EditorStoreState {
   level: MazeData;
   tool: EditorTool;
-  selection: EditorStoreState['selection'];
+  // The EditorSelection union is exported from ./editorHistory
+  // (re-exported above). We reference it by name here so the property
+  // type doesn't self-reference the interface we're declaring. The
+  // `Editor` prefix avoids the DOM `Selection` shadow.
+  selection: EditorSelection | null;
   camera: EditorCamera;
   past: Snapshot[];
   future: Snapshot[];
@@ -71,7 +77,10 @@ export interface EditorStoreState {
   // session lifecycle
   newLevel: (width: number, depth: number) => void;
   loadLevel: (maze: MazeData) => void;
-  saveLevel: () => void;
+  /** Returns true on successful save, false if the level failed validation.
+   *  On failure, `dirty` is left true so the user knows the in-memory state
+   *  still diverges from the last persisted version. */
+  saveLevel: () => boolean;
 
   // tool / camera / selection (UI state, no history push)
   setTool: (tool: EditorTool) => void;
@@ -230,8 +239,26 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
     saveLevel: () => {
       // Side effect: delegate persistence to the level store. We do NOT
       // push history here — save is IO, not data mutation.
-      useLevelStore.getState().saveCustom(get().level);
-      set({ dirty: false });
+      //
+      // `saveCustom` calls `validateMaze`, which can throw `LevelLoadError`
+      // when the editor is in a state that doesn't satisfy the maze
+      // contract (e.g. start/exit out of bounds, walls dimension mismatch).
+      // We catch the throw and surface it as a boolean so the caller
+      // (EditorToolbar) can show a user-facing error without uncaught
+      // rejections breaking the render cycle. We deliberately do NOT clear
+      // `dirty` on failure — the in-memory level still diverges from the
+      // last persisted version.
+      try {
+        useLevelStore.getState().saveCustom(get().level);
+        set({ dirty: false });
+        return true;
+      } catch (e) {
+        // Defensive: validateMaze is the documented thrower, but we don't
+        // import its error class to keep the store decoupled. Log for
+        // diagnosis; the boolean is the public signal.
+        console.warn('editorStore.saveLevel: validation failed', e);
+        return false;
+      }
     },
 
     // ---- UI state (no history push) ----
@@ -397,9 +424,13 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
       const { level } = get();
       const target = level.enemies.find((e) => e.id === enemyId);
       if (!target) return;
-      if (target.path.length <= 2) {
-        throw new Error('Enemy path must keep at least 2 nodes');
-      }
+      // Defensive: every placement action in this store uses silent
+      // rejection (`return;`) when the action would produce an invalid
+      // state. Match the idiom here — a UI double-click or a queued
+      // keypress cannot break the store, and the editor's path-edit UI
+      // (Task 12) will simply hide the delete affordance when only 2
+      // nodes remain.
+      if (target.path.length <= 2) return;
       const nextEnemies = level.enemies.map((e) =>
         e.id === enemyId
           ? { ...e, path: e.path.filter((_, i) => i !== nodeIndex) }
