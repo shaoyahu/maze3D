@@ -205,20 +205,26 @@ describe('gameStore', () => {
   });
 
   describe('progressive spawn (P2-4a)', () => {
+    // P2-5 FR-20: progressive enemy spawning is only meaningful in survive
+    // mode. The non-survive hard-gate in gameStore.startLevel clamps the
+    // store-side enemyCount to 0 regardless of options.enemyCount, so the
+    // spawn trigger never fires. Existing tests below were written before
+    // the gate; they now pass mode: 'survive' so they exercise the
+    // intended survive-mode path that the gate preserves.
     it('starts with progressiveEnemyCount from options.enemyCount', () => {
-      useGameStore.getState().startLevel(initialMaze, { enemyCount: 7 });
+      useGameStore.getState().startLevel(initialMaze, { mode: 'survive', enemyCount: 7 });
       expect(useGameStore.getState().progressiveEnemyCount).toBe(7);
     });
 
     it('triggers a time-based spawn after intervalSec seconds', () => {
-      useGameStore.getState().startLevel(initialMaze, { enemyCount: 3 });
+      useGameStore.getState().startLevel(initialMaze, { mode: 'survive', enemyCount: 3 });
       expect(useGameStore.getState().progressiveEnemyCount).toBe(3);
       useGameStore.getState().tick(15);
       expect(useGameStore.getState().progressiveEnemyCount).toBe(4);
     });
 
     it('triggers a pickup-based spawn when a pickup is collected', () => {
-      useGameStore.getState().startLevel(initialMaze, { enemyCount: 3 });
+      useGameStore.getState().startLevel(initialMaze, { mode: 'survive', enemyCount: 3 });
       useGameStore.getState().pickup({ id: crypto.randomUUID(), x: 1, z: 1, type: 'time', value: 5 });
       // tick is required for the trigger to commit; pickupCount advances
       // synchronously, but the store's tick is what re-runs the trigger.
@@ -227,7 +233,7 @@ describe('gameStore', () => {
     });
 
     it('clamps progressiveEnemyCount to ENEMY_COUNT_MAX (10)', () => {
-      useGameStore.getState().startLevel(initialMaze, { enemyCount: 10 });
+      useGameStore.getState().startLevel(initialMaze, { mode: 'survive', enemyCount: 10 });
       // Even after multiple time intervals, count stays at 10.
       useGameStore.getState().tick(60);
       expect(useGameStore.getState().progressiveEnemyCount).toBe(10);

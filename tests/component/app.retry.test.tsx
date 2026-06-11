@@ -111,7 +111,12 @@ describe('App onRetry (F9)', () => {
 
     const s = useGameStore.getState();
     expect(s.currentMode).toBe('time-trial');
-    expect(s.currentEnemyCount).toBe(5);
+    // P2-5 FR-18: enemy spawner injection is hard-gated to survive mode.
+    // Time-trial + enemyCount: 5 → the gate clamps injected enemies to
+    // 0 (and the test maze declares no hand-crafted enemies), so the
+    // HUD count is 0. F9 (onRetry preserves options) is still proven
+    // by currentMode === 'time-trial' above.
+    expect(s.currentEnemyCount).toBe(0);
   });
 
   it('GameOverOverlay 重试 preserves survive-mode surviveSeconds + enemyCount (F9)', async () => {
@@ -164,7 +169,9 @@ describe('App onRetry (F9)', () => {
     const s = useGameStore.getState();
     // maze.rules.victory = 'reach-exit'
     expect(s.currentMode).toBe('reach-exit');
-    // 默认 enemyCount 3
-    expect(s.currentEnemyCount).toBe(3);
+    // P2-5 FR-18: reach-exit + no options → no enemy injection; the test
+    // maze has no hand-crafted enemies, so the HUD count is 0. (F9
+    // control case is still proven by currentMode === 'reach-exit'.)
+    expect(s.currentEnemyCount).toBe(0);
   });
 });

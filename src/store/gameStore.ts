@@ -133,12 +133,18 @@ export const useGameStore = create<GameState>((set, get) => ({
   startLevel: (maze, options) =>
     set((s) => {
       const surviveSeconds = normalizeSurviveSeconds(options?.surviveSeconds);
-      const initialEnemyCount = clampEnemyCount(options?.enemyCount);
+      // P2-5 FR-18: enemy spawner injection is hard-gated to survive mode. Other
+      // modes honor the user's enemyCount only as a UI hint — the store / engine
+      // sees 0 so the HUD and scene agree. FR-21: hand-crafted maze.enemies are
+      // design intent, not procedural injection, so they always count.
+      const mode: VictoryType = options?.mode ?? maze.rules.victory;
+      const requestedEnemyCount =
+        mode === 'survive' ? clampEnemyCount(options?.enemyCount) : 0;
       // F9: compute the actual count of enemies after spawner injection.
       // We call injectEnemySpawns here (mirroring Game.startLevel) so the
       // HUD can show the real number; the function is pure and produces
       // the same result for the same (maze, enemyCount) input.
-      const injectedEnemies = injectEnemySpawns(maze, initialEnemyCount);
+      const injectedEnemies = injectEnemySpawns(maze, requestedEnemyCount);
       const totalEnemyCount = maze.enemies.length + injectedEnemies.length;
       return {
         screen: 'playing',
@@ -158,7 +164,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         invulnerableUntil: 0,
         hitCount: 0,
         spawnSchedule: { ...(options?.spawnSchedule ?? SPAWN_SCHEDULE_DEFAULT) },
-        progressiveEnemyCount: initialEnemyCount,
+        progressiveEnemyCount: requestedEnemyCount,
         currentEnemyCount: totalEnemyCount,
         // F12: `lastSpawnAt: 0` means the first interval-based trigger fires
         // at elapsedTime === intervalSec (i.e. intervalSec seconds into the
