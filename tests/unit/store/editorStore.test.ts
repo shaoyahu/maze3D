@@ -592,6 +592,23 @@ describe('useEditorStore', () => {
       expect(path[2]).toEqual({ x: 3, z: 3 });
     });
 
+    it('addEnemyNode silently no-ops when the requested node is out of bounds (F7 guard)', () => {
+      // Regression (F7): the editor's `addEnemyNode` previously pushed
+      // any (x, z) onto the path verbatim, so a patrol node with
+      // x>=width or z>=depth or negative coords slipped into the
+      // saved level. `validateMaze` (post-F7) now rejects the saved
+      // JSON, but matching `removeEnemyNode` (line 432-440) and
+      // `placeWall` etc. with a silent-reject in the editor keeps the
+      // store from holding an obviously-invalid state between edits.
+      // Arrange — width=5, depth=4, so (99, -3) is OOB on both axes.
+      withEnemy();
+      // Act
+      useEditorStore.getState().addEnemyNode('e1', 99, -3);
+      // Assert — path unchanged from the original 2 nodes.
+      const path = useEditorStore.getState().level.enemies[0]!.path;
+      expect(path).toHaveLength(2);
+    });
+
     it('removeEnemyNode silently no-ops when only 2 nodes remain (cannot go below 2)', () => {
       // Arrange — path is exactly 2 nodes.
       withEnemy();

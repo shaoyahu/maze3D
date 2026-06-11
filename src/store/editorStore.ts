@@ -419,6 +419,17 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
 
     addEnemyNode: (enemyId, x, z) => {
       const { level } = get();
+      // F7: silently reject OOB patrol nodes. `validateMaze` (post-F7)
+      // would refuse to load the saved level, but matching
+      // `removeEnemyNode` (line 432-440) with a silent reject here
+      // keeps the store from holding an obviously-invalid path
+      // between edits. Unlike `moveEnemyNode` (which clamps — a
+      // different intent: drag-handler must produce a node somewhere
+      // on the canvas), add is a discrete click and an OOB click is
+      // a logic error, not a UX input.
+      if (x < 0 || z < 0 || x >= level.size.width || z >= level.size.depth) {
+        return;
+      }
       const nextEnemies = level.enemies.map((e) =>
         e.id === enemyId ? { ...e, path: [...e.path, { x, z }] } : e,
       );

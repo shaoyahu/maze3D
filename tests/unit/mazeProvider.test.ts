@@ -154,12 +154,17 @@ describe('JsonMazeProvider', () => {
   });
 
   it('parses a maze with a valid enemies array', async () => {
+    // The validMaze fixture's walls are [[0,1,0],[1,1,1],[0,1,0]] — only
+    // (0,0), (2,0), (0,2), (2,2) are walkable. Pre-F7, parseEnemies
+    // accepted any integer (x,z) on a path, including wall cells. The
+    // fixture used to spell out {x:1,z:1} etc.; post-F7 those land on
+    // walls, so the fixture walks the corners of the room instead.
     const maze = {
       ...validMaze,
       enemies: [
-        { id: 'e1', x: 0, z: 1, path: [{ x: 1, z: 1 }, { x: 2, z: 1 }] },
+        { id: 'e1', x: 0, z: 0, path: [{ x: 2, z: 0 }, { x: 0, z: 2 }] },
         {
-          id: 'e2', x: 2, z: 0, path: [{ x: 2, z: 1 }, { x: 1, z: 0 }], dwellTime: 0.5,
+          id: 'e2', x: 2, z: 2, path: [{ x: 0, z: 2 }, { x: 2, z: 0 }], dwellTime: 0.5,
         },
       ],
     };
@@ -167,7 +172,7 @@ describe('JsonMazeProvider', () => {
     const loaded = await provider.load('m1');
     expect(loaded.enemies).toHaveLength(2);
     expect(loaded.enemies[0].id).toBe('e1');
-    expect(loaded.enemies[0].path).toEqual([{ x: 1, z: 1 }, { x: 2, z: 1 }]);
+    expect(loaded.enemies[0].path).toEqual([{ x: 2, z: 0 }, { x: 0, z: 2 }]);
     expect(loaded.enemies[1].dwellTime).toBe(0.5);
   });
 
@@ -182,11 +187,14 @@ describe('JsonMazeProvider', () => {
   it('drops an enemy whose path has fewer than 2 nodes (and warns)', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
+      // Path nodes are on floor cells (corners) — see the "parses a
+      // maze with a valid enemies array" test for why (1,1) etc. no
+      // longer work post-F7 (z=1 is a wall row in this fixture).
       const maze = {
         ...validMaze,
         enemies: [
-          { id: 'bad', x: 0, z: 1, path: [{ x: 1, z: 1 }] }, // 1 node -> drop
-          { id: 'good', x: 0, z: 1, path: [{ x: 1, z: 1 }, { x: 2, z: 1 }] },
+          { id: 'bad', x: 0, z: 0, path: [{ x: 2, z: 0 }] }, // 1 node -> drop
+          { id: 'good', x: 0, z: 0, path: [{ x: 2, z: 0 }, { x: 0, z: 2 }] },
         ],
       };
       const provider = new JsonMazeProvider({ 'm1': maze });

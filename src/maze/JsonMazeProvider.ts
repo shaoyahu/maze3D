@@ -100,6 +100,11 @@ export function validateMaze(raw: unknown, id: string): MazeData {
   if (walls[exit.z as number][exit.x as number] === 1) {
     throw new LevelLoadError(`Maze '${id}': exit is on a wall`);
   }
+  // F6: the player would spawn on the exit cell, so `crossesExit`
+  // fires on tick 0 and `reachExit` records a 0-second victory.
+  if (start.x === exit.x && start.z === exit.z) {
+    throw new LevelLoadError(`Maze '${id}': start and exit are on the same cell`);
+  }
 
   const pickups = Array.isArray(m.pickups) ? m.pickups : [];
   const seenCells = new Set<string>();
@@ -160,7 +165,7 @@ export function validateMaze(raw: unknown, id: string): MazeData {
     throw new LevelLoadError(`Maze '${id}': invalid victory type`);
   }
 
-  const enemies = parseEnemies(m.enemies, id, width, depth);
+  const enemies = parseEnemies(m.enemies, id, width, depth, walls);
 
   return { ...m, pickups: normalizedPickups, enemies } as unknown as MazeData;
 }
@@ -168,11 +173,11 @@ export function validateMaze(raw: unknown, id: string): MazeData {
 // Returns [] when the field is missing or not an array, drops any enemy
 // whose path has fewer than 2 nodes (with a console.warn so a bad hand-
 // crafted level doesn't silently lose enemies at runtime), and otherwise
-// builds a strictly-typed EnemySpawn for each entry. Spawn x/z must be
-// in-bounds so the engine's enemy-vs-wall checks can rely on them; path
-// nodes are not bounds-checked here — patrol nodes are scene-level
-// concerns the engine validates separately.
-function parseEnemies(raw: unknown, id: string, width: number, depth: number): EnemySpawn[] {
+// builds a strictly-typed EnemySpawn for each entry. Spawn x/z and every
+// patrol-path node must be in-bounds and on a walkable cell — the engine
+// itself only checks spawn-vs-wall, so anything looser here would let
+// a node render outside the grid (F7).
+function parseEnemies(raw: unknown, id: string, width: number, depth: number, walls: CellType[][]): EnemySpawn[] {
   if (!Array.isArray(raw)) return [];
   const out: EnemySpawn[] = [];
   for (let i = 0; i < raw.length; i++) {
@@ -196,8 +201,16 @@ function parseEnemies(raw: unknown, id: string, width: number, depth: number): E
         throw new LevelLoadError(`Maze '${id}': enemy ${ee.id} path[${j}] must be an object`);
       }
       const nn = node as Record<string, unknown>;
-      requireNumber(nn, 'x', `${id}.enemies[${i}].path[${j}]`);
-      requireNumber(nn, 'z', `${id}.enemies[${i}].path[${j}]`);
+      // F7: requireNumber allowed {x:99,z:-2} and {x:1.5,z:1} to slip
+      // through, putting patrol nodes outside the grid or on a
+      // non-integer cell (breaking the floor(x/cs) agreement with the
+      // cell-center positioning). requireInBounds enforces integer +
+      // 0<=x<w, 0<=z<d; the walkability check rejects nodes that sit
+      // on a wall.
+      requireInBounds(nn, 'x', 'z', `${id}.enemies[${i}].path[${j}]`, width, depth);
+      if (walls[nn.z as number][nn.x as number] === 1) {
+        throw new LevelLoadError(`Maze '${id}': enemy ${ee.id} path[${j}] is on a wall`);
+      }
       path.push({ x: nn.x as number, z: nn.z as number });
     }
     if (path.length < 2) {
