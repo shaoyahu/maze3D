@@ -7,7 +7,6 @@ import {
   SPAWN_SCHEDULE_DEFAULT,
   SURVIVE_SECONDS_DEFAULT,
   SURVIVE_SECONDS_VALUES,
-  type Algorithm,
   type MazeSize,
   type Seed,
   type StartLevelOptions,
@@ -17,14 +16,14 @@ import {
 import { encodeSeed } from '../utils/seed';
 import { isStorageAvailable } from '../store/persist';
 import { useLevelStore } from '../store/levelStore';
+import { algorithmForMode } from '../maze/AlgorithmMazeProvider';
 
 export interface LevelDef { id: string; name: string; }
 
 // P2-3 procedural defaults. Algorithm is hidden from the player per roadmap
-// Q11 ("卡片=尺寸，算法玩家不感知"), so the random and specified-seed flows
-// both pick a fixed algorithm. Size 30 is the "medium" preset for the
-// specified-seed flow; the random flow uses 3 size cards.
-const PROCEDURAL_ALGORITHM: Algorithm = 'recursive-backtracker';
+// Q11 ("卡片=尺寸，算法玩家不感知"); it's selected from the chosen mode via
+// algorithmForMode(). Size 30 is the "medium" preset for the specified-seed
+// flow; the random flow uses 3 size cards.
 const SPECIFIED_DEFAULT_SIZE: MazeSize = 30;
 const PROCEDURAL_SIZES: readonly MazeSize[] = [15, 30, 50];
 const HEX_RE = /^[0-9a-f]{16}$/;
@@ -106,7 +105,7 @@ export function LevelSelect({
   };
 
   const startRandom = (size: MazeSize) => {
-    const seed: Seed = { algorithm: PROCEDURAL_ALGORITHM, size, mazeSeed: randomHexSeed() };
+    const seed: Seed = { algorithm: algorithmForMode(mode), size, mazeSeed: randomHexSeed() };
     onPick(encodeSeed(seed), buildOptions(seed));
   };
 
@@ -121,7 +120,7 @@ export function LevelSelect({
     setSeedError(null);
     localStorage.setItem(LAST_SEED_KEY, seedInput);
     const seed: Seed = {
-      algorithm: PROCEDURAL_ALGORITHM,
+      algorithm: algorithmForMode(mode),
       size: SPECIFIED_DEFAULT_SIZE,
       mazeSeed: seedInput,
     };
