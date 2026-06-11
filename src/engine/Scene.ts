@@ -149,28 +149,29 @@ export function buildScene(maze: MazeData, darkMode =false): SceneRefs {
     dir.intensity = p.dirIntensity;
     scene.fog = fog;
   };
-  applyPalette(LIGHT_PALETTE, null);
-
-  function setDarkMode(enabled: boolean) {
+  // F8: single source of truth for "is dark mode on?". setDarkMode(enabled)
+  // is now a one-liner that calls this helper with the LIVE argument, so
+  // toggling off after a dark-mode build actually reverts to LIGHT. The
+  // prior implementation branched on the closure-captured `darkMode`
+  // (buildScene's parameter) and re-applied DARK in that case.
+  // The initial paint also routes through here, so the build-time darkMode
+  // flag takes effect on frame 0 — no extra `setDarkMode(...)` call needed
+  // from the caller (Game.startLevel previously did call it, but that was
+  // only to mask the unconditional LIGHT apply on line 152).
+  const applyDarkMode = (enabled: boolean) => {
     if (enabled) {
       applyPalette(
         DARK_PALETTE,
         new THREE.FogExp2(DARK_PALETTE.bg, DARK_PALETTE.fogDensity),
       );
     } else {
-      // F4: apply the palette exactly once at scene build so startLevel does
-   // not have to call setDarkMode a second time. Pass the dark mode flag
-   // explicitly so this stays the single source of truth for the initial
-   // palette.
-   if (darkMode) {
-    applyPalette(
-     DARK_PALETTE,
-     new THREE.FogExp2(DARK_PALETTE.bg, DARK_PALETTE.fogDensity),
-    );
-   } else {
-    applyPalette(LIGHT_PALETTE, null);
-   }
+      applyPalette(LIGHT_PALETTE, null);
     }
+  };
+  applyDarkMode(darkMode);
+
+  function setDarkMode(enabled: boolean) {
+    applyDarkMode(enabled);
   }
 
   const cs = maze.cellSize;

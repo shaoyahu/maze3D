@@ -176,5 +176,38 @@ describe('buildScene', () => {
       const restoredBg = (refs.scene.background as THREE.Color).getHex();
       expect(restoredBg).toBe(lightBg);
     });
+
+    // F8: buildScene(darkMode=true) used to apply LIGHT unconditionally
+    // (line 152), so a player with dark mode enabled saw a bright scene on
+    // the first frame. setDarkMode(enabled) also branched on the closure-
+    // captured `darkMode` (buildScene's parameter) instead of the `enabled`
+    // argument, so toggling off after a dark-mode build re-applied DARK.
+    it('applies the DARK palette (fog included) at build time when darkMode=true', () => {
+      const refs = buildScene(maze, true);
+      expect(refs.scene.fog).toBeInstanceOf(THREE.FogExp2);
+      // Background must already be the DARK palette, not the LIGHT one.
+      const darkBg = (refs.scene.background as THREE.Color).getHex();
+      const lightRefs = buildScene(maze, false);
+      const lightBg = (lightRefs.scene.background as THREE.Color).getHex();
+      expect(darkBg).not.toBe(lightBg);
+    });
+
+    it('setDarkMode(false) after a dark-mode build reverts to LIGHT, not DARK (F8 closure-capture bug)', () => {
+      const refs = buildScene(maze, true);
+      // Toggle OFF. Closure-capture bug: with the broken implementation this
+      // re-applied DARK because the inner `if (darkMode)` saw `true` from
+      // buildScene's parameter. The fix must read `enabled`.
+      refs.setDarkMode(false);
+      expect(refs.scene.fog).toBeNull();
+      const lightRefs = buildScene(maze, false);
+      const lightBg = (lightRefs.scene.background as THREE.Color).getHex();
+      expect((refs.scene.background as THREE.Color).getHex()).toBe(lightBg);
+    });
+
+    it('setDarkMode(true) on a light-mode build switches to DARK and adds fog (F8 control case)', () => {
+      const refs = buildScene(maze, false);
+      refs.setDarkMode(true);
+      expect(refs.scene.fog).toBeInstanceOf(THREE.FogExp2);
+    });
   });
 });
