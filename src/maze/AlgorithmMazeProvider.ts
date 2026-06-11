@@ -3,7 +3,25 @@ import { generateRecursiveBacktracker } from './generators/recursiveBacktracker'
 import { generateKruskal } from './generators/kruskal';
 import { generatePrim } from './generators/prim';
 import { generateHuntAndKill } from './generators/huntAndKill';
-import type { Algorithm, MazeData, MazeProvider } from './types';
+import type { Algorithm, MazeData, MazeProvider, VictoryType } from './types';
+
+// P2-5 FR-17: the algorithm is an implementation detail; the player only
+// picks a mode. Returns a static mapping; the exhaustive switch keeps
+// it safe when new modes are added.
+export function algorithmForMode(mode: VictoryType): Algorithm {
+  switch (mode) {
+    case 'reach-exit':
+      return 'recursive-backtracker';
+    case 'time-trial':
+      return 'prim';
+    case 'survive':
+      return 'kruskal';
+    default: {
+      const _exhaustive: never = mode;
+      throw new Error(`AlgorithmMazeProvider.algorithmForMode: unhandled mode ${String(_exhaustive)}`);
+    }
+  }
+}
 
 // MazeProvider for procedurally generated mazes.
 //
