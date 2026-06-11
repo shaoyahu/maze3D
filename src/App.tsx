@@ -160,10 +160,16 @@ export function App() {
         </>
       )}
       {uiScreen === 'game' && gameScreen === 'game-over' && (
-        <GameOverOverlay onRetry={() => activeMaze && startLevel(activeMaze.id)} onQuit={quitToMenu} />
+        // F9: pass activeOptions so retry preserves the player's chosen
+        // mode / surviveSeconds / enemyCount / spawnSchedule. Without
+        // this, startLevel() falls back to maze.rules.victory = 'reach-exit'
+        // and the default 3-enemy count, making every retry silently
+        // revert the player's setup.
+        <GameOverOverlay onRetry={() => activeMaze && startLevel(activeMaze.id, activeOptions)} onQuit={quitToMenu} />
       )}
       {uiScreen === 'game' && gameScreen === 'win' && (
-        <WinOverlay onRetry={() => activeMaze && startLevel(activeMaze.id)} onQuit={quitToMenu} />
+        // F9: same fix for WinOverlay — both overlays share the bug.
+        <WinOverlay onRetry={() => activeMaze && startLevel(activeMaze.id, activeOptions)} onQuit={quitToMenu} />
       )}
       {uiScreen === 'menu' && (
         <MainMenu
