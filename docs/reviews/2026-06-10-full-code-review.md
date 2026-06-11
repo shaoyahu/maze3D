@@ -17,20 +17,20 @@
 | ID | 严重度 | 一句话 | 状态 | 修复日期 | 工作区 / 提交 |
 |---|---|---|---|---|---|
 | F1 | 致命（P0） | InvulnerableFlash wall-clock / game-time 单位错位 | ✅ **已修复** | 2026-06-10 | 工作区（未 commit） |
-| F2 | 致命（P0） | 敌人 `moveToward` 不查墙 — 追击穿墙 | ⏳ 未修 | — | — |
-| F3 | 致命（P0） | 编辑器退出对话框"取消"按钮语义反转 | ⏳ 未修 | — | — |
-| F4 | 严重（P1） | EditorPropertiesPanel re-sync effect 跨字段重置 in-flight 编辑 | ⏳ 未修 | — | — |
-| F5 | 严重（P1） | time pickup `value` 字段是死代码（survive 模式 pickup 看似无效果） | ⏳ 未修 | — | — |
-| F6 | 严重（P1） | JsonMazeProvider 允许 `start === exit` — 加载即 victory | ⏳ 未修 | — | — |
-| F7 | 严重（P1） | `parseEnemies` 不验证 path 节点 in-bounds | ⏳ 未修 | — | — |
-| F8 | 严重（P2） | `buildScene` / `setDarkMode` 闭包 darkMode 让初始 palette 与切换 OFF 行为都不对 | ⏳ 未修 | — | — |
-| F9 | 严重（P2） | Retry 按钮不传 options — mode / 敌人配置丢回默认 | ⏳ 未修 | — | — |
-| F10 | 中（P2） | `Game.setFov` 缺 `Number.isFinite` + 范围检查 | ⏳ 未修 | — | — |
+| F2 | 致命（P0） | 敌人 `moveToward` 不查墙 — 追击穿墙 | ✅ **已修复** | 2026-06-11 | 工作区（未 commit） |
+| F3 | 致命（P0） | 编辑器退出对话框"取消"按钮语义反转 | ✅ **已修复** | 2026-06-11 | 工作区（未 commit） |
+| F4 | 严重（P1） | EditorPropertiesPanel re-sync effect 跨字段重置 in-flight 编辑 | ✅ **已修复** | 2026-06-11 | 工作区（未 commit） |
+| F5 | 严重（P1） | time pickup `value` 字段是死代码（survive 模式 pickup 看似无效果） | ✅ **已修复** | 2026-06-11 | 工作区（未 commit） |
+| F6 | 严重（P1） | JsonMazeProvider 允许 `start === exit` — 加载即 victory | ✅ **已修复** | 2026-06-11 | 工作区（未 commit） |
+| F7 | 严重（P1） | `parseEnemies` 不验证 path 节点 in-bounds | ✅ **已修复** | 2026-06-11 | 工作区（未 commit） |
+| F8 | 严重（P2） | `buildScene` / `setDarkMode` 闭包 darkMode 让初始 palette 与切换 OFF 行为都不对 | ✅ **已修复** | 2026-06-11 | 工作区（未 commit） |
+| F9 | 严重（P2） | Retry 按钮不传 options — mode / 敌人配置丢回默认 | ✅ **已修复** | 2026-06-11 | 工作区（未 commit） |
+| F10 | 中（P2） | `Game.setFov` 缺 `Number.isFinite` + 范围检查 | ✅ **已修复** | 2026-06-11 | 工作区（未 commit） |
 
-**修复累计**: 1/10
-**P0 阻塞 ship 的剩余**: F2、F3 — 必须先修这两个
-**P1 功能 bug 剩余**: F4、F5、F6、F7
-**P2 UX / 边缘剩余**: F8、F9、F10
+**修复累计**: 10/10
+**P0 阻塞 ship 的剩余**: （已清空 — F2、F3 全部修复）
+**P1 功能 bug 剩余**: （已清空 — F4、F5、F6、F7 全部修复）
+**P2 UX / 边缘剩余**: （已清空 — F8、F9、F10 全部修复）
 
 ---
 
@@ -101,7 +101,7 @@
 
 ---
 
-### F2 · 致命 · 已验证
+### F2 · 致命 · ✅ 已修复（2026-06-11）
 **敌人 `moveToward` 不查墙网格 — chase 状态下直接穿墙**
 
 - 来源: A · C
@@ -117,7 +117,7 @@
 
 ---
 
-### F3 · 致命 · 已验证
+### F3 · 致命 · ✅ 已修复（2026-06-11）
 **编辑器退出对话框的"取消"按钮语义反转 — 取消 = 直接退出并丢草稿**
 
 - 来源: A · B
@@ -133,7 +133,7 @@
 
 ---
 
-### F4 · 严重 · 已验证
+### F4 · 严重 · ✅ 已修复（2026-06-11）
 **EditorPropertiesPanel 的 re-sync useEffect 跨字段重置 in-flight 编辑**
 
 - 来源: A · C
@@ -151,7 +151,7 @@
 
 ---
 
-### F5 · 严重 · 已验证
+### F5 · 严重 · ✅ 已修复（2026-06-11）
 **time 类型 pickup 的 `value` 字段是死代码 — `p.value` 永远不被读取**
 
 - 来源: A · C
@@ -171,7 +171,7 @@
 
 ---
 
-### F6 · 严重 · 已验证
+### F6 · 严重 · ✅ 已修复（2026-06-11）
 **JsonMazeProvider 允许 `start === exit` — 加载后立即 victory**
 
 - 来源: A · C
@@ -192,7 +192,7 @@
 
 ---
 
-### F7 · 严重 · 已验证
+### F7 · 严重 · ✅ 已修复（2026-06-11）
 **`parseEnemies` 不验证 path 节点的 in-bounds / integer / walkable — 敌人可走出网格或穿墙**
 
 - 来源: A · C
@@ -212,7 +212,7 @@
 
 ---
 
-### F8 · 严重 · 已验证
+### F8 · 严重 · ✅ 已修复（2026-06-11）
 **`buildScene` 与 `setDarkMode` 的闭包 darkMode 让初始 palette 与切换 OFF 行为都不对**
 
 - 来源: A · C
@@ -245,7 +245,7 @@
 
 ---
 
-### F9 · 严重 · 已验证
+### F9 · 严重 · ✅ 已修复（2026-06-11）
 **Retry 按钮不传 options — time-trial / survive / 敌人配置全部丢回默认**
 
 - 来源: A · C
@@ -261,7 +261,7 @@
 
 ---
 
-### F10 · 中 · 已验证
+### F10 · 中 · ✅ 已修复（2026-06-11）
 **`Game.setFov` 缺 `Number.isFinite` + 范围检查 — 坏 FOV 输入产生黑屏 / 奇点投影矩阵**
 
 - 来源: A · C
@@ -298,19 +298,19 @@
 
 **P0 — 阻塞 ship（修复前不应发布）**:
 - ✅ **F1**: InvulnerableFlash wall-clock vs game-time 单位错位 — 核心视觉契约（**已修复 2026-06-10**）
-- ⏳ **F2**: 敌人 chase 穿墙 — 核心玩法契约
-- ⏳ **F3**: 编辑器取消按钮语义反转 — 静默数据丢失
+- ✅ **F2**: 敌人 chase 穿墙 — 核心玩法契约（**已修复 2026-06-11**）
+- ✅ **F3**: 编辑器取消按钮语义反转 — 静默数据丢失（**已修复 2026-06-11**）
 
 **P1 — 用户可感知的功能 / 数据 bug**:
-- ⏳ **F4**: EditorPropertiesPanel 跨字段重置 — 编辑器"输完字才看到丢字"
-- ⏳ **F5**: time pickup value 死代码 — 隐性契约违反，survive 模式 pickup 失效
-- ⏳ **F6**: start === exit 允许 — 编辑器 / 导入关卡可零秒胜利
-- ⏳ **F7**: enemy path 节点无 bounds — 编辑器拖越界
+- ✅ **F4**: EditorPropertiesPanel 跨字段重置 — 编辑器"输完字才看到丢字"
+- ✅ **F5**: time pickup value 死代码 — 隐性契约违反，survive 模式 pickup 失效（**已修复 2026-06-11**）
+- ✅ **F6**: start === exit 允许 — 编辑器 / 导入关卡可零秒胜利（**已修复 2026-06-11**）
+- ✅ **F7**: enemy path 节点无 bounds — 编辑器拖越界（**已修复 2026-06-11**）
 
 **P2 — UX / 边缘场景，可后续增量清理**:
-- ⏳ **F8**: Scene setDarkMode 闭包分支 — 仅 dark mode 用户感知
-- ⏳ **F9**: Retry 丢 options — 每次 retry 变样
-- ⏳ **F10**: setFov 缺校验 — 仅损坏设置条目触发
+- ✅ **F8**: Scene setDarkMode 闭包分支 — 仅 dark mode 用户感知（**已修复 2026-06-11**）
+- ✅ **F9**: Retry 丢 options — 每次 retry 变样（**已修复 2026-06-11**）
+- ✅ **F10**: setFov 缺校验 — 仅损坏设置条目触发（**已修复 2026-06-11**）
 
 ---
 
@@ -348,12 +348,13 @@
 ## 6. 修复建议执行顺序
 
 ✅ 1. **F1**: InvulnerableFlash wall-clock 单位对齐 — **2026-06-10 已修复**（改动 4 文件：InvulnerableFlash.tsx / HealthBar.tsx / theme.css / hud.test.tsx）
-⏳ 2. **F2**: 敌人 move 走玩家同款 `Collision.resolveMove`（一行 patch）
-⏳ 3. **F3**: 对话框按钮三选一，或把"取消"分支改成 `return`
-⏳ 4. **F4**: EditorPropertiesPanel 拆 effect / 改 subscribe
-⏳ 5. **F5 + F8**: 共享设计点（survive 模式 pickup + Scene.buildScene 的 darkMode 入参用对）— 顺手在同一次重构里做
-⏳ 6. **F6 + F7**: JsonMazeProvider 加 `start !== exit` 检查 + 升级 `requireNumber` 为 `requireInBounds`（含 `walls[z][x] === 0` walkable 检查）
-⏳ 7. **F9**: App.tsx onRetry 加 `activeOptions` 参数（一行）
-⏳ 8. **F10**: setFov + settingsStore.sanitizeSettings 加 `Number.isFinite` + 范围 clamp
+✅ 2. **F2**: 敌人 move 走玩家同款 `Collision.resolveMove`（一行 patch）— **2026-06-11 已修复**（Enemy.moveToward 改用 `resolveMove` + WallGrid 闭包，"reached" 判定从 `step >= dist` 改为实际距离；改动 2 文件：Enemy.ts / Enemy.test.ts）
+✅ 3. **F3**: 对话框按钮三选一，或把"取消"分支改成 `return` — **2026-06-11 已修复**（handleExit 抽出 `DIRTY_EXIT_PROMPT` 常量 + 二选一 `confirm` + "取消"分支改 `return`；"保存并退出"由工具栏按钮负责；改动 2 文件：EditorPage.tsx / EditorPage.test.tsx）
+✅ 4. **F4**: EditorPropertiesPanel 拆 effect / 改 subscribe — **2026-06-11 已修复**（方案 A 最小：useEffect 依赖收紧为 `[level.id]`；改动 2 文件：EditorPropertiesPanel.tsx / EditorPropertiesPanel.test.tsx，新增 2 个回归测试）
+✅ 5. **F5**: time pickup 死代码 + survive 模式 pickup 无效 — **2026-06-11 已修复**（pickup 改用 `p.value > 0 ? p.value : rulesBonus`；survive 模式同笔 bonus 也加到 `currentSurviveSeconds`；`currentSurviveSeconds` 字段从 `SurviveSeconds` 字面量联合放宽为 `number` 以承载运行时累加，`startLevel` 处仍由 `normalizeSurviveSeconds` 守门；改动 2 文件：gameStore.ts / gameStore.test.ts，新增 3 个回归测试）
+✅ 5b. **F8**: Scene.buildScene darkMode 入参用对 — **2026-06-11 已修复**（提取私有 `applyDarkMode(enabled)` helper；line 152 改为 `applyDarkMode(darkMode)`，让 build-time 参数 frame-0 即生效；`setDarkMode` 改为单行 `applyDarkMode(enabled)` 转发，闭包捕获彻底消除；改动 1 源文件：Scene.ts；测试：1 文件 + 3 新 case 含 1 个 control case 验证旧路径仍正确，570/570 全绿）
+✅ 6. **F6 + F7**: JsonMazeProvider 加 `start !== exit` 检查 + 升级 `requireNumber` 为 `requireInBounds`（含 `walls[z][x] === 0` walkable 检查）— **2026-06-11 已修复**（F6 4 行 guard 放在 start/exit walls check 之后；F7 在 `parseEnemies` 内对 path 节点改用 `requireInBounds` + 显式 walkable check，更新 JSDoc，删 line 174 误导注释；编辑器 `addEnemyNode` 加 OOB silent-reject；改动 2 源文件：JsonMazeProvider.ts / editorStore.ts；测试：2 文件 + 7 个新 case；mazeProvider 旧 fixture 2 处 wall 节点改为 corner 节点，567/567 全绿）
+✅ 7. **F9**: App.tsx onRetry 加 `activeOptions` 参数 — **2026-06-11 已修复**（`GameOverOverlay` 与 `WinOverlay` 两个 `onRetry` 回调同时改成 `startLevel(activeMaze.id, activeOptions)`；改动 1 源文件：App.tsx（2 行 patch + 注释）；测试：1 新文件 `app.retry.test.tsx` + 4 case（time-trial / survive+surviveSeconds / WinOverlay 重玩 / 无 options control case），红绿循环确认（stash 后 3 failed / 1 passed，restore 后 4/4），574/574 全绿）
+✅ 8. **F10**: setFov 加 `clampFov` helper（`Number.isFinite` + [30, 120] clamp）— **2026-06-11 已修复**（提新常量 `FOV_MIN=30` / `FOV_MAX=120` / `FOV_DEFAULT=60` + 纯函数 `clampFov(degrees)` 暴露供单测；`setFov(degrees)` 改为先 `clampFov` 再写 `camera.fov` + `updateProjectionMatrix`；settingsStore 侧已经守门（`sanitizeSettings` + `isValidSetting` 都已带 `Number.isFinite` + 范围检查），无需重复加；改动 1 源文件：Game.ts；测试：1 新文件 `engine/game.test.ts` + 10 case（4 个 `clampFov` 单测 + 6 个 `setFov` 行为测试，含 NaN / ±Infinity / OOB / 0 值 / init 之前 no-op），红绿循环确认（stash 后 8 failed / 2 passed，restore 后 10/10），584/584 全绿）
 
-预计剩余工作量 ≈ 0.7 人天（多数为一两行 patch，F4 需要小重构）。
+**🎉 全量完成**：F1–F10 全部修复，2 个 P0 + 4 个 P1 + 4 个 P2（连带 F5 拆出的 F8）全清，剩余工作量 0 人天。
