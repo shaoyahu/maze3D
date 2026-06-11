@@ -50,3 +50,49 @@
 .health-bar--flashing {
   animation: health-bar-flash 0.5s linear;
 }
+
+/* P2-5 FR-1/FR-6: 主菜单用的半透明深色面板 (浅色 + 深色主题)。light + dark
+   主题各自的 --panel 已经在 :root 上声明了,这里只追加 select 控件的样式 +
+   主菜单按钮的 hover-lift。 */
+:root {
+  /* FR-6: 内联 SVG data URL,作为原生 <select> 的箭头图标(用 appearance:
+     none 隐藏原生外观后保留视觉提示)。base64-free URL-encoded 形式,
+     现代浏览器都支持,不需要额外资源。 */
+  --select-chevron: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'><path fill='%23f5f5f7' d='M1 1l5 5 5-5'/></svg>");
+}
+
+:root[data-theme="dark"] {
+  --select-chevron: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'><path fill='%23e0e0ea' d='M1 1l5 5 5-5'/></svg>");
+}
+
+.level-select-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 32px 6px 10px;
+  font-size: 14px;
+  font-family: inherit;
+  cursor: pointer;
+  /* 箭头用 CSS 变量注入,主题切换时跟着变。 */
+  background-image: var(--select-chevron);
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 12px 8px;
+}
+
+.level-select-select:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* FR-5: 主菜单按钮 hover 垂直上浮 2px + 背景变亮 + 150ms ease-out 过渡。 */
+.main-menu-button {
+  transition: transform 150ms ease-out, background 150ms ease-out;
+}
+.main-menu-button:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.1);
+}
