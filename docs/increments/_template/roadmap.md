@@ -10,10 +10,10 @@
 
 | 字段 | 值 |
 |---|---|
-| 活跃增量 | **P2-N/A：等待用户决策**（P2-2/3/4a/4b 全部完成；下一个增量待规划） |
-| 已完成 | P2-2 14/14 ✅ + P2-3 14/14 ✅ + P2-4a 16/16 ✅ + P2-4b 20/20 ✅ |
+| 活跃增量 | **P2-5: UI 改版 + 存活模式重平衡** 16/16 ✅ done (2026-06-11) |
+| 已完成 | P2-2 14/14 ✅ + P2-3 14/14 ✅ + P2-4a 16/16 ✅ + P2-4b 20/20 ✅ + **P2-5 16/16 ✅** |
 | 下一个任务 | **新 P2-N 增量待规划**（候选：音频 / 移动端 / 额外 pickup 子类型） |
-| 最后更新 | 2026-06-10 |
+| 最后更新 | 2026-06-11 |
 | 最近 commit | 见 `git log --oneline -1`（避免追尾，由 Claude 主动查） |
 
 **约束**：
@@ -43,6 +43,7 @@
 | P2-3 | 算法关卡（4 算法 × 3 尺寸 × time-trial） | P1 | — | Large | `docs/increments/procedural-modes/` | ✅ done (2026-06-08) |
 | P2-4a | 巡逻敌人 + survive mode | P2 | P2-3 | Large | `docs/increments/enemies-editor/` | ✅ done (2026-06-09) |
 | P2-4b | 关卡编辑器 | P2 | — | Large | `docs/increments/level-editor/` | ✅ done (2026-06-10) |
+| P2-5 | UI 改版 + 存活模式重平衡 (MainMenu 3D + LevelSelect 重设计 + 敌人按模式硬门 + algorithmForMode) | P1 | — | Large | `docs/increments/p2-5-ui-and-rebalance/` | ✅ done (2026-06-11) |
 
 > **P2-1 已删除**：原计划"多关卡 JSON（中/大尺寸）"被 P2-3 算法生成取代。MVP 保留 `level-small.json` 作为"教学关"，`level-tiny.json` 留 E2E。
 > **P2-4 拆分**：原"敌人 + 编辑器"X-Large 拆成 P2-4a（敌人+survive mode，依赖 P2-3）和 P2-4b（编辑器，独立）。
@@ -182,6 +183,33 @@
 > 进度：20/20
 > 关键模块走 TDD（任务 9 状态机、4 history、5 import/export、10 validation、7 levelStore 持久化），其它快速完成。
 > 依赖图：1→2→3→4→5（基础）→6→7→8（provider）→9（state）→10（validation）→11/12/13/14（UI 4 件）→15（组合）→16/17/18（接入）→19（E2E）。
+
+### P2-5: UI 改版 + 存活模式重平衡（Large）
+
+> 范围：MainMenu 挂载 Three.js r127 场景（低多边形迷宫 + 慢转 + reduced-motion 静态帧 + WebGL fallback 路径）+ 半透明 panel (`backdrop-filter: blur(8px)` + `rgba(0,0,0,0.35)`) + hover-lift 按钮 (CSS `transform: translateY(-2px)`) + `Button.hoverLift` 可选 prop + LevelSelect 改两列 grid (`gridTemplateColumns: 'minmax(280px, 360px) 1fr'`,720px 以下塌成 1 列) + mode/survive-seconds/enemy-count/size 全部换原生 `<select>` + progressive / enemy 控件 / survive-seconds 控件按 `mode === 'survive'` 硬门 + seed 输入挪到 进阶 ▾ 折叠 + `algorithmForMode(mode)` 导出（穷尽性 switch + `never`）替代 `PROCEDURAL_ALGORITHM` 常量 (FR-17) + `gameStore.startLevel` 硬关 `requestedEnemyCount = mode === 'survive' ? clamp(...) : 0` (FR-18/20/21) + `Game.startLevel` 把 `injectEnemySpawns` 调用包在 `mode === 'survive'` 条件里 (FR-18/19/21) + `EnemyCounter` 在非 survive 模式返回 `null` (FR-22) + 手工 `MazeData.enemies` 在任何模式都生成（关卡编辑器用户摆的敌人不受硬门影响,FR-21）+ theme.css 注入 `--select-chevron` + select 样式 + `.main-menu-button` hover-lift + 旧 P2-3 seed id（用 `'recursive-backtracker'` 编码的）仍能解出原算法（seed 编码自带算法字段,只影响新生成的随机关卡）。
+
+| # | 任务 | 工作量 | 状态 |
+|---|---|---|---|
+| 1 | 升级 roadmap.md（**本任务**） | XS | [x] |
+| 2 | 重写 P2-5 spec.md（22 个 FR + 3 项用户可见改动合成一份 spec） | XS | [x] |
+| 3 | `maze/AlgorithmMazeProvider.ts` 新增 `algorithmForMode(mode: VictoryType): Algorithm` 导出（switch + 穷尽性 `never`）(FR-17) | S | [x] |
+| 4 | `tests/unit/maze/algorithmForMode.test.ts` 3 case + 1 穷尽性 case | S | [x] |
+| 5 | `ui/LevelSelect.tsx` 删 `PROCEDURAL_ALGORITHM` 常量；`startRandom` / `startSpecified` 改用 `algorithmForMode(mode)` (FR-17) | S | [x] |
+| 6 | `store/gameStore.ts` `startLevel` 内 `requestedEnemyCount = mode === 'survive' ? clampEnemyCount(...) : 0` (FR-18/FR-20/FR-21) + `tests/unit/gameStore.rebalance.test.ts` 5 case (3 clamp + 1 hand-crafted + 1 schedule) | S | [x] |
+| 7 | `engine/Game.ts` `startLevel` 把 `injectEnemySpawns` 调用包在 `mode === 'survive'` 条件里 (FR-18/FR-19/FR-21) + `tests/unit/engine/game.rebalance.test.ts` spy 回归哨 | S | [x] |
+| 8 | `ui/components/EnemyCounter.tsx` 非 survive 模式返回 `null`（订阅 `currentMode + currentEnemyCount` 双字段）(FR-22) + `tests/component/enemyCounter.rebalance.test.tsx` 4 case (2 hide + 2 render) | S | [x] |
+| 9 | 阶段 2 整体回归:跑全 `tests/unit` + `tests/component` 套件 (FR-22 兼容性 + FR-21 hand-crafted 契约) | XS | [x] |
+| 10 | `styles/theme.css` 新增 `:root --select-chevron`（light + dark）+ `.level-select-select` + `.main-menu-button` hover-lift (FR-1/FR-5/FR-6) | S | [x] |
+| 11 | `ui/components/Button.tsx` 新增 `hoverLift?: boolean` 可选 prop (FR-5) | XS | [x] |
+| 12 | `ui/LevelSelect.tsx` 改两列 grid + 原生 select + 进阶折叠 + 按模式显隐（mode/survive-seconds/enemy-count/size 全 `<select>`,progressive 与 enemy 控件包在 `mode === 'survive'` 条件里,seed 输入挪到 进阶 ▾）(FR-7..FR-16) | M | [x] |
+| 13 | `tests/component/levelSelect.uiRevamp.test.tsx` 9+ case（grid / selects / mode-gated / advanced fold / algorithmForMode 编码） | M | [x] |
+| 14 | `ui/MainMenuScene.ts` Three.js r127 场景封装（renderer / camera / scene / rAF 慢转,`prefers-reduced-motion` 时只渲染一帧,`dispose()` 释放所有资源,WebGL 不可用抛错回退到 CSS 渐变）(FR-1/FR-2/FR-3) | M | [x] |
+| 15 | `ui/MainMenu.tsx` useEffect 挂载 `MainMenuScene` + 半透明 panel + hover-lift 按钮 + WebGL throw 时回退到 CSS 渐变 (FR-1/FR-4/FR-5) + `tests/component/mainMenu.revamp.test.tsx` 5 case（mount / dispose / fallback / 按钮点击） | M | [x] |
+| 16 | E2E `tests/e2e/ui-revamp.spec.ts` 5 case（scene / 2-col / mode-gated / advanced fold / placeholder）+ E2E `tests/e2e/survive-branching.spec.ts` 2 case（survive kruskal + enemy counter 可见 / reach-exit counter 隐藏） + 兼容更新 5 个 E2E spec（survive / time-trial / procedural / pause-resume / persistence 走 select 路径）+ 兼容 `tests/component/hud.test.tsx` opt-in `currentMode: 'survive'` + 修 `public/levels/level-tiny-enemy.json` patrol path 节点 (1,0)→(2,1) 保证巡逻连通 + 写 spec/plan/review 三件套到 `docs/increments/p2-5-ui-and-rebalance/` + 文档同步 | M | [x] |
+
+> 进度：16/16
+> 关键模块走 TDD（任务 4 algorithmForMode 穷尽性 switch、6 gameStore clamp 5 case、7 Game.startLevel spy 回归哨、8 EnemyCounter 4 case、13 LevelSelect UI 9+ case、15 MainMenu 5 case、16 E2E 7 case）,其它快速完成（任务 1/2/3/5/9/10/11/12/14）。
+> 依赖图：1→2/3（设计）→4（algorithmForMode 单测）→5（LevelSelect 接入）;6→7→8（敌人硬门三端:store / engine / 组件）→9（回归）;10→11（CSS + Button）→12→13（LevelSelect UI + 测试）;14→15（MainMenuScene + MainMenu + 测试）;5/9/13/15→16（E2E + 兼容 + 三件套 + 文档同步）。
 
 ---
 

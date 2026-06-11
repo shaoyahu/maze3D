@@ -15,7 +15,10 @@ test.describe('procedural levels (P2-3) + P2-5 UI revamp', () => {
   });
 
   test('LevelSelect exposes a 迷宫尺寸 dropdown with three sizes (15/30/50)', async ({ page }) => {
-    await expect(page.getByText('随机关卡')).toBeVisible();
+    // P2-5: '<h3>随机关卡</h3>' and '<button>开始 ... 随机关卡</button>'
+    // both contain the substring, so use getByRole('heading', ...) to
+    // disambiguate.
+    await expect(page.getByRole('heading', { name: '随机关卡' })).toBeVisible();
     const sizeSelect = page.getByTestId('size-select');
     await expect(sizeSelect).toBeVisible();
     // FR-16: 15/30/50 are the three procedurally-supported sizes.
@@ -42,7 +45,9 @@ test.describe('procedural levels (P2-3) + P2-5 UI revamp', () => {
     // FR-13: seed input lives behind 进阶 fold — first click to expand.
     await page.getByTestId('advanced-toggle').click();
     await page.getByLabel(/seed/i).fill('0123456789abcdef');
-    await page.getByRole('button', { name: '开始' }).click();
+    // P2-5: '开始 30×30 随机关卡' also contains '开始' as a prefix, so
+    // scope to the seed section to avoid strict-mode ambiguity.
+    await page.getByTestId('specified-seed-section').getByRole('button', { name: '开始' }).click();
     const canvas = page.locator('canvas');
     await expect(canvas).toBeVisible();
     await expect(page.getByRole('timer')).toBeVisible({ timeout: 5_000 });
@@ -51,9 +56,10 @@ test.describe('procedural levels (P2-3) + P2-5 UI revamp', () => {
   test('指定种子关卡 with a non-hex seed does NOT start a game', async ({ page }) => {
     await page.getByTestId('advanced-toggle').click();
     await page.getByLabel(/seed/i).fill('not-hex');
-    await page.getByRole('button', { name: '开始' }).click();
+    // P2-5: scope to the seed section (see note above).
+    await page.getByTestId('specified-seed-section').getByRole('button', { name: '开始' }).click();
     // We should still be on the level-select screen (no canvas rendered).
-    await expect(page.getByText('随机关卡')).toBeVisible();
+    await expect(page.getByRole('heading', { name: '随机关卡' })).toBeVisible();
     await expect(page.locator('canvas')).toHaveCount(0);
   });
 });

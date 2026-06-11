@@ -16,6 +16,7 @@
       "id": "test-enemy",
       "x": 1,
       "z": 1,
+      "dwellTime": 5,
       "path": [
         { "x": 1, "z": 1 },
         { "x": 2, "z": 1 }
