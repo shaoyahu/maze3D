@@ -1,3 +1,4 @@
+import { resolveMove, type WallGrid } from '../engine/Collision';
 import type { EnemySpawn, EnemyState } from '../maze/types';
 
 export const ENEMY_DWELL_TIME_DEFAULT = 1.0;
@@ -40,8 +41,14 @@ export class Enemy {
   dwellTimer = 0;
   alertTimer = 0;
   heading: Vec2;
+  // F2 (P0): wall-aware movement. The grid is captured at construction;
+  // Enemy is recreated per level (see Game.startLevel) so the closure over
+  // the active maze stays valid for the enemy's lifetime. The grid's `get`
+  // is a live read into the active maze's wall array — no per-frame wiring
+  // needed in Game.update.
+  private readonly grid: WallGrid;
 
-  constructor(spawn: EnemySpawn, options: EnemyOptions) {
+  constructor(spawn: EnemySpawn, options: EnemyOptions, grid: WallGrid) {
     if (spawn.path.length < 2) {
       throw new Error(
         `Enemy ${spawn.id}: path must have at least 2 nodes (got ${spawn.path.length})`,
@@ -58,6 +65,7 @@ export class Enemy {
     this.chaseSpeed = options.playerSpeed * options.chaseMultiplier;
     this.currentTarget = 0;
     this.heading = headingToward(this.position, this.path[0]);
+    this.grid = grid;
   }
 
   update(dt: number, player: EnemyPlayerRef): void {
@@ -123,11 +131,29 @@ export class Enemy {
     const dist = Math.hypot(dx, dz);
     if (dist < ARRIVAL_EPSILON) return true;
     const step = Math.min(stepDist, dist);
-    this.position.x += (dx / dist) * step;
-    this.position.z += (dz / dist) * step;
+    // F2 (P0): wall-aware stepping via Collision.resolveMove. The pre-fix
+    // code added the unit vector scaled by `step` directly to the position,
+    // so a 1.6m wall between the enemy and its target vanished within a
+    // second of chase. We now reuse the same per-axis try-move the player
+    // uses, which stops the enemy at the wall (and lets the unblocked
+    // axis slide along it, matching the player's behavior).
+    const next = resolveMove(
+      { x: this.position.x, z: this.position.z, r: ENEMY_RADIUS },
+      { dx: (dx / dist) * step, dz: (dz / dist) * step },
+      this.grid,
+    );
+    this.position.x = next.x;
+    this.position.z = next.z;
     this.heading.x = dx / dist;
     this.heading.z = dz / dist;
-    return step >= dist;
+    // F2 (P0): "reached" is now "actually close to target", not "had a big
+    // enough step budget this frame". The pre-fix `step >= dist` check
+    // returned true for any frame where stepDist exceeded the target
+    // distance, even when a wall blocked the move — which would loop the
+    // patrol into an instant dwell at the spawn cell. With wall-aware
+    // stepping, a blocked target is never "reached" and the enemy stays
+    // in patrol/chase from its blocked position until the path clears.
+    return Math.hypot(target.x - this.position.x, target.z - this.position.z) < ARRIVAL_EPSILON;
   }
 
   private enterDwell(): void {

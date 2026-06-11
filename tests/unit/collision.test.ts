@@ -90,18 +90,34 @@ describe('playerVsEnemy', () => {
   });
 
   it('reflects an enemy that has moved along its facing direction (cross-node)', () => {
-    // Enemy spawned at (0,0) patrols toward (2,0). With patrolSpeed=2
-    // (playerSpeed=10/6 * 0.6, but use 2 for a clean step), one tick of
-    // 0.5s moves the enemy to (1, 0).
+    // F2 (P0): the enemy constructor now takes a WallGrid (for wall-aware
+    // moveToward). The top-of-file `grid` has a wall perimeter, which
+    // would trap the enemy at (0, 0). The test's actual subject is
+    // patrol movement + playerVsEnemy distance math, NOT wall collision
+    // (covered by tests/unit/entities/Enemy.test.ts > "wall-aware
+    // movement"). Use a 100x100 open grid so moveToward isn't blocked
+    // by an unrelated boundary.
+    const openGrid: WallGrid = {
+      width: 100,
+      depth: 100,
+      cellSize: 1,
+      get: () => 0,
+    };
+    // Enemy spawned at (0.5, 0.5) (cell-center) patrols toward (2.5, 0.5).
+    // The +0.5 shift off the corner keeps the enemy's ENEMY_RADIUS=0.35
+    // circle out of the negative cell index (which collidesAt treats as
+    // a wall — pre-fix the enemy was pinned at the corner). With
+    // patrolSpeed=2 and dt=0.5, one tick moves the enemy 1m to (1.5, 0.5).
     const enemy = new Enemy(
-      { id: 'e1', x: 0, z: 0, path: [{ x: 2, z: 0 }, { x: 2, z: 2 }] },
+      { id: 'e1', x: 0.5, z: 0.5, path: [{ x: 2.5, z: 0.5 }, { x: 2.5, z: 2.5 }] },
       { playerSpeed: 2 / 0.6, chaseMultiplier: 1.5 },
+      openGrid,
     );
     enemy.update(0.5, { position: { x: 1000, z: 1000 } });
-    expect(enemy.position.x).toBeCloseTo(1);
-    // Player at (1, 0) — same cell as the enemy. Sum of radii 0.55.
+    expect(enemy.position.x).toBeCloseTo(1.5);
+    // Player at (1.5, 0.5) — same position as the enemy. Sum of radii 0.55.
     const hit = playerVsEnemy(
-      { x: 1, z: 0 },
+      { x: 1.5, z: 0.5 },
       playerRadius,
       { x: enemy.position.x, z: enemy.position.z, r: enemyRadius },
     );
