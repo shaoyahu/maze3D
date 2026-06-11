@@ -72,6 +72,22 @@ export interface GameBridge {
   onEnemyContact: (damage: number) => void;
 }
 
+// F10: clampFov — single source of truth for "is this a safe FOV value
+// for the perspective camera?". settingsStore.sanitizeSettings /
+// isValidSetting use the same [30, 120] window, but the runtime path
+// (Game.setFov, called from GameCanvas's settings subscriber) is the last
+// line of defense. NaN / ±Infinity collapse to 60 (the engine default in
+// createCamera) instead of poisoning camera.fov → projectionMatrix.
+export const FOV_MIN = 30;
+export const FOV_MAX = 120;
+export const FOV_DEFAULT = 60;
+export function clampFov(degrees: number): number {
+  if (!Number.isFinite(degrees)) return FOV_DEFAULT;
+  if (degrees < FOV_MIN) return FOV_MIN;
+  if (degrees > FOV_MAX) return FOV_MAX;
+  return degrees;
+}
+
 export class Game {
   private renderer?: THREE.WebGLRenderer;
   private camera?: THREE.PerspectiveCamera;
@@ -148,7 +164,16 @@ export class Game {
 
   setFov(degrees: number) {
     if (!this.camera) return;
-    this.camera.fov = degrees;
+    // F10: clamp + Number.isFinite guard. settingsStore.sanitizeSettings
+    // and isValidSetting already reject out-of-range / NaN on load + set,
+    // so this path normally receives a clean [30, 120] number. The guard
+    // here is the last line of defense: a stray non-finite value
+    // (corrupted localStorage, devtools injection, future migration bug)
+    // used to propagate straight into camera.fov and then into
+    // projectionMatrix, breaking rendering until reload. clampFov falls
+    // back to 60 (the default) on NaN / ±Infinity.
+    const safe = clampFov(degrees);
+    this.camera.fov = safe;
     this.camera.updateProjectionMatrix();
   }
 
@@ -226,7 +251,7 @@ export class Game {
         z: spawn.z * cs + cs / 2,
         path: spawn.path.map((p) => ({ x: p.x * cs + cs / 2, z: p.z * cs + cs / 2 })),
       };
-      return new Enemy(meterSpawn, { playerSpeed: this.player!.speed, chaseMultiplier });
+      return new Enemy(meterSpawn, { playerSpeed: this.player!.speed, chaseMultiplier }, _grid);
     });
     // Discard any mouse delta that accumulated between pointer-lock acquire
     // and the first update tick (spurious browser events, page-focus events,
