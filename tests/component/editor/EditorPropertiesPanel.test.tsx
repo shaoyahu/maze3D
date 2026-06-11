@@ -126,6 +126,52 @@ describe('EditorPropertiesPanel (P2-4b #12)', () => {
     expect(size).toEqual({ width: 12, depth: 7 });
   });
 
+  it('committing one field does not clobber an in-flight edit in another field (F4 regression)', () => {
+    // Regression (F4): the LevelMetadataForm re-sync useEffect used to
+    // depend on `level.rules` / `level.size`, so committing width (which
+    // builds a new rules object) re-ran the effect and reset the
+    // still-in-flight initialTime local state back to the store value.
+    // Both edits must land.
+    render(<EditorPropertiesPanel />);
+    act(() => {
+      fireEvent.change(screen.getByTestId('meta-width'), { target: { value: '12' } });
+      fireEvent.change(screen.getByTestId('meta-initial-time'), { target: { value: '90' } });
+    });
+    act(() => vi.advanceTimersByTime(300));
+    const state = useEditorStore.getState().level;
+    expect(state.size.width).toBe(12);
+    expect(state.rules.initialTime).toBe(90);
+  });
+
+  it('LevelMetadataForm re-syncs all fields when a new level is loaded (F4 still syncs on identity change)', () => {
+    // Counterpart to the F4 regression: we intentionally KEEP the sync
+    // behavior for level identity changes, so loading a different level
+    // (different id) must repopulate the form with the new values.
+    const { rerender } = render(<EditorPropertiesPanel />);
+    // User edits width on the first level.
+    act(() => {
+      fireEvent.change(screen.getByTestId('meta-width'), { target: { value: '12' } });
+    });
+    // Load a new level via the store.
+    act(() => {
+      useEditorStore.setState({
+        level: makeMaze({
+          id: 'other-level',
+          name: 'Other',
+          size: { width: 9, depth: 8 },
+          rules: { initialTime: 45, maxHealth: 5, victory: 'time-trial', timeOnPickup: 3 },
+        }),
+      });
+    });
+    rerender(<EditorPropertiesPanel />);
+    expect((screen.getByTestId('meta-name') as HTMLInputElement).value).toBe('Other');
+    expect((screen.getByTestId('meta-width') as HTMLInputElement).value).toBe('9');
+    expect((screen.getByTestId('meta-depth') as HTMLInputElement).value).toBe('8');
+    expect((screen.getByTestId('meta-initial-time') as HTMLInputElement).value).toBe('45');
+    expect((screen.getByTestId('meta-max-health') as HTMLInputElement).value).toBe('5');
+    expect((screen.getByTestId('meta-time-on-pickup') as HTMLInputElement).value).toBe('3');
+  });
+
   it('change of victory radio calls updateRule with the new value', () => {
     render(<EditorPropertiesPanel />);
     fireEvent.click(screen.getByTestId('meta-victory-time-trial'));

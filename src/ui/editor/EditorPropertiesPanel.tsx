@@ -70,6 +70,13 @@ function LevelMetadataForm({ level }: { level: MazeData }) {
 
   // Re-sync local state when the store's level identity changes (e.g.
   // `newLevel` was called) so the form shows the new values.
+  //
+  // Depend ONLY on `level.id`. Including `level.rules`, `level.size`, etc.
+  // would re-run this effect on every debounced commit within the same
+  // level, resetting sibling fields' in-flight local edits (F4: typing
+  // "90" into initialTime is silently reverted to 60 once width's 300ms
+  // debounce fires and bumps the rules reference). Same-level patches from
+  // outside (undo, import) are intentionally not re-synced into the form.
   useEffect(() => {
     setName(level.name);
     setWidth(level.size.width);
@@ -78,7 +85,8 @@ function LevelMetadataForm({ level }: { level: MazeData }) {
     setMaxHealth(level.rules.maxHealth);
     setTimeOnPickup(level.rules.timeOnPickup);
     setVictory(level.rules.victory);
-  }, [level.id, level.name, level.size.width, level.size.depth, level.rules]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: only sync on level identity change (F4)
+  }, [level.id]);
 
   // Read sibling values from the store at fire time, not from the closure:
   // each debounced commit is a separate useEffect, so captures of
