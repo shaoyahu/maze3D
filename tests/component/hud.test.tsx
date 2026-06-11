@@ -46,7 +46,7 @@ describe('HUD', () => {
       // not progressiveEnemyCount (the spawn-event tally from the
       // scheduler). The two diverge: progressive spawn can fire without
       // any new enemy mesh appearing in the scene.
-      useGameStore.setState({ currentEnemyCount: 4 });
+      useGameStore.setState({ currentMode: 'survive', currentEnemyCount: 4 });
       render(<HUD />);
       expect(screen.getByTestId('enemy-counter').textContent).toContain('敌人 4 / 10');
     });

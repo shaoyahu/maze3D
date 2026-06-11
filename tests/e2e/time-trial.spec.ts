@@ -1,15 +1,17 @@
 import { test, expect } from '@playwright/test';
 
-// P2-4a FR-18 (P2-3 deferred): time-trial mode forces a 180s budget and
-// the existing tick path triggers game-over at 0. The default LevelSelect
-// mode is time-trial, so the test only needs to click a random card.
+// P2-4a FR-18: time-trial mode forces a 180s budget and the existing
+// tick path triggers game-over at 0. The default LevelSelect mode is
+// time-trial, so the test only needs to pick a size and click the
+// random card. P2-5 FR-16: the size is now a dropdown.
 test('time-trial 180s 超时 triggers game-over (P2-4a)', async ({ page }) => {
   await page.clock.install();
   await page.goto('/');
   await page.evaluate(() => localStorage.clear());
   await page.reload();
-  await page.getByRole('button', { name: '开始' }).click();
-  await page.getByRole('button', { name: '15×15' }).click();
+  await page.getByTestId('main-menu-start').click();
+  await page.getByTestId('size-select').selectOption('15');
+  await page.getByRole('button', { name: /15×15 随机关卡/ }).click();
   await page.clock.fastForward(180_000);
   await expect(page.getByText('时间到！')).toBeVisible({ timeout: 5_000 });
 });
@@ -22,8 +24,9 @@ test('WinOverlay shows the elapsed time in mm:ss for a time-trial run', async ({
   await page.goto('/');
   await page.evaluate(() => localStorage.clear());
   await page.reload();
-  await page.getByRole('button', { name: '开始' }).click();
-  await page.getByRole('button', { name: '15×15' }).click();
+  await page.getByTestId('main-menu-start').click();
+  await page.getByTestId('size-select').selectOption('15');
+  await page.getByRole('button', { name: /15×15 随机关卡/ }).click();
   // 25s into a time-trial; the engine's cross-exit check + reachExit()
   // flow (we don't actually walk — see note below) is what the spec
   // cares about. For a more realistic path, this could be replaced by

@@ -1,9 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import * as enemySpawner from '../../../src/maze/enemySpawner';
 import { Game, type GameBridge } from '../../../src/engine/Game';
-import type { MazeData } from '../../../src/maze/types';
-
-const fakeCanvas = {} as HTMLCanvasElement;
 
 const bridge: GameBridge = {
   onTick: () => {},
@@ -19,21 +16,6 @@ const bridge: GameBridge = {
   onUseItem: () => {},
   onEnemyContact: () => {},
 };
-
-function makeMaze(): MazeData {
-  return {
-    id: 'test-1',
-    name: 'test',
-    size: { width: 15, depth: 15 },
-    cellSize: 2,
-    start: { x: 0, z: 0 },
-    exit: { x: 14, z: 14 },
-    walls: Array.from({ length: 15 }, () => new Array(15).fill(0)),
-    pickups: [],
-    rules: { initialTime: 30, maxHealth: 3, victory: 'reach-exit', timeOnPickup: 15 },
-    enemies: [],
-  };
-}
 
 describe('Game.startLevel P2-5 rebalance', () => {
   it('does NOT call injectEnemySpawns in non-survive mode (FR-18/FR-19)', () => {
