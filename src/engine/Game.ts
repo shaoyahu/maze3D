@@ -217,11 +217,16 @@ export class Game {
     // when currentMode === 'survive', but storing it is harmless and
     // avoids a special case in UI consumers).
     this.currentSurviveSeconds = normalizeSurviveSeconds(options?.surviveSeconds);
-    // P2-4a: inject enemy spawns into the maze based on enemyCount,
-    // appending to any pre-existing enemies (so a hand-crafted level
-    // JSON's explicit enemies aren't lost). The result is a new maze
-    // object — we don't mutate the caller's reference.
-    const generated = injectEnemySpawns(maze, options?.enemyCount);
+    // P2-5 FR-18/FR-19/FR-21: enemy injection is hard-gated to survive mode.
+    // Hand-crafted maze.enemies (FR-21) flow through unchanged in any mode.
+    // Passing count=0 to injectEnemySpawns is a documented no-op (it returns []),
+    // so the scene mesh count is correct in non-survive mode without a separate
+    // code path. This mirrors the gate in gameStore.startLevel — both call sites
+    // are updated together to keep the HUD count and the scene count in sync.
+    const requestedEnemyCount = this.currentMode === 'survive'
+      ? options?.enemyCount
+      : 0;
+    const generated = injectEnemySpawns(maze, requestedEnemyCount);
     const injectedMaze: MazeData = { ...maze, enemies: [...maze.enemies, ...generated] };
     // F4: buildScene applies the palette exactly once based on the dark
     // mode flag, so the follow-up setDarkMode() (which would re-run
