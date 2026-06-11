@@ -3,6 +3,7 @@ import type { MutableRefObject } from 'react';
 import { memo, useEffect, useState } from 'react';
 import type { Game } from '../../engine/Game';
 import type { MazeData } from '../../maze/types';
+import { useGameStore } from '../../store/gameStore';
 import { PICKUP_COLORS } from '../../entities/Pickup';
 
 // P2-2 F1: per-type pickup colors are derived from PICKUP_COLORS so the
@@ -157,10 +158,17 @@ export function Minimap({ maze, gameRef }: MinimapProps) {
 // render so the source of truth stays in the engine.
 function useTickRef(gameRef: MutableRefObject<Game | null>, intervalMs: number): void {
  const [, setTick] = useState(0);
+ // F-L13: gate the polling interval on the game screen. Without this
+ // subscription, setInterval keeps firing on pause / game-over / win
+ // / menu screens and re-renders the minimap against a stale player
+ // position. Including `screen` in deps re-runs the effect: when
+ // playing → start interval; otherwise → cleanup the running one.
+ const screen = useGameStore((s) => s.screen);
  useEffect(() => {
+ if (screen !== 'playing') return;
  const id = setInterval(() => {
  if (gameRef.current?.getPlayerPosition()) setTick((t) => t +1);
  }, intervalMs);
  return () => clearInterval(id);
- }, [gameRef, intervalMs]);
+ }, [gameRef, intervalMs, screen]);
 }

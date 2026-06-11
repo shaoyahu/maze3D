@@ -113,6 +113,8 @@ export interface EditorStoreState {
 
   // selection-driven delete (push history)
   deleteSelected: () => void;
+  // F-N1: commit current level to history (called from path-node input blur)
+  commitEnemyPath: () => void;
 
   // history
   undo: () => void;
@@ -406,6 +408,10 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
     // ---- enemy path edits ----
     moveEnemyNode: (enemyId, nodeIndex, x, z) => {
       const { level } = get();
+      // F-N1: dirty-only — no history push. The panel commits to
+      // history on blur via commitEnemyPath. Without this, every
+      // keystroke would push a history entry and saturate
+      // HISTORY_LIMIT=50 within a few edits.
       const cx = clamp(x, 0, level.size.width - 1);
       const cz = clamp(z, 0, level.size.depth - 1);
       const nextEnemies = level.enemies.map((e) => {
@@ -413,8 +419,15 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
         const path = e.path.map((n, i) => (i === nodeIndex ? { x: cx, z: cz } : n));
         return { ...e, path } as EnemySpawn;
       });
-      const nextLevel: MazeData = { ...level, enemies: nextEnemies };
-      set(commitLevel(get(), nextLevel));
+      set({ level: { ...level, enemies: nextEnemies }, dirty: true });
+    },
+
+    // F-N1: explicit history commit for the path-node editing flow.
+    // Called from the panel's path-node input onBlur. Idempotent —
+    // repeated calls just push repeated snapshots, but the panel
+    // guards with a draft-vs-committed check.
+    commitEnemyPath: () => {
+      set(commitLevel(get(), get().level, get().selection));
     },
 
     addEnemyNode: (enemyId, x, z) => {
@@ -471,7 +484,7 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
         const enemies = level.enemies.filter((e) => e.id !== selection.id);
         if (enemies.length === level.enemies.length) return;
         nextLevel = { ...level, enemies };
-      } else {
+      } else if (selection.kind === 'wall') {
         // wall — restore the cell to a wall.
         const { x, z } = selection;
         if (!inBounds(x, z, level.size.width, level.size.depth)) return;
@@ -479,8 +492,16 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
           zi === z ? r.map((c, xi) => (xi === x ? 1 : c)) : r,
         );
         nextLevel = { ...level, walls };
+      } else {
+        // F-L1: exhaustiveness check. If a new EditorSelection kind is
+        // added without a branch here, the `never` assertion fails to
+        // compile (selection narrows to the never-after cases), catching
+        // the missing branch at build time instead of silently passing
+        // null to commitLevel → set a `level: null` state.
+        const _exhaustive: never = selection;
+        throw new Error(`deleteSelected: unhandled selection kind ${String(_exhaustive)}`);
       }
-      set(commitLevel(get(), nextLevel!, nextSelection));
+      set(commitLevel(get(), nextLevel, nextSelection));
     },
 
     // ---- history ----

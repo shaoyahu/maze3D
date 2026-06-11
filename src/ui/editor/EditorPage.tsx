@@ -49,10 +49,15 @@ export function EditorPage({ onExit }: EditorPageProps) {
   const level = useEditorStore((s) => s.level);
 
   // ---- Draft recovery on mount ----------------------------------------
+  // F-L6: StrictMode dev 双调用 useEffect 会让用户进编辑器看 2 次 confirm。
+  // ref 标记已处理,保证 confirm 只弹一次(整个组件生命周期)。
+  const draftPromptedRef = useRef(false);
   useEffect(() => {
     if (typeof localStorage === 'undefined') return;
+    if (draftPromptedRef.current) return;
     const raw = localStorage.getItem(DRAFT_KEY);
     if (raw === null) return;
+    draftPromptedRef.current = true;
     if (window.confirm('发现上次未保存的草稿，是否恢复？')) {
       loadDraft();
     } else {

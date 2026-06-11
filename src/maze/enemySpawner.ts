@@ -11,6 +11,10 @@ import type { EnemySpawn, MazeData } from './types';
 // this, the spawner would emit a degenerate `path: [{x,z},{x,z}]` and the
 // enemy's `moveToward` would return `true` immediately, locking it in a
 // permanent dwell at the spawn cell.
+//
+// F-L14: `count` is `number | undefined` (NOT optional-with-default) so
+// callers MUST be explicit. `undefined` falls through `clampEnemyCount` to
+// `ENEMY_COUNT_DEFAULT` (3). Pass an explicit number for any other value.
 export function injectEnemySpawns(maze: MazeData, count: number | undefined): EnemySpawn[] {
   const target = clampEnemyCount(count);
   if (target === 0) return [];

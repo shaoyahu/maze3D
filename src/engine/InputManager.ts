@@ -42,6 +42,12 @@ export class InputManager {
   }
 
   dispose() {
+    // F-L8: reset internal state. Currently InputManager isn't reused so
+    // the impact is nil, but a future refactor that reuses the instance
+    // (e.g. for a second level without tearing down) would otherwise
+    // carry the post-lock-acquire skip flag into the new level's first
+    // frame.
+    this.skipNextMove = false;
     window.removeEventListener('keydown', this.onKeyDown);
     window.removeEventListener('keyup', this.onKeyUp);
     document.removeEventListener('mousemove', this.onMouseMove);
@@ -62,7 +68,15 @@ export class InputManager {
   }
 
   consumeMouseDelta(): MouseDelta {
-    const d = { x: this.mouse.x, y: this.mouse.y };
+    // F-L3: cap the returned delta to ±π per axis. Without this, a
+    // backgrounded tab returning to foreground can fire a single
+    // mousemove with a huge movementX, instantly spinning the camera
+    // several rotations. The actual mouse position lands on the next move.
+    const MAX_DELTA = Math.PI;
+    const d = {
+      x: Math.max(-MAX_DELTA, Math.min(MAX_DELTA, this.mouse.x)),
+      y: Math.max(-MAX_DELTA, Math.min(MAX_DELTA, this.mouse.y)),
+    };
     this.mouse.x = 0;
     this.mouse.y = 0;
     return d;

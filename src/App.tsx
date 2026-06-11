@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useGameStore } from './store/gameStore';
 import { useLevelStore } from './store/levelStore';
 import { useSettingsStore } from './store/settingsStore';
@@ -12,6 +12,7 @@ import { WinOverlay } from './ui/WinOverlay';
 import { GameCanvas } from './ui/GameCanvas';
 import { JsonMazeProvider } from './maze/JsonMazeProvider';
 import { EditorMazeProvider } from './maze/EditorMazeProvider';
+import { AlgorithmMazeProvider } from './maze/AlgorithmMazeProvider';
 import { EditorPage } from './ui/editor/EditorPage';
 import type { MazeData, StartLevelOptions } from './maze/types';
 
@@ -77,52 +78,76 @@ export function App() {
   }, [darkMode]);
 
   useEffect(() => {
+    let cancelled = false;
     setLoadError(null);
     loadAllLevels(provider)
       .then((lv) => {
+        if (cancelled) return;
         setLevels(lv);
       })
       .catch((e) => {
+        if (cancelled) return;
         const msg = e instanceof Error ? e.message : String(e);
         console.error('Failed to load levels', e);
         setLoadError(`关卡加载失败：${msg}`);
       });
+    return () => {
+      cancelled = true;
+    };
   }, [provider]);
 
+  // F-M2: monotonic token bumped on every startLevel / quitToMenu. Async
+  // .then / .catch callbacks capture the token at call time and bail if
+  // a newer action has superseded them; without this, navigating away
+  // mid-load would still call setUiScreen('game') and force the user
+  // back into the level they tried to leave. The non-procedural branch
+  // gets the same guard for consistency (the in-memory provider is
+  // microsecond-fast, but the race window is still real).
+  const loadTokenRef = useRef(0);
+
   const startLevel = (id: string, options?: StartLevelOptions) => {
+    const myToken = ++loadTokenRef.current;
     // P2-3: ids starting with 'algo-v1-' are procedural seeds — we generate
     // the MazeData on demand via AlgorithmMazeProvider instead of looking
     // it up in the hand-crafted `levels` list. Anything else goes through
     // the EditorMazeProvider (custom + built-in).
     const isProcedural = id.startsWith('algo-v1-');
     if (isProcedural) {
-      import('./maze/AlgorithmMazeProvider').then(({ AlgorithmMazeProvider }) => {
-        const algoProvider = new AlgorithmMazeProvider();
-        algoProvider
-          .load(id)
-          .then((maze) => {
-            useGameStore.getState().startLevel(maze, options);
-            setActiveMaze(maze);
-            setActiveOptions(options);
-            setUiScreen('game');
-          })
-          .catch((e) => {
-            const msg = e instanceof Error ? e.message : String(e);
-            console.error('Failed to load procedural level', e);
-            setLoadError(`关卡生成失败：${msg}`);
-          });
-      });
+      // F-N2: drop the dynamic import — AlgorithmMazeProvider is already
+      // statically imported by LevelSelect.tsx / MainMenuScene.ts, so
+      // Vite emitted a build warning ("dynamic import will not move
+      // module into another chunk"). Static import here keeps the
+      // generators in the main bundle (acknowledged — they're also
+      // pulled in by LevelSelect on first render anyway).
+      const algoProvider = new AlgorithmMazeProvider();
+      algoProvider
+        .load(id)
+        .then((maze) => {
+          if (loadTokenRef.current !== myToken) return;
+          useGameStore.getState().startLevel(maze, options);
+          setActiveMaze(maze);
+          setActiveOptions(options);
+          setUiScreen('game');
+        })
+        .catch((e) => {
+          if (loadTokenRef.current !== myToken) return;
+          const msg = e instanceof Error ? e.message : String(e);
+          console.error('Failed to load procedural level', e);
+          setLoadError(`关卡生成失败：${msg}`);
+        });
       return;
     }
     provider
       .load(id)
       .then((maze) => {
+        if (loadTokenRef.current !== myToken) return;
         useGameStore.getState().startLevel(maze, options);
         setActiveMaze(maze);
         setActiveOptions(options);
         setUiScreen('game');
       })
       .catch((e) => {
+        if (loadTokenRef.current !== myToken) return;
         // Fall back to the in-memory list so a stale closure (e.g. a level
         // was deleted after the level list rendered) surfaces a useful
         // message instead of a raw provider error.
@@ -141,6 +166,9 @@ export function App() {
   };
 
   const quitToMenu = () => {
+    // F-M2: cancel any in-flight procedural load before flipping the UI
+    // back to the menu, so its .then can't setUiScreen('game') after us.
+    loadTokenRef.current++;
     useGameStore.getState().goToMenu();
     setActiveMaze(null);
     setActiveOptions(undefined);

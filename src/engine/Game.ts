@@ -4,7 +4,7 @@ import { createCamera } from './Camera';
 import { buildScene, disposeScene, type SceneRefs } from './Scene';
 import { InputManager } from './InputManager';
 import { Loop } from './Loop';
-import { resolveMove, hasEnemyContact, type WallGrid } from './Collision';
+import { resolveMove, type WallGrid } from './Collision';
 import { createPlayer, applyLook, updatePlayerCamera, type PlayerState } from '../entities/Player';
 import { Enemy, ENEMY_RADIUS } from '../entities/Enemy';
 import { findPickupAt, crossesExit } from '../game/Rules';
@@ -205,6 +205,14 @@ export class Game {
 
   startLevel(maze: MazeData, options?: StartLevelOptions) {
     if (!this.renderer || !this.camera) throw new Error('Game not initialized');
+    // F-M4: stop the previous loop BEFORE tearing down the scene. Even
+    // though JS is single-threaded and the synchronous body can't be
+    // re-entered by the rAF tick, keeping the dispose path simple matters:
+    // a future refactor that swaps stop and dispose would otherwise let
+    // update() run with a half-disposed scene (walls/pickups arrays
+    // emptied by disposeScene, sceneRefs still pointing at the old
+    // scene). Stop first, dispose, rebuild, start.
+    if (this.loop) this.loop.stop();
     if (this.sceneRefs) {
       disposeScene(this.sceneRefs.scene, this.sceneRefs.walls, this.sceneRefs.pickups, this.sceneRefs.enemies);
     }
@@ -268,7 +276,6 @@ export class Game {
     // previous level ending — without this, retry/next-level would resume
     // motion from a keyup that never happened.
     this.input?.clearKeys();
-    if (this.loop) this.loop.stop();
     this.loop = new Loop((dt) => this.update(dt));
     this.loop.start();
   }
@@ -315,7 +322,15 @@ export class Game {
     // Tick the clock first so the recorded time on win includes this frame's dt.
     // The previous code called onTick(dt) after the exit check, which undercounted
     // the winning frame by exactly one dt (off by ~16ms at 60fps, more on stalls).
+    // F-M1: re-check isPlaying AFTER the tick. onTick can flip screen to
+    // 'game-over' (countdown → 0) or 'win' (survive countdown → target) on
+    // this same frame; the early-return at the top of update() only catches
+    // the *previous* frame's terminal state. Without this re-check the rest
+    // of update() runs a ghost frame: player moves, enemies chase, pickups
+    // get processed, then the post-death world is rendered. Bail before any
+    // of that and let the App layer's overlay take over.
     this.bridge.onTick(dt);
+    if (!this.bridge.isPlaying()) return;
 
     applyLook(this.player, this.input.consumeMouseDelta());
 
@@ -367,16 +382,23 @@ export class Game {
       mesh.position.x = enemy.position.x;
       mesh.position.z = enemy.position.z;
     }
-    if (
-      this.enemies.length > 0 &&
-      hasEnemyContact(
-        this.player.position,
-        this.player.radius,
-        this.enemies.map((e) => ({ x: e.position.x, z: e.position.z })),
-        ENEMY_RADIUS,
-      )
-    ) {
-      this.bridge.onEnemyContact(1);
+    // F-H2: inline the contact check to avoid per-frame allocation of
+    // an N-element `{x,z}[]` array. `hasEnemyContact` remains exported for
+    // unit tests; the hot path in the engine reads enemy positions in place.
+    if (this.enemies.length > 0) {
+      const px = this.player.position.x;
+      const pz = this.player.position.z;
+      const sumR2 = (this.player.radius + ENEMY_RADIUS) * (this.player.radius + ENEMY_RADIUS);
+      let contact = false;
+      for (const e of this.enemies) {
+        const dx = e.position.x - px;
+        const dz = e.position.z - pz;
+        if (dx * dx + dz * dz < sumR2) {
+          contact = true;
+          break;
+        }
+      }
+      if (contact) this.bridge.onEnemyContact(1);
     }
 
     const hit = findPickupAt(this.player.position, this.currentMaze, this.remainingPickups);

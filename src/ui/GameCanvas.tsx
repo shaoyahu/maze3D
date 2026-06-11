@@ -16,8 +16,19 @@ export function GameCanvas({ maze, options }: { maze: MazeData; options?: StartL
   const screen = useGameStore((s) => s.screen);
   // When pointer lock is denied (permissions policy, non-secure context,
   // sandboxed iframe, or user dismissed the prompt), show a brief on-screen
-  // message so the user knows mouselook won't work.
+  // message so the user knows mouselook won't work. F-N9: track the
+  // dismiss timer in a ref so the cleanup function (unmount or rapid
+  // re-click) can clear it. Without the ref, switching screens within
+  // 3s of an error fires setPointerLockError(null) on an unmounted
+  // component (React 18 warning).
   const [pointerLockError, setPointerLockError] = useState<string | null>(null);
+  const pointerLockTimerRef = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (pointerLockTimerRef.current !== null) {
+      window.clearTimeout(pointerLockTimerRef.current);
+      pointerLockTimerRef.current = null;
+    }
+  }, []);
 
   // Effect 1: create the Game instance once and wire up window/document
   // listeners. The Game's renderer, input manager, and store subscriptions
@@ -111,16 +122,25 @@ export function GameCanvas({ maze, options }: { maze: MazeData; options?: StartL
   // restartKey dependency handles retries on the same level — maze.id
   // alone wouldn't change.
   const restartKey = useGameStore((s) => s.restartKey);
+  // F-M3: keep the latest `options` in a ref and drop it from the deps
+  // array. App.tsx currently stores activeOptions in useState (stable
+  // reference) so this doesn't fire today, but listing `options` here
+  // turns any future refactor that returns a new options object on every
+  // render (e.g. inline `{ ... }` in App.startLevel) into a full
+  // disposeScene+buildScene+rebuild-all-enemies per render. Ref pattern
+  // is the robust fix.
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
   useEffect(() => {
     if (gameRef.current) {
       // P2-3: forward the StartLevelOptions (mode + seed) so the engine
       // can snapshot the mode via getCurrentMode() for HUD/UI consumers.
       // The store has already been seeded by App.tsx; we don't call
       // store.startLevel here to avoid double-seeding.
-      gameRef.current.startLevel(maze, options);
+      gameRef.current.startLevel(maze, optionsRef.current);
     }
     // gameRef.current is set by Effect 1 before Effect 2 runs (declaration order).
-  }, [maze.id, restartKey, options]);
+  }, [maze.id, restartKey]);
 
   useEffect(() => {
     // Subscriptions read gameRef.current lazily so they survive a level
@@ -145,6 +165,10 @@ export function GameCanvas({ maze, options }: { maze: MazeData; options?: StartL
       }
     });
     const unsubSettings = useSettingsStore.subscribe((s, prev) => {
+      // F-L7: Zustand subscribe 订阅时立即 fire 一次 listener, prev=undefined。
+      // 守卫跳过首次调用,避免对 0.002/60/false 初始值无意义地调用
+      // setSensitivity / setFov / setDarkMode(无功能影响,仅浪费一次调用)。
+      if (!prev) return;
       if (s.pointerSensitivity !== prev.pointerSensitivity) {
         gameRef.current?.setSensitivity(s.pointerSensitivity);
       }
@@ -171,7 +195,13 @@ export function GameCanvas({ maze, options }: { maze: MazeData; options?: StartL
       <canvas ref={ref} onClick={() => {
         gameRef.current?.requestPointerLock().catch(() => {
           setPointerLockError('无法锁定鼠标，请检查浏览器设置后重试');
-          setTimeout(() => setPointerLockError(null), 3000);
+          if (pointerLockTimerRef.current !== null) {
+            window.clearTimeout(pointerLockTimerRef.current);
+          }
+          pointerLockTimerRef.current = window.setTimeout(() => {
+            setPointerLockError(null);
+            pointerLockTimerRef.current = null;
+          }, 3000);
         });
       }} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block' }} />
       {screen === 'playing' && <Crosshair />}

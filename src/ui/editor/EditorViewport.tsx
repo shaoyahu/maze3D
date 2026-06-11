@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useEditorStore } from '../../store/editorStore';
 import type { EnemySpawn, Pickup, PickupType } from '../../maze/types';
 
@@ -100,12 +100,25 @@ export function EditorViewport() {
     else if (tool === 'enemy') placeEnemy(x, z, level.size.width);
   };
 
-  const handleWheel = (e: React.WheelEvent<HTMLDivElement>): void => {
-    e.preventDefault();
-    const direction = e.deltaY < 0 ? 1 : -1;
-    const next = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, camera.zoom + direction * ZOOM_STEP));
-    if (next !== camera.zoom) setCamera({ zoom: next });
-  };
+  // F-L5: native wheel listener with { passive: false } so preventDefault
+  // can stop the body from scrolling. React 17+ registers onWheel as
+  // passive by default, so e.preventDefault() in the React handler is
+  // a no-op. cameraZoomRef keeps the listener stable across zoom changes.
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const cameraZoomRef = useRef(camera.zoom);
+  cameraZoomRef.current = camera.zoom;
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    const handler = (e: WheelEvent) => {
+      e.preventDefault();
+      const direction = e.deltaY < 0 ? 1 : -1;
+      const next = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, cameraZoomRef.current + direction * ZOOM_STEP));
+      if (next !== cameraZoomRef.current) setCamera({ zoom: next });
+    };
+    el.addEventListener('wheel', handler, { passive: false });
+    return () => el.removeEventListener('wheel', handler);
+  }, [setCamera]);
 
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>): void => {
     if (e.button !== 2) return; // right button only
@@ -117,7 +130,10 @@ export function EditorViewport() {
     if (start === null) return;
     const dx = e.clientX - start.x;
     const dy = e.clientY - start.y;
-    setCamera({ x: camera.x + dx, y: camera.y + dy });
+    // F-L4: scale pan deltas by 1/zoom so the world point under the
+    // mouse stays put. Without this, zoom=2 makes the grid slide at
+    // 2x screen-pixel speed — mouse appears to move "faster" than grid.
+    setCamera({ x: camera.x + dx / camera.zoom, y: camera.y + dy / camera.zoom });
     panStateRef.current = { x: e.clientX, y: e.clientY };
   };
 
@@ -139,7 +155,7 @@ export function EditorViewport() {
   return (
     <div
       data-testid="editor-viewport"
-      onWheel={handleWheel}
+      ref={viewportRef}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}

@@ -214,29 +214,37 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
       set({ timeRemaining: next, elapsedTime: newElapsed });
     }
-    // Progressive spawn trigger — both time-based and pickup-based fire
-    // here, with pickup handled implicitly via the pickupCount delta
-    // (lastPickupCountForSpawn only advances on a successful pickup
-    // action, see pickup() below). The count caps at ENEMY_COUNT_MAX
-    // inside shouldProgressSpawn.
-    // P2-4a F12 + F14: the helper combines the trigger decision with the
-    // state-update decision, so the store no longer needs to know the
-    // "nextSpawnAt" math. No-trigger path is a zero-write set() below.
-    const result = applySpawnTrigger({
-      enabled: s.spawnSchedule.enabled,
-      schedule: s.spawnSchedule,
-      elapsedTime: get().elapsedTime,
-      lastSpawnAt: s.lastSpawnAt,
-      lastPickupCountForSpawn: s.lastPickupCountForSpawn,
-      pickupCountCollected: get().pickupCount.collected,
-      currentEnemyCount: get().progressiveEnemyCount,
-    });
-    if (result.triggered) {
-      set({
-        progressiveEnemyCount: result.nextEnemyCount,
-        lastSpawnAt: result.newLastSpawnAt,
-        lastPickupCountForSpawn: result.newLastPickupCountForSpawn,
+    // F-N6: gate the progressive spawn trigger on survive mode. The
+    // engine's Game.startLevel only injects enemies in survive (see
+    // requestedEnemyCount branch), so bumping progressiveEnemyCount in
+    // reach-exit / time-trial is dead state — no UI reads it, no scene
+    // consumes it. Without this gate, the helper still fires on every
+    // 15s interval in those modes, ghost-incrementing the counter.
+    if (s.currentMode === 'survive') {
+      // Progressive spawn trigger — both time-based and pickup-based fire
+      // here, with pickup handled implicitly via the pickupCount delta
+      // (lastPickupCountForSpawn only advances on a successful pickup
+      // action, see pickup() below). The count caps at ENEMY_COUNT_MAX
+      // inside shouldProgressSpawn.
+      // P2-4a F12 + F14: the helper combines the trigger decision with the
+      // state-update decision, so the store no longer needs to know the
+      // "nextSpawnAt" math. No-trigger path is a zero-write set() below.
+      const result = applySpawnTrigger({
+        enabled: s.spawnSchedule.enabled,
+        schedule: s.spawnSchedule,
+        elapsedTime: get().elapsedTime,
+        lastSpawnAt: s.lastSpawnAt,
+        lastPickupCountForSpawn: s.lastPickupCountForSpawn,
+        pickupCountCollected: get().pickupCount.collected,
+        currentEnemyCount: get().progressiveEnemyCount,
       });
+      if (result.triggered) {
+        set({
+          progressiveEnemyCount: result.nextEnemyCount,
+          lastSpawnAt: result.newLastSpawnAt,
+          lastPickupCountForSpawn: result.newLastPickupCountForSpawn,
+        });
+      }
     }
   },
 
@@ -278,6 +286,16 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
     if (p.type === 'key') {
       const inv = [...s.inventory];
+      // F-N12: dedup by id. If a slot already holds this exact key,
+      // reject the pickup so the engine rolls back (re-show the mesh
+      // and re-add to remainingPickups). Protects against the edge
+      // case where the player re-walks the same cell — the existing
+      // findIndex(null) guard already prevents two-different-keys
+      // from clobbering each other, but a "same id replay" was a
+      // remaining double-counting hole.
+      if (inv.some((slot) => slot !== null && slot.id === p.id)) {
+        return false;
+      }
       const idx = inv.findIndex((slot) => slot === null);
       if (idx >= 0) {
         inv[idx] = p;
@@ -335,16 +353,19 @@ export const useGameStore = create<GameState>((set, get) => ({
   useItem: (slot) => {
     const s = get();
     if (s.screen !== 'playing') {
-    // F3: surface the silent ignore so a Digit1/Digit2 press during
-    // pause / game-over / win / menu is visible in the console.
-    console.debug('[useItem] ignored: screen =', s.screen);
+      // F3: surface the silent ignore so a Digit1/Digit2 press during
+      // pause / game-over / win / menu is visible in the console.
+      // F-L10: DEV-only — production users pressing keys mid-overlay
+      // would otherwise get a noisy console in shipped builds.
+      if (import.meta.env.DEV) console.debug('[useItem] ignored: screen =', s.screen);
       return;
-  }
+    }
     const result = onUseItem(slot, s.inventory, s.currentMaze);
     if (!result.flash) return;
-    // TODO(P2-4a): when result.consumed flips to true, clear inventory[slot]
-    // so the key can't be reused. Rules.onUseItem currently never sets
-    // consumed (no lock cells exist yet), but the contract is in place.
+    // F-L15: removed the long-standing TODO. `result.consumed` is
+    // currently always false (no lock-cell feature yet) so it has no
+    // effect; the inventory-clear contract can be reintroduced when
+    // P2-4a actually lands. The store-side wiring here stays generic.
     set({
       useItemFlash: { slot, version: (s.useItemFlash?.version ?? 0) + 1 },
     });

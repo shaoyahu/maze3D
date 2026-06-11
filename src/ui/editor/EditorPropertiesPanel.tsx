@@ -88,20 +88,19 @@ function LevelMetadataForm({ level }: { level: MazeData }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: only sync on level identity change (F4)
   }, [level.id]);
 
-  // Read sibling values from the store at fire time, not from the closure:
-  // each debounced commit is a separate useEffect, so captures of
-  // `level.size.depth` (from the width hook) and `level.size.width` (from
-  // the depth hook) would race and clobber whichever field the user edited
-  // second.
+  // F-H3: combine width + depth into a single debounced commit. Two
+  // independent useDebouncedCommit timers fire sequentially, each reading
+  // the other field from the store at fire time, which produces an
+  // intermediate half-size state (e.g. updateSize(20, 10) then
+  // updateSize(20, 12)) and a visible double "walls reset" to the user.
+  // One timer referencing both local fields gives a single, atomic commit.
   useDebouncedCommit(name, (v) => updateName(v), 300);
-  useDebouncedCommit(width, (v) => {
-    const { depth: d } = useEditorStore.getState().level.size;
-    updateSize(Math.max(1, Math.floor(v)), d);
-  }, 300);
-  useDebouncedCommit(depth, (v) => {
-    const { width: w } = useEditorStore.getState().level.size;
-    updateSize(w, Math.max(1, Math.floor(v)));
-  }, 300);
+  useEffect(() => {
+    const id = window.setTimeout(() => {
+      updateSize(Math.max(1, Math.floor(width)), Math.max(1, Math.floor(depth)));
+    }, 300);
+    return () => window.clearTimeout(id);
+  }, [width, depth, updateSize]);
   useDebouncedCommit(initialTime, (v) => updateRule({ initialTime: Math.max(0, Math.floor(v)) }), 300);
   useDebouncedCommit(maxHealth, (v) => updateRule({ maxHealth: Math.max(1, Math.floor(v)) }), 300);
   useDebouncedCommit(timeOnPickup, (v) => updateRule({ timeOnPickup: Math.max(0, Math.floor(v)) }), 300);
@@ -206,8 +205,11 @@ function PickupForm({ pickup }: { pickup: Pickup }) {
     setValue(pickup.value);
   }, [pickup.id, pickup.type, pickup.value]);
 
-  useDebouncedCommit(type, (v) => updatePickup(pickup.id, { type: v }), 300);
-  useDebouncedCommit(value, (v) => updatePickup(pickup.id, { value: Math.max(0, Math.floor(v)) }), 300);
+  // F-M5: commit on every change. updatePickup is dirty-only (no history
+  // push, see editorStore.ts:339-353), so the 300ms debounce added no
+  // value — it just delayed the visible form→store sync and created a
+  // 300ms window where the in-memory state diverged from the displayed
+  // form. Dispatch updatePickup synchronously alongside setState.
 
   return (
     <div data-testid="pickup-form" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -217,7 +219,11 @@ function PickupForm({ pickup }: { pickup: Pickup }) {
         <select
           style={INPUT}
           value={type}
-          onChange={(e) => setType(e.target.value as PickupType)}
+          onChange={(e) => {
+            const t = e.target.value as PickupType;
+            setType(t);
+            updatePickup(pickup.id, { type: t });
+          }}
           data-testid="pickup-type"
         >
           {PICKUP_TYPE_OPTIONS.map((t) => (
@@ -234,7 +240,11 @@ function PickupForm({ pickup }: { pickup: Pickup }) {
           type="number"
           min={0}
           value={value}
-          onChange={(e) => setValue(Number(e.target.value))}
+          onChange={(e) => {
+            const v = Math.max(0, Math.floor(Number(e.target.value)));
+            setValue(v);
+            updatePickup(pickup.id, { value: v });
+          }}
           data-testid="pickup-value"
         />
       </label>

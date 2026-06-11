@@ -77,8 +77,15 @@ export class Enemy {
         break;
       }
       case 'dwell': {
-        this.tickDwell(dt);
+        // F-N7: check canSeePlayer BEFORE tickDwell. Previously the
+        // order was reversed — tickDwell could call advanceTarget when
+        // the timer hit 0, which resets heading toward the next patrol
+        // node. canSeePlayer would then check against the new heading
+        // and miss the player who was in the old FOV cone the entire
+        // dwell. Checking first ensures enterChase wins if the player
+        // is visible, before any heading change.
         if (this.canSeePlayer(player)) this.enterChase();
+        this.tickDwell(dt);
         break;
       }
       case 'chase': {

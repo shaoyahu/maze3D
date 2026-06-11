@@ -111,6 +111,10 @@ export function EditorToolbar({ onExit, onSaveAndExit }: EditorToolbarProps) {
     const file = e.target.files?.[0];
     e.target.value = ''; // allow re-importing the same file
     if (!file) return;
+    // F-N4: don't silently overwrite unsaved work. importJson clears
+    // past/future + resets dirty, so a single click can obliterate
+    // 10 minutes of editing. Match handleNew's confirm pattern.
+    if (dirty && !window.confirm('当前关卡有未保存的修改，确定导入？')) return;
     try {
       const raw = await readJsonFile(file);
       importJson(raw);

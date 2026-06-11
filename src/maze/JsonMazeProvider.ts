@@ -131,6 +131,13 @@ export function validateMaze(raw: unknown, id: string): MazeData {
     if (pp.x === (m.start as Record<string, unknown>).x && pp.z === (m.start as Record<string, unknown>).z) {
       throw new LevelLoadError(`Maze '${id}': pickup is on the start cell`);
     }
+    // F-N10: also reject pickup on the exit cell. Without this, the
+    // player would collect the pickup and immediately win on the same
+    // frame (findPickupAt fires before crossesExit), earning the pickup
+    // for free. Mirrors the start-cell check above.
+    if (pp.x === (m.exit as Record<string, unknown>).x && pp.z === (m.exit as Record<string, unknown>).z) {
+      throw new LevelLoadError(`Maze '${id}': pickup is on the exit cell`);
+    }
     if (walls[pp.z as number][pp.x as number] === 1) {
       throw new LevelLoadError(`Maze '${id}': pickup is on a wall`);
     }
@@ -243,14 +250,18 @@ function parseEnemies(raw: unknown, id: string, width: number, depth: number, wa
 function requireString(o: Record<string, unknown>, key: string, ctx: string) {
   if (typeof o[key] !== 'string') throw new LevelLoadError(`Maze '${ctx}': missing string '${key}'`);
 }
-function requireNumber(o: Record<string, unknown>, key: string, ctx: string) {
+function requireNumber(o: Record<string, unknown>, key: string, ctx: string): number {
   // typeof NaN === 'number' and typeof Infinity === 'number', so the plain
   // typeof check is insufficient — a JSON pipeline that produces NaN for
   // missing fields would otherwise slip through and surface as "depth (NaN)"
-  // errors far from the root cause.
-  if (typeof o[key] !== 'number' || !Number.isFinite(o[key] as number)) {
+  // errors far from the root cause. F-L11: return the typed `number` so
+  // callers can drop the `as number` assertions and use the validated
+  // value directly. Existing call sites discard the return; that's safe.
+  const v = o[key];
+  if (typeof v !== 'number' || !Number.isFinite(v)) {
     throw new LevelLoadError(`Maze '${ctx}': missing or non-finite number '${key}'`);
   }
+  return v;
 }
 function requireObject(o: Record<string, unknown>, key: string, ctx: string) {
   if (typeof o[key] !== 'object' || o[key] === null) {

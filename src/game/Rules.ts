@@ -118,10 +118,18 @@ export function shouldProgressSpawn(input: SpawnTriggerInput): SpawnTriggerResul
     return { triggered: false, reason: null, nextEnemyCount: input.currentEnemyCount };
   }
   if (input.schedule.onPickup && input.pickupCount > input.lastPickupCount) {
+    // F-N5: spawn N enemies for N pickups collected in this tick, capped
+    // by the remaining headroom under ENEMY_COUNT_MAX. Previously this
+    // hardcoded +1, dropping the delta — 3 pickups in one frame spawned
+    // only 1 enemy.
+    const spawns = Math.min(
+      ENEMY_COUNT_MAX - input.currentEnemyCount,
+      input.pickupCount - input.lastPickupCount,
+    );
     return {
-      triggered: true,
+      triggered: spawns > 0,
       reason: 'pickup',
-      nextEnemyCount: Math.min(ENEMY_COUNT_MAX, input.currentEnemyCount + 1),
+      nextEnemyCount: input.currentEnemyCount + spawns,
     };
   }
   if (input.elapsedTime - input.lastSpawnAt >= input.schedule.intervalSec) {

@@ -130,7 +130,9 @@ export function LevelSelect({
       return;
     }
     setSeedError(null);
-    localStorage.setItem(LAST_SEED_KEY, seedInput);
+    // F-L2: Safari 隐私模式 / 禁用 storage 时 setItem 抛 QuotaExceededError。
+    // 读路径 (useEffect :92-96) 已经有 isStorageAvailable() 守卫,写路径同步对齐。
+    if (isStorageAvailable()) localStorage.setItem(LAST_SEED_KEY, seedInput);
     const seed: Seed = {
       algorithm: algorithmForMode(mode),
       size: selectedSize,
@@ -304,7 +306,7 @@ export function LevelSelect({
                 <input
                   aria-label="seed"
                   value={seedInput}
-                  onChange={(e) => { setSeedInput(e.target.value); setSeedError(null); }}
+                  onChange={(e) => { setSeedInput(e.target.value); }}
                   placeholder="0123456789abcdef"
                   style={{ fontFamily: 'monospace', padding: '6px 10px', minWidth: 220 }}
                 />
