@@ -2,13 +2,16 @@ import { useGameStore } from '../../store/gameStore';
 import { ENEMY_COUNT_MAX } from '../../maze/types';
 
 export function EnemyCounter() {
-  // F9: subscribe to currentEnemyCount, the actual count of enemies
-  // startLevel put into the scene (hand-crafted + injected). The previous
-  // source (progressiveEnemyCount) is a spawn-event tally, not a scene
-  // count — it kept incrementing every time the scheduler fired while
-  // the scene itself never grew new meshes, so the HUD number drifted
-  // from reality.
+  // FR-22: hard-hide the counter in non-survive mode. After the
+  // P2-5 rebalance, non-survive enemyCount is always 0 (gameStore +
+  // Game both gate injectEnemySpawns to mode === 'survive'), so the
+  // counter would only ever show '敌人 0 / 10' — pure noise. Subscribing
+  // to currentMode + currentEnemyCount ensures the component re-renders
+  // both on mode flips AND on survive-mode count changes (progressive
+  // spawn scheduler bumps the count; the HUD should track it).
+  const mode = useGameStore((s) => s.currentMode);
   const current = useGameStore((s) => s.currentEnemyCount);
+  if (mode !== 'survive') return null;
   return (
     <div
       data-testid="enemy-counter"
