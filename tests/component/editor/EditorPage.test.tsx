@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, act, fireEvent } from '@testing-library/react';
-import { EditorPage } from '../../../src/ui/editor/EditorPage';
+import { EditorPage, DIRTY_EXIT_PROMPT } from '../../../src/ui/editor/EditorPage';
 import { useEditorStore } from '../../../src/store/editorStore';
 import { useLevelStore } from '../../../src/store/levelStore';
 
@@ -163,5 +163,25 @@ describe('EditorPage (P2-4b #15)', () => {
     fireEvent.click(screen.getByTestId('tool-save-exit'));
     expect(onExit).toHaveBeenCalled();
     expect(localStorage.getItem(DRAFT_KEY)).toBeNull();
+  });
+
+  // F3 (P0) regression pin: the dirty-exit prompt wording is the load-
+  // bearing piece of the bug fix. If the wording ever drifts back to
+  // "取消 = 不退出" the static text would contradict the code (and the
+  // original P0 footgun returns). The toolbar's "保存并退出" button
+  // always clears dirty via saveLevel() before handleExit runs, so the
+  // dialog itself is only reachable from a future plain-exit path —
+  // pinning the constant is the most stable regression guard we have
+  // without rearchitecting the test entry point.
+  it('DIRTY_EXIT_PROMPT pairs the safe default (cancel = stay) with the discard action', () => {
+    // "取消" must mean "continue editing" (safe), not "discard" or
+    // "exit" (data loss). The pre-fix prompt said "取消 = 不退出",
+    // which the actual code then implemented as "不保存并退出" — the
+    // exact silent-data-loss path this constant replaces.
+    expect(DIRTY_EXIT_PROMPT).toMatch(/取消\s*=\s*继续编辑/);
+    // "确定" is the explicit, opt-in data-loss path.
+    expect(DIRTY_EXIT_PROMPT).toMatch(/确定\s*=\s*放弃修改并退出/);
+    // Belt-and-suspenders: the pre-fix footgun phrase must never come back.
+    expect(DIRTY_EXIT_PROMPT).not.toMatch(/取消\s*=\s*不退出/);
   });
 });

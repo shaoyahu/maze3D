@@ -7,6 +7,15 @@ import { EditorStatusBar } from './EditorStatusBar';
 
 const DRAFT_KEY = 'maze3d.editorDraft.v1';
 const AUTOSAVE_DELAY_MS = 2000;
+// F3 (P0): exported so tests can pin the wording and prevent the dialog
+// text/behavior from drifting apart again. Native window.confirm only has
+// 2 buttons, so the spec's "保存 / 不保存 / 取消" 3-option intent is
+// collapsed to a "discard?" prompt with a SAFE default — "确定" = discard
+// & exit, "取消" = continue editing. The "save & exit" path is reached
+// via the toolbar's "保存并退出" button (handleSaveAndExit's saveLevel
+// call clears dirty before handleExit sees it).
+export const DIRTY_EXIT_PROMPT =
+  '当前关卡有未保存的修改。\n（取消 = 继续编辑，确定 = 放弃修改并退出）';
 const PAGE_STYLE = {
   position: 'absolute' as const,
   inset: 0,
@@ -92,20 +101,21 @@ export function EditorPage({ onExit }: EditorPageProps) {
   const handleExit = (): void => {
     const dirty = useEditorStore.getState().dirty;
     if (dirty) {
-      const choice = window.confirm('当前关卡有未保存的修改。是否保存？\n（取消 = 不退出，确定 = 保存并退出）');
-      if (choice) {
-        if (!useEditorStore.getState().saveLevel()) {
-          // Save failed (e.g. validation). Don't exit; the toolbar will
-          // show an error already. The user can fix and try again.
-          return;
-        }
-      } else {
-        // User chose "不保存" → wipe the draft so re-entering the editor
-        // doesn't restore the abandoned in-memory state.
-        localStorage.removeItem(DRAFT_KEY);
-      }
-    } else {
-      // Clean exit: drop the draft so the next visit starts fresh.
+      // F3 (P0) + FR-33: native confirm is binary, so we collapse the
+      // spec's 3-option "保存 / 不保存 / 取消" prompt to a 2-option
+      // "discard?" prompt with a SAFE default. "确定" = explicit data
+      // loss (discard & exit); "取消" = continue editing (no work lost).
+      // The "save & exit" path is handled by the toolbar's "保存并退出"
+      // button, which calls saveLevel() first and falls through to
+      // handleExit with dirty=false — so this dialog is never reached
+      // from that button (the existing tests pin that behavior).
+      const discard = window.confirm(DIRTY_EXIT_PROMPT);
+      if (!discard) return;
+    }
+    // Either clean state, or user explicitly chose to discard: drop the
+    // draft so re-entering the editor doesn't restore the abandoned
+    // in-memory state.
+    if (typeof localStorage !== 'undefined') {
       localStorage.removeItem(DRAFT_KEY);
     }
     onExit();
