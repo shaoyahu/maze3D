@@ -86,6 +86,31 @@ describe('gameStore', () => {
     expect(s.pickupCount.collected).toBe(1);
   });
 
+  it('time pickup uses p.value when it differs from rules.timeOnPickup (F5 regression)', () => {
+    // Regression (F5): the old `s.currentMaze?.rules.timeOnPickup ?? p.value`
+    // made `p.value` dead code because validateMaze forces
+    // `timeOnPickup` to be a finite positive number. With p.value=20
+    // and rules.timeOnPickup=15 the bonus must be 20, not 15.
+    useGameStore.getState().startLevel(initialMaze); // timeOnPickup: 15
+    useGameStore.setState({ timeRemaining: 30 });
+    useGameStore.getState().pickup({ id: crypto.randomUUID(), x: 1, z: 1, type: 'time', value: 20 });
+    const s = useGameStore.getState();
+    expect(s.timeRemaining).toBe(50); // 30 + 20 (p.value), not 30 + 15 (rules)
+    expect(s.pickupCount.collected).toBe(1);
+  });
+
+  it('time pickup in non-survive mode does NOT modify currentSurviveSeconds (F5 contract)', () => {
+    // Regression guard: the survive-mode branch must only fire in survive
+    // mode. In reach-exit / time-trial the field is irrelevant and must
+    // stay at its level default — otherwise the next startLevel call would
+    // inherit a polluted surviveSeconds.
+    useGameStore.getState().startLevel(initialMaze); // reach-exit / time-trial
+    const surviveBefore = useGameStore.getState().currentSurviveSeconds;
+    useGameStore.getState().pickup({ id: crypto.randomUUID(), x: 1, z: 1, type: 'time', value: 20 });
+    expect(useGameStore.getState().currentSurviveSeconds).toBe(surviveBefore);
+    expect(useGameStore.getState().timeRemaining).toBe(80); // 60 (initial) + 20
+  });
+
   it('does not increment collected when inventory is full', () => {
     useGameStore.getState().startLevel(initialMaze);
     const keyA: Pickup = { id: crypto.randomUUID(), x: 0, z: 0, type: 'key', value: 1 };
@@ -162,6 +187,20 @@ describe('gameStore', () => {
       useGameStore.getState().tick(30);
       expect(useGameStore.getState().timeRemaining).toBe(60);
       expect(useGameStore.getState().elapsedTime).toBeCloseTo(30);
+    });
+
+    it('time pickup extends currentSurviveSeconds in survive mode (F5 regression)', () => {
+      // Regression (F5): previously a time pickup only grew
+      // `timeRemaining` (HUD-irrelevant in survive mode) so the player
+      // saw the pickup "do nothing". Now the same bonus is added to
+      // `currentSurviveSeconds`, which is what the HUD counts down from
+      // (HUD.tsx:21-23), so the pickup visibly extends the survive budget.
+      useGameStore.getState().startLevel(initialMaze, { mode: 'survive', surviveSeconds: 30 });
+      expect(useGameStore.getState().currentSurviveSeconds).toBe(30);
+      useGameStore.getState().pickup({ id: crypto.randomUUID(), x: 1, z: 1, type: 'time', value: 10 });
+      const s = useGameStore.getState();
+      expect(s.currentSurviveSeconds).toBe(40); // 30 + 10 (p.value)
+      expect(s.pickupCount.collected).toBe(1);
     });
   });
 

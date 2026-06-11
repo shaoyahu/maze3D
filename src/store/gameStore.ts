@@ -8,7 +8,6 @@ import {
   type Pickup,
   type SpawnSchedule,
   type StartLevelOptions,
-  type SurviveSeconds,
   type VictoryType,
   clampEnemyCount,
   normalizeSurviveSeconds,
@@ -60,7 +59,13 @@ export interface GameState {
 
   // P2-4a: survive-mode target in seconds. time-trial uses timeRemaining;
   // survive uses elapsedTime >= currentSurviveSeconds -> win.
-  currentSurviveSeconds: SurviveSeconds;
+  //
+  // F5: typed as `number` (not the `SurviveSeconds` literal union) so
+  // time pickups can extend the survive countdown at runtime past the
+  // 30/60/90/120 menu presets. The menu/options entry point is still
+  // guarded by `normalizeSurviveSeconds` in `startLevel`, so the value
+  // is always a valid preset on level start; pickups then add to it.
+  currentSurviveSeconds: number;
   // P2-4a: invulnerability window. Wall-clock time the player is
   // protected until, so a second enemy contact in the same window
   // collapses into a no-op. Updated by damage(); 0 = not invulnerable.
@@ -233,8 +238,25 @@ export const useGameStore = create<GameState>((set, get) => ({
     const s = get();
     if (s.screen !== 'playing') return false;
     if (p.type === 'time') {
+      // F5 (P1): per-pickup `value` (when positive) overrides the level's
+      // `rules.timeOnPickup` default. The old `s.currentMaze?.rules.timeOnPickup ?? p.value`
+      // made `p.value` dead code: `validateMaze` (JsonMazeProvider:156-160)
+      // forces `timeOnPickup` to be a finite positive number, so the
+      // right-hand side of `??` was unreachable. Health and key pickups
+      // already use `p.value` — time now matches that contract.
+      //
+      // The same bonus is also added to `currentSurviveSeconds` in survive
+      // mode so the HUD countdown (`currentSurviveSeconds - elapsedTime`,
+      // HUD.tsx:21-23) actually moves when a time pickup is grabbed.
+      // Without this branch the bonus silently grows `timeRemaining` —
+      // a field the player never sees in survive mode — so the pickup
+      // looked broken to the player.
+      const rulesBonus = s.currentMaze?.rules.timeOnPickup ?? 0;
+      const bonus = p.value > 0 ? p.value : rulesBonus;
       set({
-        timeRemaining: s.timeRemaining + (s.currentMaze?.rules.timeOnPickup ?? p.value),
+        timeRemaining: s.timeRemaining + bonus,
+        currentSurviveSeconds:
+          s.currentMode === 'survive' ? s.currentSurviveSeconds + bonus : s.currentSurviveSeconds,
         pickupCount: { ...s.pickupCount, collected: s.pickupCount.collected + 1 },
       });
       return true;
