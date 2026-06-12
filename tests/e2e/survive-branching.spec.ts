@@ -13,10 +13,14 @@ import { test, expect } from '@playwright/test';
 test('survive mode generates a kruskal maze and shows enemy counter', async ({ page }) => {
   await page.goto('/');
   await page.getByTestId('main-menu-start').click();
+  // P2-6: default source is 'teaching'; switch to 'random' to expose
+  // the procedural mode + size + start controls.
+  await page.getByTestId('level-source-select').selectOption('random');
   await page.getByTestId('mode-select').selectOption('survive');
   // 30×30 随机关卡
   await page.getByTestId('size-select').selectOption('30');
-  await page.getByRole('button', { name: /30×30 随机关卡/ }).click();
+  // P2-6: a single unified start-button replaces the per-size card grid.
+  await page.getByTestId('start-button').click();
 
   // 等待进入游戏
   await expect(page.getByTestId('enemy-counter')).toBeVisible();
@@ -27,9 +31,12 @@ test('survive mode generates a kruskal maze and shows enemy counter', async ({ p
 test('reach-exit mode hides the enemy counter', async ({ page }) => {
   await page.goto('/');
   await page.getByTestId('main-menu-start').click();
+  // P2-6: see note in the previous test re: source switch.
+  await page.getByTestId('level-source-select').selectOption('random');
   await page.getByTestId('mode-select').selectOption('reach-exit');
   await page.getByTestId('size-select').selectOption('15');
-  await page.getByRole('button', { name: /15×15 随机关卡/ }).click();
+  // P2-6: a single unified start-button replaces the per-size card grid.
+  await page.getByTestId('start-button').click();
   // 等待进入游戏
   await page.waitForSelector('canvas', { state: 'visible' });
   // EnemyCounter 必须不存在

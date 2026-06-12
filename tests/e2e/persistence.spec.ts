@@ -6,7 +6,11 @@ test('best record persists across reloads', async ({ page }) => {
   await page.reload();
 
   await page.getByRole('button', { name: '开始' }).click();
-  await page.getByRole('button', { name: 'Test Corridor' }).click();
+  // P2-6: pin the sublevel explicitly — see play-through.spec.ts for the
+  // full reason (glob order puts level-small before level-tiny, so the
+  // auto-selected first sublevel is the wrong one for this test).
+  await page.getByTestId('sublevel-select').selectOption('level-tiny');
+  await page.getByTestId('start-button').click();
   // P2-5: wait for the canvas to mount + InputManager listener to attach
   // before sending keys. Same pattern as play-through.spec.ts.
   const canvas = page.locator('canvas');
@@ -21,7 +25,9 @@ test('best record persists across reloads', async ({ page }) => {
   await page.getByRole('button', { name: '返回主菜单' }).click();
   await page.reload();
   await page.getByRole('button', { name: '开始' }).click();
-  await page.getByRole('button', { name: 'Test Corridor' }).click();
+  // P2-6: same explicit sublevel pin as the first playthrough.
+  await page.getByTestId('sublevel-select').selectOption('level-tiny');
+  await page.getByTestId('start-button').click();
   // P2-5: same canvas-mount wait as the first playthrough.
   await expect(page.locator('canvas')).toBeVisible();
   await page.keyboard.press('KeyP');
