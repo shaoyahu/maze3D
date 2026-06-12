@@ -10,10 +10,10 @@
 
 | 字段 | 值 |
 |---|---|
-| 活跃增量 | **P2-5: UI 改版 + 存活模式重平衡** 16/16 ✅ done (2026-06-11) |
-| 已完成 | P2-2 14/14 ✅ + P2-3 14/14 ✅ + P2-4a 16/16 ✅ + P2-4b 20/20 ✅ + **P2-5 16/16 ✅** |
-| 下一个任务 | **新 P2-N 增量待规划**（候选：音频 / 移动端 / 额外 pickup 子类型） |
-| 最后更新 | 2026-06-11 |
+| 活跃增量 | (无 - 等待用户决策下一个增量) (2026-06-12) |
+| 已完成 | P2-2 14/14 ✅ + P2-3 14/14 ✅ + P2-4a 16/16 ✅ + P2-4b 20/20 ✅ + P2-5 16/16 ✅ + P2-6 10/10 ✅ |
+| 下一个任务 | (待用户决策 — 候选池 3 项:音频 / 移动端 / 额外 pickup 子类型) |
+| 最后更新 | 2026-06-12 |
 | 最近 commit | 见 `git log --oneline -1`（避免追尾，由 Claude 主动查） |
 
 **约束**：
@@ -44,6 +44,7 @@
 | P2-4a | 巡逻敌人 + survive mode | P2 | P2-3 | Large | `docs/increments/enemies-editor/` | ✅ done (2026-06-09) |
 | P2-4b | 关卡编辑器 | P2 | — | Large | `docs/increments/level-editor/` | ✅ done (2026-06-10) |
 | P2-5 | UI 改版 + 存活模式重平衡 (MainMenu 3D + LevelSelect 重设计 + 敌人按模式硬门 + algorithmForMode) | P1 | — | Large | `docs/increments/p2-5-ui-and-rebalance/` | ✅ done (2026-06-11) |
+| P2-6 | LevelSelect 级联重构 (主 dropdown 4 关卡源 + 单一「进入游戏」+ 存活模式 4 设置成组 + 关键老 testid 全保留) | P1 | — | Medium | `docs/increments/level-select-cascading-redesign/` | ✅ done (10/10) (2026-06-12) |
 
 > **P2-1 已删除**：原计划"多关卡 JSON（中/大尺寸）"被 P2-3 算法生成取代。MVP 保留 `level-small.json` 作为"教学关"，`level-tiny.json` 留 E2E。
 > **P2-4 拆分**：原"敌人 + 编辑器"X-Large 拆成 P2-4a（敌人+survive mode，依赖 P2-3）和 P2-4b（编辑器，独立）。
@@ -211,7 +212,30 @@
 > 关键模块走 TDD（任务 4 algorithmForMode 穷尽性 switch、6 gameStore clamp 5 case、7 Game.startLevel spy 回归哨、8 EnemyCounter 4 case、13 LevelSelect UI 9+ case、15 MainMenu 5 case、16 E2E 7 case）,其它快速完成（任务 1/2/3/5/9/10/11/12/14）。
 > 依赖图：1→2/3（设计）→4（algorithmForMode 单测）→5（LevelSelect 接入）;6→7→8（敌人硬门三端:store / engine / 组件）→9（回归）;10→11（CSS + Button）→12→13（LevelSelect UI + 测试）;14→15（MainMenuScene + MainMenu + 测试）;5/9/13/15→16（E2E + 兼容 + 三件套 + 文档同步）。
 
+### P2-6: LevelSelect 级联重构（Medium）
+
+> 范围：把 LevelSelect 从 4 个并列入口（固定 / 随机 / 指定种子 / 我的）+ 多个 start 按钮，重构为「**主 dropdown 选关卡源 + 级联二级控件 + 单一「进入游戏」按钮**」。存活模式 4 设置（存活秒数 / 敌人数量 / 渐进生成 / 渐进上限）收进同一语义区。4 个预设 chip（30/60/90/120s）点击即同步输入框。**只动 UI 层**：游戏运行时 / `gameStore` / `Game` / 敌人逻辑 / 关卡编辑器一律不改。关键老 testid 全部保留（P2-5 e2e 兼容）。仅在 P2-5 的 `types.ts` 常量集（`ENEMY_COUNT_MIN/MAX/DEFAULT` 同款风格）追加 4 个新常量：`SURVIVE_SECONDS_MIN/MAX` (10/600) + `SPAWN_PROGRESSIVE_MAX_DEFAULT/MIN` (10/1)。`validateSelection()` 抽为纯函数供 start-button `disabled` + onClick 共用。WCAG AA: chip 选中态对比度 ≥ 4.5:1。360 / 480 / 720 / 1280px 4 个断点视觉塌缩回归。
+
+| # | 任务 | 工作量 | 状态 |
+|---|---|---|---|
+| 1 | 升级 roadmap.md（**本任务**） | XS | [x] |
+| 2 | 三件套：写 `spec.md`（22 FR + 3 不变量）+ 已有的 `plan.md` (8 任务 T0–T7 实施卡) + `task-list.md`（why/who/when/acceptance） | XS | [x] |
+| 3 | T0 · `src/maze/types.ts` 新增 4 常量：`SURVIVE_SECONDS_MIN=10` / `SURVIVE_SECONDS_MAX=600` / `SPAWN_PROGRESSIVE_MAX_DEFAULT=10` / `SPAWN_PROGRESSIVE_MAX_MIN=1`（数值常量由 T2 case 8 越界 clamp 隐式覆盖） | XS | [x] |
+| 4 | T1 · `src/styles/theme.css` 新增 `.survive-chip` + `.survive-chip--active` 样式（150ms 过渡与 `.level-select-select` 节奏一致） | XS | [x] |
+| 5 | T2 · 写 `tests/component/levelSelect.uiRevamp.test.tsx` **12 case** (RED)：主 dropdown 4 选项 / sublevel 条件渲染 / seed-input 切换 / mode='survive' 4 设置 / chip 激活 / 越界 clamp+aria-invalid / progressive 取消后 max-input 消失 / start-button 单次触发 onPick / validation 失败 disabled / 关键老 testid 全保留（`level-select-root` / `procedural-controls` / `mode-select` / `size-select` / `enemy-count-select` / `progressive-spawn` / `custom-levels-group` / `specified-seed-section`） | M | [x] |
+| 6 | T3 · `src/ui/LevelSelect.tsx` 重写（GREEN）：引入 `levelSource` state + `sublevelId` state + 提取 `validateSelection()` 纯函数 + 单一 `start-button` (固定右下 + `hoverStyle="lift"`) + chip 用 `<button type="button">` + `progressive-max-input` 仅在 `progressive === true` 渲染 + seed-input 失焦 strip 空白 + 16 hex 验证 + 保留 P2-5 所有老 testid 容器 | M | [x] |
+| 7 | T4 · `tests/component/levelSelect.custom.test.tsx` 6 case 适配新路径（主 dropdown=我的 → sublevel dropdown 选 → start） | S | [x] |
+| 8 | T5 · 重构清理：抽 `<SurviveSettingsPanel>` 子组件（如 `mode === 'survive'` 分支超长）+ 抽常量 + 删未用 import + `validateSelection()` 纯化（无副作用 / 引用透明） | S | [x] |
+| 9 | T6 · 完整回归：`tsc --noEmit` + `vitest run` + `vite build` 三项 0 error 0 warning；单元覆盖率 ≥ 80%（沿用 P2-5 基线） | XS | [x] |
+| 10 | T7 · `tests/e2e/level-select-cascading.spec.ts` 新增 1 个 e2e 覆盖主 dropdown 4 切换（防回归）+ 跑 `npx playwright test` 全套，断裂的 e2e 按新路径修复 / 标 `test.skip()` + reason（**禁止**回退 UI） | S | [x] |
+
+> 进度：10/10
+> 关键模块走 TDD（任务 5 12 case RED + 任务 6 GREEN + 任务 7 适配 + 任务 9 完整回归 + 任务 10 e2e 扫描），其它快速完成（任务 1/2/3/4/8）。
+> 依赖图：1→2（roadmap + 三件套）;3+4（基础并行）→5（RED）→6（GREEN）→7（适配）→8（重构）→9（回归）→10（e2e 扫描）。关键路径 ~6.5h 净工作量 = 1 工作日。
+> 工时分解：T0 0.5h + T1 0.5h + T2 2h + T3 3h + T4 1h + T5 1h + T6 0.5h + T7 1h = 9.5h（含缓冲）。
+
 ---
+
 
 ## 设计决策记录（Q1–Q15）
 
