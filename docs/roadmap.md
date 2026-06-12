@@ -1,6 +1,6 @@
 # Phase2增量路线图 + 总任务列表
 
-> 镜像副本：`docs/superpowers/specs/2026-06-05-maze3d-first-person-game-design.md` 的 §12 Roadmap。两份应保持同步；以 `_template/` 为单一入口维护时同步 spec。
+> 镜像副本：`docs/mvp/design.md` 的 §12 Roadmap。两份应保持同步；以 `docs/roadmap.md` 为单一入口维护时同步 mvp 副本。
 
 ---
 
