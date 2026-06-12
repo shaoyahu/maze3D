@@ -1,4 +1,4 @@
-import { useRef, useState, type ChangeEvent } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { useEditorStore } from '../../store/editorStore';
 import {
   downloadAsJsonFile,
@@ -7,6 +7,12 @@ import {
 } from '../../maze/importExport';
 import { ImportError } from '../../maze/importExport';
 import type { EditorTool } from '../../maze/types';
+import { useAutoSave } from '../../hooks/useAutoSave';
+
+// F-2026-06-12-H1: how long a `lastError` from the store stays visible
+// before the toolbar auto-clears it. Long enough to read, short enough
+// that a stale message from an earlier click doesn't haunt the user.
+const LAST_ERROR_DISPLAY_MS = 3000;
 
 const TOOLS: readonly { tool: EditorTool; label: string; hint: string }[] = [
   { tool: 'select', label: '选择', hint: 'V' },
@@ -49,6 +55,15 @@ const TOOL_BTN_DISABLED = {
 
 type Status = { kind: 'idle' } | { kind: 'ok'; message: string } | { kind: 'error'; message: string };
 
+// F-2026-06-12-F1: format a wall-clock ms timestamp as HH:MM:SS for the
+// "已自动保存 HH:MM:SS" status string. The toolbar runs in a single
+// time zone, so the user's local clock is the right one to show.
+function formatHHMMSS(ts: number): string {
+  const d = new Date(ts);
+  const pad = (n: number): string => n.toString().padStart(2, '0');
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
 export interface EditorToolbarProps {
   onExit?: () => void;
   onSaveAndExit?: () => void;
@@ -68,9 +83,43 @@ export function EditorToolbar({ onExit, onSaveAndExit }: EditorToolbarProps) {
   const updateName = useEditorStore((s) => s.updateName);
   const exportJson = useEditorStore((s) => s.exportJson);
   const importJson = useEditorStore((s) => s.importJson);
+  // F-2026-06-12-H1: subscribe to the store's `lastError` so silent-reject
+  // feedback (e.g. "无法在起点放置墙") is surfaced in the status area
+  // alongside save/import results. Auto-clears after LAST_ERROR_DISPLAY_MS.
+  const lastError = useEditorStore((s) => s.lastError);
+  const clearLastError = useEditorStore((s) => s.clearLastError);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [status, setStatus] = useState<Status>({ kind: 'idle' });
+
+  // F-2026-06-12-F1: wire the auto-save hook. On each 30s tick, the
+  // hook calls saveLevel() iff dirty. We surface a "已自动保存
+  // HH:MM:SS" status on success and a "自动保存失败: ..." status on
+  // validator failure. The B1 effect (rising edge of `dirty`) clears
+  // any local status as soon as the user makes a new edit, so the
+  // "已自动保存" message never coexists with "● 未保存".
+  useAutoSave({
+    onAutoSaved: (ts) => setStatus({ kind: 'ok', message: `已自动保存 ${formatHHMMSS(ts)}` }),
+    onAutoSaveError: (msg) => setStatus({ kind: 'error', message: `自动保存失败：${msg}` }),
+  });
+
+  useEffect(() => {
+    if (lastError === null) return undefined;
+    const id = window.setTimeout(() => clearLastError(), LAST_ERROR_DISPLAY_MS);
+    return () => window.clearTimeout(id);
+  }, [lastError, clearLastError]);
+
+  // F-2026-06-12-B1: when the user makes a new edit (dirty→true) any
+  // prior local "已保存" message is stale — clear it so the toolbar
+  // never shows "已保存" + "● 未保存" at the same time. Track the
+  // previous value to detect the rising edge.
+  const prevDirtyRef = useRef<boolean>(dirty);
+  useEffect(() => {
+    if (!prevDirtyRef.current && dirty) {
+      setStatus({ kind: 'idle' });
+    }
+    prevDirtyRef.current = dirty;
+  }, [dirty]);
 
   const handleNew = (): void => {
     if (dirty && !window.confirm('当前关卡有未保存的修改，确定新建？')) return;
@@ -79,18 +128,18 @@ export function EditorToolbar({ onExit, onSaveAndExit }: EditorToolbarProps) {
   };
 
   const handleSave = (): void => {
-    const ok = saveLevel();
+    const result = saveLevel();
     setStatus(
-      ok
+      result.ok
         ? { kind: 'ok', message: '已保存' }
-        : { kind: 'error', message: '保存失败：关卡结构不合法' },
+        : { kind: 'error', message: `保存失败：${result.error}` },
     );
   };
 
   const handleSaveAndExit = (): void => {
-    const ok = saveLevel();
-    if (!ok) {
-      setStatus({ kind: 'error', message: '保存失败，未退出' });
+    const result = saveLevel();
+    if (!result.ok) {
+      setStatus({ kind: 'error', message: `保存失败：${result.error}` });
       return;
     }
     onSaveAndExit?.() ?? onExit?.();
@@ -247,21 +296,34 @@ export function EditorToolbar({ onExit, onSaveAndExit }: EditorToolbarProps) {
         style={{ display: 'none' }}
       />
 
-      {status.kind !== 'idle' && (
-        <span
-          data-testid="tool-status"
-          style={{
-            fontSize: 12,
-            color: status.kind === 'error' ? 'var(--danger)' : 'var(--accent)',
-            maxWidth: 240,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {status.message}
-        </span>
-      )}
+      {(() => {
+        // F-2026-06-12-H1: `lastError` (from silent-reject placement
+        // actions) takes priority over the local `status` (from
+        // save/import/new). Compute a single display tuple so the JSX
+        // below stays readable.
+        const display: { kind: 'ok' | 'error'; message: string } | null =
+          lastError !== null
+            ? { kind: 'error', message: lastError }
+            : status.kind !== 'idle'
+              ? status
+              : null;
+        if (display === null) return null;
+        return (
+          <span
+            data-testid="tool-status"
+            style={{
+              fontSize: 12,
+              color: display.kind === 'error' ? 'var(--danger)' : 'var(--accent)',
+              maxWidth: 240,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {display.message}
+          </span>
+        );
+      })()}
     </div>
   );
 }
