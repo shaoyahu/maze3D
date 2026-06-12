@@ -6,6 +6,7 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { useLevelStore } from '../../../src/store/levelStore';
 import type { MazeData, Pickup, EnemySpawn, LevelRules, CellType } from '../../../src/maze/types';
+import { validateMaze } from '../../../src/maze/JsonMazeProvider';
 
 // Subject under test. The import path points to a module that does not
 // exist yet — these tests should be RED at first run.
@@ -66,7 +67,7 @@ describe('useEditorStore', () => {
   // 1. init / newLevel
   // -----------------------------------------------------------------------
   describe('newLevel', () => {
-    it('produces a level with the right id prefix, default name, all-1 walls, and default rules', () => {
+    it('produces a level with the right id prefix, default name, walls = 1 except for the carved start/exit cells, and default rules', () => {
       // Arrange / Act
       useEditorStore.getState().newLevel(5, 4);
 
@@ -78,9 +79,15 @@ describe('useEditorStore', () => {
       expect(lvl.start).toEqual({ x: 0, z: 0 });
       expect(lvl.exit).toEqual({ x: 4, z: 3 });
       expect(lvl.walls).toHaveLength(4);
-      for (const row of lvl.walls) {
-        expect(row).toHaveLength(5);
-        for (const c of row) expect(c).toBe(1);
+      // Every cell is a wall EXCEPT the start and exit cells, which are
+      // carved to 0 so the new level already passes `validateMaze`. The
+      // user then extends the floor by clicking more cells.
+      for (let z = 0; z < lvl.walls.length; z += 1) {
+        for (let x = 0; x < lvl.walls[z]!.length; x += 1) {
+          const isStart = x === lvl.start.x && z === lvl.start.z;
+          const isExit = x === lvl.exit.x && z === lvl.exit.z;
+          expect(lvl.walls[z]![x]).toBe(isStart || isExit ? 0 : 1);
+        }
       }
       expect(lvl.pickups).toEqual([]);
       expect(lvl.enemies).toEqual([]);
@@ -90,6 +97,29 @@ describe('useEditorStore', () => {
         victory: 'reach-exit',
         timeOnPickup: 10,
       });
+    });
+
+    // F-2026-06-12-T2-a: `newLevel` used to produce an all-walls canvas with start and
+    // exit ON walls, so saving immediately failed `validateMaze` with
+    // "start is on a wall" / "exit is on a wall". The user had to manually
+    // carve two cells before Save would even work — the exact scenario the
+    // user complained about ("打开不修改也无法保存"). After the fix the
+    // new level is structurally valid by default; the user only has to
+    // re-carve after deliberate edits that introduce walls.
+    it('produces a level that passes validateMaze out of the box (no manual carving required)', () => {
+      // Arrange / Act
+      useEditorStore.getState().newLevel(5, 4);
+      // Assert
+      const lvl = useEditorStore.getState().level;
+      expect(() => validateMaze(lvl, lvl.id)).not.toThrow();
+    });
+
+    it('produces a valid level for non-square sizes where start and exit land on different cells', () => {
+      // Arrange / Act — 2x1 grid: start=(0,0), exit=(1,0), different cells.
+      useEditorStore.getState().newLevel(2, 1);
+      // Assert
+      const lvl = useEditorStore.getState().level;
+      expect(() => validateMaze(lvl, lvl.id)).not.toThrow();
     });
 
     it('resets the history stack (canUndo === false)', () => {
@@ -109,6 +139,20 @@ describe('useEditorStore', () => {
       useEditorStore.getState().newLevel(3, 3);
       // Assert
       expect(useEditorStore.getState().dirty).toBe(false);
+    });
+
+    // F-2026-06-12-M3: `newLevel(0, n)` and `newLevel(n, 0)` used to crash
+    // with `TypeError: Cannot set properties of undefined` because
+    // `buildEmptyLevel` carved `walls[depth-1]!` without first checking
+    // that depth >= 1. Surface the bad input as a clear RangeError.
+    it('throws RangeError when width is 0', () => {
+      expect(() => useEditorStore.getState().newLevel(0, 4)).toThrow(RangeError);
+    });
+    it('throws RangeError when depth is 0', () => {
+      expect(() => useEditorStore.getState().newLevel(5, 0)).toThrow(RangeError);
+    });
+    it('throws RangeError when width is negative', () => {
+      expect(() => useEditorStore.getState().newLevel(-1, 4)).toThrow(RangeError);
     });
   });
 
@@ -180,6 +224,85 @@ describe('useEditorStore', () => {
       // Assert
       expect(useEditorStore.getState().dirty).toBe(false);
     });
+
+    // F-2026-06-12-S1: surface the validator's real error message instead
+    // of swallowing it as a boolean. Callers (toolbar) must be able to
+    // show *what* is structurally wrong, not just "something is wrong".
+    it('returns { ok: true } on a successful save', () => {
+      // Arrange — start on a floor cell so validateMaze passes.
+      const lvl = makeMaze({
+        walls: [
+          [0, 0, 0, 0, 0],
+          [1, 1, 1, 1, 0],
+          [1, 1, 1, 1, 0],
+          [1, 1, 1, 1, 0],
+        ],
+      });
+      useEditorStore.setState({ level: lvl, dirty: true });
+      // Act
+      const result = useEditorStore.getState().saveLevel();
+      // Assert
+      expect(result).toEqual({ ok: true });
+    });
+
+    it('returns { ok: false, error } with the validator detail when the level is invalid', () => {
+      // Arrange — start (0,0) is on a wall, so validateMaze should throw
+      // `start is on a wall`.
+      const lvl = makeMaze({
+        walls: [
+          [1, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0],
+        ],
+      });
+      useEditorStore.setState({ level: lvl, dirty: true });
+      // Act
+      const result = useEditorStore.getState().saveLevel();
+      // Assert
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toMatch(/start is on a wall/);
+      }
+    });
+
+    it('leaves dirty=true when the save fails so the user knows state still diverges', () => {
+      // Arrange — exit on a wall, validateMaze will reject.
+      const lvl = makeMaze({
+        walls: [
+          [0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 1],
+        ],
+      });
+      useEditorStore.setState({ level: lvl, dirty: true });
+      // Act
+      const result = useEditorStore.getState().saveLevel();
+      // Assert
+      expect(result.ok).toBe(false);
+      expect(useEditorStore.getState().dirty).toBe(true);
+    });
+
+    it('returns { ok: true } when a freshly-loaded valid level is saved without modification', () => {
+      // The user's stated expectation: opening a level and saving it
+      // without any edits should always succeed. Validates idempotence
+      // of validateMaze for the load → save round-trip.
+      const lvl = makeMaze({
+        walls: [
+          [0, 0, 0, 0, 0],
+          [1, 1, 1, 1, 0],
+          [1, 1, 1, 1, 0],
+          [1, 1, 1, 1, 0],
+        ],
+      });
+      useEditorStore.getState().loadLevel(lvl);
+      // Act — no edits at all.
+      const result = useEditorStore.getState().saveLevel();
+      // Assert
+      expect(result).toEqual({ ok: true });
+      expect(useEditorStore.getState().dirty).toBe(false);
+    });
   });
 
   // -----------------------------------------------------------------------
@@ -233,16 +356,20 @@ describe('useEditorStore', () => {
   // 5. placeWall
   // -----------------------------------------------------------------------
   describe('placeWall', () => {
+    // F-2026-06-12-T2-b: tests use (2, 1) instead of (0, 0) so they don't depend on
+    // the buggy behavior of toggling the START cell into a wall. The
+    // dedicated no-op tests below pin the new "refuse to wall start/exit"
+    // invariant.
     it('toggles walls[z][x] from 1→0, sets dirty, and pushes history', () => {
       // Arrange
       useEditorStore.setState({
         level: makeMaze(),
         past: [],
       });
-      // Act
-      useEditorStore.getState().placeWall(0, 0);
+      // Act — (2,1) is neither start (0,0) nor exit (4,3) in makeMaze.
+      useEditorStore.getState().placeWall(2, 1);
       // Assert
-      expect(useEditorStore.getState().level.walls[0]![0]).toBe(0);
+      expect(useEditorStore.getState().level.walls[1]![2]).toBe(0);
       expect(useEditorStore.getState().dirty).toBe(true);
       expect(useEditorStore.getState().past.length).toBe(1);
     });
@@ -252,19 +379,93 @@ describe('useEditorStore', () => {
       useEditorStore.setState({
         level: makeMaze({
           walls: [
-            [0, 1, 1, 1, 1],
             [1, 1, 1, 1, 1],
+            [1, 1, 0, 1, 1],
             [1, 1, 1, 1, 1],
             [1, 1, 1, 1, 1],
           ],
         }),
         past: [],
       });
+      // Act — (2,1) is a floor cell that is not start/exit.
+      useEditorStore.getState().placeWall(2, 1);
+      // Assert
+      expect(useEditorStore.getState().level.walls[1]![2]).toBe(1);
+      expect(useEditorStore.getState().past.length).toBe(1);
+    });
+
+    // F-2026-06-12-T2-c: the editor must never let the user click "wall" on the
+    // start or exit cell, because that immediately produces an
+    // unsaveable level (`validateMaze` rejects "start is on a wall" /
+    // "exit is on a wall"). Match the silent-reject idiom used by
+    // `placeStart` on a wall, `addEnemyNode` OOB, etc. — no history
+    // push, no dirty flip, walls unchanged.
+    it('placeWall on the start cell is a no-op (no toggle, no history, no dirty flip)', () => {
+      // Arrange — start (0,0) in makeMaze. Confirm it's currently a wall
+      // in the default all-1 grid.
+      useEditorStore.setState({ past: [], dirty: false });
+      expect(useEditorStore.getState().level.walls[0]![0]).toBe(1);
+      // Act
+      useEditorStore.getState().placeWall(0, 0);
+      // Assert — wall stays a wall, no history, no dirty.
+      expect(useEditorStore.getState().level.walls[0]![0]).toBe(1);
+      expect(useEditorStore.getState().dirty).toBe(false);
+      expect(useEditorStore.getState().past.length).toBe(0);
+    });
+
+    it('placeWall on the exit cell is a no-op (no toggle, no history, no dirty flip)', () => {
+      // Arrange — exit (4,3) in makeMaze. Confirm it's currently a wall.
+      useEditorStore.setState({ past: [], dirty: false });
+      expect(useEditorStore.getState().level.walls[3]![4]).toBe(1);
+      // Act
+      useEditorStore.getState().placeWall(4, 3);
+      // Assert
+      expect(useEditorStore.getState().level.walls[3]![4]).toBe(1);
+      expect(useEditorStore.getState().dirty).toBe(false);
+      expect(useEditorStore.getState().past.length).toBe(0);
+    });
+
+    // F-2026-06-12-H1: silent-reject is great for state but invisible to
+    // the user. Surface the rejection via `lastError` so the toolbar can
+    // show "无法在起点放置墙" and the click isn't a mystery.
+    it('placeWall on the start cell sets lastError (UX feedback for the silent-reject)', () => {
+      // Arrange
+      useEditorStore.setState({ past: [], dirty: false, lastError: null });
       // Act
       useEditorStore.getState().placeWall(0, 0);
       // Assert
-      expect(useEditorStore.getState().level.walls[0]![0]).toBe(1);
-      expect(useEditorStore.getState().past.length).toBe(1);
+      const err = useEditorStore.getState().lastError;
+      expect(err).toBeTypeOf('string');
+      expect(err).toMatch(/起点|start/);
+    });
+
+    it('placeWall on the exit cell sets lastError mentioning exit', () => {
+      // Arrange
+      useEditorStore.setState({ past: [], dirty: false, lastError: null });
+      // Act
+      useEditorStore.getState().placeWall(4, 3);
+      // Assert
+      const err = useEditorStore.getState().lastError;
+      expect(err).toBeTypeOf('string');
+      expect(err).toMatch(/终点|exit/);
+    });
+
+    it('placeWall on a regular floor cell clears any previous lastError', () => {
+      // Arrange — pre-seed an error from a previous rejection.
+      useEditorStore.setState({ past: [], dirty: false, lastError: 'previous error' });
+      // Act — click a normal floor cell.
+      useEditorStore.getState().placeWall(1, 0);
+      // Assert
+      expect(useEditorStore.getState().lastError).toBeNull();
+    });
+
+    it('clearLastError action resets lastError to null', () => {
+      // Arrange
+      useEditorStore.setState({ lastError: 'stale error' });
+      // Act
+      useEditorStore.getState().clearLastError();
+      // Assert
+      expect(useEditorStore.getState().lastError).toBeNull();
     });
   });
 
@@ -526,7 +727,7 @@ describe('useEditorStore', () => {
       expect(useEditorStore.getState().dirty).toBe(true);
     });
 
-    it('updateSize regenerates walls (all 1s) and clamps start/exit when out of bounds', () => {
+    it('updateSize regenerates walls (1 except for the clamped start/exit cells) and clamps start/exit when out of bounds', () => {
       // Arrange — start at (0,0), exit at (4,3); resize to 3x3 (so exit is out of bounds).
       useEditorStore.setState({ past: [] });
       // Act
@@ -535,14 +736,54 @@ describe('useEditorStore', () => {
       const lvl = useEditorStore.getState().level;
       expect(lvl.size).toEqual({ width: 3, depth: 3 });
       expect(lvl.walls).toHaveLength(3);
-      for (const row of lvl.walls) {
-        expect(row).toHaveLength(3);
-        for (const c of row) expect(c).toBe(1);
+      // After the F-2026-06-12-T2 carve fix, every cell is a wall EXCEPT the
+      // clamped start and exit cells, which are carved to 0 so the
+      // resized level still passes `validateMaze` out of the box.
+      for (let z = 0; z < lvl.walls.length; z += 1) {
+        for (let x = 0; x < lvl.walls[z]!.length; x += 1) {
+          const isStart = x === lvl.start.x && z === lvl.start.z;
+          const isExit = x === lvl.exit.x && z === lvl.exit.z;
+          expect(lvl.walls[z]![x]).toBe(isStart || isExit ? 0 : 1);
+        }
       }
       // Exit (4,3) → (2,2) after clamp.
       expect(lvl.exit).toEqual({ x: 2, z: 2 });
       // Start stays in bounds.
       expect(lvl.start).toEqual({ x: 0, z: 0 });
+    });
+
+    // F-2026-06-12-T2-d: a resize to a grid that keeps start/exit in bounds should
+    // also leave the level structurally valid. Without the carve fix the
+    // resized grid is all-1s with start/exit on walls, so `validateMaze`
+    // throws "start is on a wall" / "exit is on a wall".
+    it('updateSize produces a level that passes validateMaze (resize keeps start/exit in bounds)', () => {
+      // Arrange — start at (0,0), exit at (4,3); resize up to 8x6.
+      useEditorStore.setState({ past: [] });
+      // Act
+      useEditorStore.getState().updateSize(8, 6);
+      // Assert
+      const lvl = useEditorStore.getState().level;
+      expect(() => validateMaze(lvl, lvl.id)).not.toThrow();
+    });
+
+    // F-2026-06-12-H3: regression test for the 1×1 corner case. The
+    // generator must not crash on width=1/depth=1 (no off-by-one when
+    // allocating the 1×1 grid) and must produce a level where the only
+    // cell is a floor. start and exit collapse to the same cell because
+    // there is nowhere else to go; the level is intentionally not
+    // saveable through `validateMaze` (which requires start ≠ exit), and
+    // the toolbar surfaces that as an explicit error.
+    it('updateSize(1, 1) does not crash and produces a single floor cell (start=exit=origin)', () => {
+      // Arrange
+      useEditorStore.setState({ past: [] });
+      // Act
+      useEditorStore.getState().updateSize(1, 1);
+      // Assert
+      const lvl = useEditorStore.getState().level;
+      expect(lvl.size).toEqual({ width: 1, depth: 1 });
+      expect(lvl.walls).toEqual([[0]]);
+      expect(lvl.start).toEqual({ x: 0, z: 0 });
+      expect(lvl.exit).toEqual({ x: 0, z: 0 });
     });
   });
 
@@ -725,15 +966,15 @@ describe('useEditorStore', () => {
     it('undo restores the previous wall state after placeWall', () => {
       // Arrange
       useEditorStore.setState({
-        level: makeMaze(), // (0,0) is 1
+        level: makeMaze(), // (1,0) is 1
         past: [],
       });
-      useEditorStore.getState().placeWall(0, 0);
-      expect(useEditorStore.getState().level.walls[0]![0]).toBe(0);
+      useEditorStore.getState().placeWall(1, 0);
+      expect(useEditorStore.getState().level.walls[0]![1]).toBe(0);
       // Act
       useEditorStore.getState().undo();
       // Assert
-      expect(useEditorStore.getState().level.walls[0]![0]).toBe(1);
+      expect(useEditorStore.getState().level.walls[0]![1]).toBe(1);
     });
 
     it('redo replays the undone action', () => {
@@ -742,12 +983,56 @@ describe('useEditorStore', () => {
         level: makeMaze(),
         past: [],
       });
-      useEditorStore.getState().placeWall(0, 0);
+      useEditorStore.getState().placeWall(1, 0);
       useEditorStore.getState().undo();
       // Act
       useEditorStore.getState().redo();
       // Assert
-      expect(useEditorStore.getState().level.walls[0]![0]).toBe(0);
+      expect(useEditorStore.getState().level.walls[0]![1]).toBe(0);
+    });
+
+    // F-2026-06-12-B2: dirty is no longer a monotonic boolean — it is
+    // derived from `levelHash(current) !== lastSavedHash`. After the
+    // user undoes back to the saved state, dirty must be false (matches
+    // the last-saved snapshot), not the unconditional `true` the
+    // previous implementation forced.
+    it('undo back to the saved state clears dirty (state matches last-saved hash)', () => {
+      // Arrange — set the level, mark it as the "saved" baseline by
+      // hashing it and storing that as lastSavedHash. The state right
+      // now is in sync with the saved snapshot, so dirty=false.
+      const baseline = makeMaze();
+      const baselineHash = JSON.stringify(baseline);
+      useEditorStore.setState({
+        level: baseline,
+        past: [],
+        dirty: false,
+        lastSavedHash: baselineHash,
+      });
+      // Act — user makes an edit, then undoes it.
+      useEditorStore.getState().placeWall(1, 0);
+      expect(useEditorStore.getState().dirty).toBe(true);
+      useEditorStore.getState().undo();
+      // Assert — the level is back to baseline, so dirty must be false.
+      expect(useEditorStore.getState().level).toEqual(baseline);
+      expect(useEditorStore.getState().dirty).toBe(false);
+    });
+
+    it('redo from the saved state restores dirty=true (state diverges again)', () => {
+      // Arrange — same setup as above.
+      const baseline = makeMaze();
+      useEditorStore.setState({
+        level: baseline,
+        past: [],
+        dirty: false,
+        lastSavedHash: JSON.stringify(baseline),
+      });
+      useEditorStore.getState().placeWall(1, 0);
+      useEditorStore.getState().undo();
+      expect(useEditorStore.getState().dirty).toBe(false);
+      // Act
+      useEditorStore.getState().redo();
+      // Assert
+      expect(useEditorStore.getState().dirty).toBe(true);
     });
 
     it('a new push after undo clears the future stack (branch is cut)', () => {
@@ -770,7 +1055,7 @@ describe('useEditorStore', () => {
       // Act / Assert
       expect(useEditorStore.getState().canUndo()).toBe(false);
       expect(useEditorStore.getState().canRedo()).toBe(false);
-      useEditorStore.getState().placeWall(0, 0);
+      useEditorStore.getState().placeWall(1, 0);
       expect(useEditorStore.getState().canUndo()).toBe(true);
       useEditorStore.getState().undo();
       expect(useEditorStore.getState().canRedo()).toBe(true);

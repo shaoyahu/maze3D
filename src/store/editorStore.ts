@@ -52,6 +52,17 @@ export interface EditorCamera {
   zoom: number;
 }
 
+/** Discriminated-union return type of `useEditorStore.saveLevel`.
+ *
+ *  `{ ok: true }` means the level passed `validateMaze` and was merged
+ *  into the level store. `{ ok: false, error }` means validation
+ *  rejected the in-memory level; `error` is the underlying
+ *  `LevelLoadError.message` so the caller can surface it verbatim to
+ *  the user (the toolbar pattern). Keeps the editor decoupled from the
+ *  validator's error class while preserving the message detail that
+ *  the previous `boolean` return type used to discard. */
+export type SaveResult = { ok: true } | { ok: false; error: string };
+
 // Local alias: only the slice fields we replace on each commit. We pass
 // this to `set(...)` to keep the per-action code uniform.
 type LevelSlice = {
@@ -77,20 +88,43 @@ export interface EditorStoreState {
   /** Wall-clock ms of the most recent successful save. null when never
    *  saved in this session. The status bar formats this as HH:MM:SS. */
   lastSavedAt: number | null;
+  /** Last user-facing error message (e.g. "无法在起点放置墙"). The toolbar
+   *  reads this to surface silent-reject feedback; the consumer is
+   *  responsible for calling `clearLastError` (or auto-clearing via
+   *  useEffect) once it has been shown. null when there is nothing to
+   *  report. F-2026-06-12-H1. */
+  lastError: string | null;
+  /** F-2026-06-12-B2: hash of the level at the last "save baseline"
+   *  (initial empty level, last `saveLevel` success, last `loadLevel`,
+   *  last `loadDraft`, or last `importJson`). `dirty` is derived from
+   *  `levelHash(level) !== lastSavedHash`, so undoing back to the saved
+   *  state correctly clears dirty (the monotonic-boolean approach would
+   *  force dirty=true forever after the first edit, even if the user
+   *  undid back to a saved snapshot). */
+  lastSavedHash: string | null;
 
   // session lifecycle
   newLevel: (width: number, depth: number) => void;
   loadLevel: (maze: MazeData) => void;
-  /** Returns true on successful save, false if the level failed validation.
-   *  On failure, `dirty` is left true so the user knows the in-memory state
-   *  still diverges from the last persisted version. */
-  saveLevel: () => boolean;
+  /** Persists the current level to the level store.
+   *
+   *  - On a successful save, returns `{ ok: true }`, clears `dirty` and
+   *    sets `lastSavedAt` to the wall-clock ms.
+   *  - On a validation failure (validateMaze threw a `LevelLoadError`),
+   *    returns `{ ok: false, error }` with the underlying validator
+   *    message so callers can show *what* is structurally wrong, and
+   *    leaves `dirty` true so the user knows the in-memory state still
+   *    diverges from the last persisted version. */
+  saveLevel: () => SaveResult;
 
   // tool / camera / selection (UI state, no history push)
   setTool: (tool: EditorTool) => void;
   setCamera: (patch: Partial<EditorCamera>) => void;
   select: (sel: EditorStoreState['selection']) => void;
   clearSelection: () => void;
+  /** Clears the user-facing error banner. Call this from a useEffect
+   *  timer (or after the user dismisses the message). F-2026-06-12-H1. */
+  clearLastError: () => void;
 
   // placement actions (push history)
   placeWall: (x: number, z: number) => void;
@@ -145,6 +179,14 @@ const DEFAULT_CAMERA: EditorCamera = { x: 0, y: 0, zoom: 1 };
 // ---------------------------------------------------------------------------
 
 function buildEmptyLevel(width: number, depth: number): MazeData {
+  // F-2026-06-12-M3: reject degenerate sizes with a clear RangeError so
+  // the caller sees "width=0 is invalid" instead of a cryptic
+  // `TypeError: Cannot set properties of undefined` from the carve step.
+  if (!Number.isInteger(width) || !Number.isInteger(depth) || width < 1 || depth < 1) {
+    throw new RangeError(
+      `buildEmptyLevel: width and depth must be positive integers (got width=${width}, depth=${depth})`,
+    );
+  }
   // All-walls grid: every cell is a wall. The user carves out floors.
   const walls: CellType[][] = [];
   for (let z = 0; z < depth; z += 1) {
@@ -152,6 +194,13 @@ function buildEmptyLevel(width: number, depth: number): MazeData {
     for (let x = 0; x < width; x += 1) row.push(1);
     walls.push(row);
   }
+  // F-2026-06-12-T2: carve start (0,0) and exit (width-1, depth-1) so the new level
+  // passes `validateMaze` out of the box. Without this, "Save" on an
+  // un-edited new level throws "start/exit is on a wall".
+  carveCells(walls, [
+    { x: 0, z: 0 },
+    { x: width - 1, z: depth - 1 },
+  ]);
   return {
     id: `custom-${generateId()}`,
     name: DEFAULT_NAME,
@@ -181,15 +230,44 @@ function isFloor(level: MazeData, x: number, z: number): boolean {
   return inBounds(x, z, level.size.width, level.size.depth) && level.walls[z]![x] === 0;
 }
 
+// F-2026-06-12-M1: shared helper used by `buildEmptyLevel` (always carves
+// (0,0) and (width-1, depth-1)) and `updateSize` (carves the clamped
+// start/exit). Mutates `walls` in place and returns it so callers can
+// chain. The two carve sites used to drift independently — a future
+// change to "carve" semantics (e.g. validate-and-coalesce neighbors) only
+// needs to land here.
+function carveCells(
+  walls: CellType[][],
+  cells: ReadonlyArray<{ x: number; z: number }>,
+): CellType[][] {
+  for (const { x, z } of cells) {
+    walls[z]![x] = 0;
+  }
+  return walls;
+}
+
 function clamp(v: number, lo: number, hi: number): number {
   if (v < lo) return lo;
   if (v > hi) return hi;
   return v;
 }
 
+// F-2026-06-12-B2: deterministic hash of the level used as the dirty
+// oracle. JSON.stringify is fast and stable for plain data and gives us
+// structural equality without a deep-equal dep. Hash is compared against
+// `lastSavedHash` to decide if the in-memory level diverges from the
+// last persisted/loaded snapshot. The maze is small (cells = w*d, max
+// ~50*50) so the per-action cost is negligible.
+function levelHash(level: MazeData): string {
+  return JSON.stringify(level);
+}
+
 // Internal helper: returns a new level slice with the level replaced and
 // history refreshed. Store actions use this for every data-mutating call
-// so the bookkeeping (push, clear future, mark dirty) stays uniform.
+// so the bookkeeping (push, clear future, derive dirty) stays uniform.
+// F-2026-06-12-B2: `dirty` is no longer a monotonic boolean — it is
+// derived from the hash of the new level vs. the last-saved hash so
+// undoing back to the saved snapshot correctly clears dirty.
 function commitLevel(
   state: EditorStoreState,
   nextLevel: MazeData,
@@ -205,7 +283,7 @@ function commitLevel(
     past: next.past,
     future: next.future,
     selection: next.selection,
-    dirty: true,
+    dirty: levelHash(next.level) !== state.lastSavedHash,
   };
 }
 
@@ -214,9 +292,18 @@ function commitLevel(
 // ---------------------------------------------------------------------------
 
 export const useEditorStore = create<EditorStoreState>((set, get) => {
-  // Initial level is a tiny empty (all-walls) canvas. Callers should
-  // immediately invoke newLevel/loadLevel on mount.
+  // Initial level is a tiny pre-carved canvas — every cell is a wall
+  // EXCEPT start (0,0) and exit (width-1, depth-1) which `buildEmptyLevel`
+  // opens up so the level passes `validateMaze` out of the box. Callers
+  // can still call newLevel/loadLevel to replace it.
   const initialLevel = buildEmptyLevel(5, 4);
+
+  // F-2026-06-12-B2: the initial level IS the "saved baseline" until the
+  // user makes their first edit. Without seeding lastSavedHash the very
+  // first placeWall would set dirty=true (hash diverges from null) and
+  // the user would see a phantom "● 未保存" on a brand-new, unedited
+  // level. We treat the initial empty canvas as already-saved.
+  const initialLastSavedHash = levelHash(initialLevel);
 
   return {
     level: initialLevel,
@@ -227,21 +314,39 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
     future: [],
     dirty: false,
     lastSavedAt: null,
+    lastError: null,
+    lastSavedHash: initialLastSavedHash,
 
     // ---- session lifecycle ----
     newLevel: (width, depth) => {
+      const level = buildEmptyLevel(width, depth);
+      // F-2026-06-12-B2: a freshly built level is the new save baseline —
+      // dirty must start false so the toolbar doesn't show "● 未保存" on
+      // a brand-new, unedited canvas.
       set({
-        level: buildEmptyLevel(width, depth),
+        level,
         past: [],
         future: [],
         selection: null,
         dirty: false,
         lastSavedAt: null,
+        lastError: null,
+        lastSavedHash: levelHash(level),
       });
     },
 
     loadLevel: (maze) => {
-      set({ level: maze, past: [], future: [], selection: null, dirty: false, lastSavedAt: null });
+      // F-2026-06-12-B2: the loaded level IS the new save baseline.
+      set({
+        level: maze,
+        past: [],
+        future: [],
+        selection: null,
+        dirty: false,
+        lastSavedAt: null,
+        lastError: null,
+        lastSavedHash: levelHash(maze),
+      });
     },
 
     saveLevel: () => {
@@ -251,21 +356,31 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
       // `saveCustom` calls `validateMaze`, which can throw `LevelLoadError`
       // when the editor is in a state that doesn't satisfy the maze
       // contract (e.g. start/exit out of bounds, walls dimension mismatch).
-      // We catch the throw and surface it as a boolean so the caller
-      // (EditorToolbar) can show a user-facing error without uncaught
-      // rejections breaking the render cycle. We deliberately do NOT clear
+      // We catch the throw and surface it as a `SaveResult` so the caller
+      // (EditorToolbar) can show the validator's actual message verbatim
+      // to the user (matching the import-error pattern at
+      // EditorToolbar.handleImportChange). We deliberately do NOT clear
       // `dirty` on failure — the in-memory level still diverges from the
       // last persisted version.
       try {
-        useLevelStore.getState().saveCustom(get().level);
-        set({ dirty: false, lastSavedAt: Date.now() });
-        return true;
+        const level = get().level;
+        useLevelStore.getState().saveCustom(level);
+        // F-2026-06-12-B2: a successful save advances the baseline. The
+        // hash of what we just persisted becomes the new oracle — any
+        // subsequent edit will be compared against *this* snapshot, not
+        // the pre-save one. dirty=false is now derived from the hash, but
+        // we set it explicitly so the toolbar's "● 未保存" disappears the
+        // moment the user clicks Save (before the next render).
+        set({ dirty: false, lastSavedAt: Date.now(), lastSavedHash: levelHash(level) });
+        return { ok: true } as const;
       } catch (e) {
         // Defensive: validateMaze is the documented thrower, but we don't
-        // import its error class to keep the store decoupled. Log for
-        // diagnosis; the boolean is the public signal.
+        // import its error class to keep the store decoupled. Fall back to
+        // String(e) so a non-Error throw still produces a useful status
+        // message rather than an empty string.
+        const message = e instanceof Error ? e.message : String(e);
         console.warn('editorStore.saveLevel: validation failed', e);
-        return false;
+        return { ok: false, error: message } as const;
       }
     },
 
@@ -278,15 +393,33 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
 
     clearSelection: () => set({ selection: null }),
 
+    clearLastError: () => set({ lastError: null }),
+
     // ---- placement actions ----
     placeWall: (x, z) => {
       const { level } = get();
       if (!inBounds(x, z, level.size.width, level.size.depth)) return;
+      // F-2026-06-12-T2: silent-reject toggling start/exit into walls.
+      // Cross-reference: placeStart (line 327), placeExit (line 334), and
+      // addEnemyNode (line 473) all use the same early-return pattern when
+      // the requested cell violates the level contract. Without this guard
+      // a single click on the start cell produces a level that fails
+      // `validateMaze` ("start is on a wall").
+      if (x === level.start.x && z === level.start.z) {
+        // F-2026-06-12-H1: surface the silent-reject so the user knows
+        // why the click was dropped, not just that "nothing happened".
+        set({ lastError: '无法在起点放置墙（墙不能覆盖起点）' });
+        return;
+      }
+      if (x === level.exit.x && z === level.exit.z) {
+        set({ lastError: '无法在终点放置墙（墙不能覆盖终点）' });
+        return;
+      }
       const nextWalls = level.walls.map((r, zi) =>
         zi === z ? r.map((c, xi) => (xi === x ? ((c === 1 ? 0 : 1) as CellType) : c)) : r,
       );
       const nextLevel: MazeData = { ...level, walls: nextWalls };
-      set(commitLevel(get(), nextLevel));
+      set({ ...commitLevel(get(), nextLevel), lastError: null });
     },
 
     placeStart: (x, z) => {
@@ -351,7 +484,11 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
       // Dirty only; the spec calls for the history push to be debounced to
       // input blur (300ms) — EditorPropertiesPanel (Task 12) will own that
       // timer. For now we still bump dirty so the user sees a save prompt.
-      set({ level: nextLevel, dirty: true });
+      // F-2026-06-12-B2: dirty is derived from the hash so an edit that
+      // happens to produce a value already equal to the saved snapshot
+      // (e.g. typing the same character that was there before) leaves
+      // dirty=false.
+      set({ level: nextLevel, dirty: levelHash(nextLevel) !== get().lastSavedHash });
     },
 
     updateEnemy: (id, patch) => {
@@ -364,20 +501,23 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
       });
       if (!touched) return;
       const nextLevel: MazeData = { ...level, enemies: nextEnemies };
-      set({ level: nextLevel, dirty: true });
+      // F-2026-06-12-B2: hash-based dirty — see updatePickup.
+      set({ level: nextLevel, dirty: levelHash(nextLevel) !== get().lastSavedHash });
     },
 
     updateRule: (patch) => {
       const { level } = get();
       const nextRules: LevelRules = { ...level.rules, ...patch };
       const nextLevel: MazeData = { ...level, rules: nextRules };
-      set({ level: nextLevel, dirty: true });
+      // F-2026-06-12-B2: hash-based dirty — see updatePickup.
+      set({ level: nextLevel, dirty: levelHash(nextLevel) !== get().lastSavedHash });
     },
 
     updateName: (name) => {
       const { level } = get();
       const nextLevel: MazeData = { ...level, name };
-      set({ level: nextLevel, dirty: true });
+      // F-2026-06-12-B2: hash-based dirty — see updatePickup.
+      set({ level: nextLevel, dirty: levelHash(nextLevel) !== get().lastSavedHash });
     },
 
     updateSize: (width, depth) => {
@@ -395,6 +535,13 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
       const startZ = clamp(level.start.z, 0, depth - 1);
       const exitX = clamp(level.exit.x, 0, width - 1);
       const exitZ = clamp(level.exit.z, 0, depth - 1);
+      // F-2026-06-12-T2: carve the (clamped) start/exit cells so the resized level
+      // passes `validateMaze` out of the box. Without this, shrinking the
+      // grid can leave the start or exit sitting on a regenerated wall.
+      carveCells(walls, [
+        { x: startX, z: startZ },
+        { x: exitX, z: exitZ },
+      ]);
       const nextLevel: MazeData = {
         ...level,
         size: { width, depth },
@@ -419,7 +566,12 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
         const path = e.path.map((n, i) => (i === nodeIndex ? { x: cx, z: cz } : n));
         return { ...e, path } as EnemySpawn;
       });
-      set({ level: { ...level, enemies: nextEnemies }, dirty: true });
+      const nextLevel: MazeData = { ...level, enemies: nextEnemies };
+      // F-2026-06-12-B2: hash-based dirty — see updatePickup. Crucial
+      // here because the panel may call moveEnemyNode repeatedly while
+      // the user drags; an edit that lands on the saved snapshot must
+      // leave dirty=false so we don't show "● 未保存" spuriously.
+      set({ level: nextLevel, dirty: levelHash(nextLevel) !== get().lastSavedHash });
     },
 
     // F-N1: explicit history commit for the path-node editing flow.
@@ -514,10 +666,11 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
         selection: next.selection,
         past: next.past,
         future: next.future,
-        // Undo puts the user back in a state that may or may not match the
-        // last saved version. Conservatively mark dirty so the user knows
-        // they have unsaved changes that diverge from the last save.
-        dirty: true,
+        // F-2026-06-12-B2: dirty is derived from the hash. Undoing back
+        // to the saved snapshot correctly clears dirty (the previous
+        // unconditional `dirty: true` would leave a phantom "● 未保存"
+        // even after the user had nothing unsaved).
+        dirty: levelHash(next.level) !== get().lastSavedHash,
       });
     },
 
@@ -530,7 +683,8 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
         selection: next.selection,
         past: next.past,
         future: next.future,
-        dirty: true,
+        // F-2026-06-12-B2: hash-based dirty — see undo.
+        dirty: levelHash(next.level) !== get().lastSavedHash,
       });
     },
 
@@ -572,7 +726,15 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
         // entry can't poison the editor. validateMaze is the same gate
         // JsonMazeProvider runs hand-crafted levels through.
         const validated = validateMaze(obj.level, 'editor-draft');
-        set({ level: validated, past: [], future: [], selection: null, dirty: false });
+        // F-2026-06-12-B2: the loaded draft IS the new save baseline.
+        set({
+          level: validated,
+          past: [],
+          future: [],
+          selection: null,
+          dirty: false,
+          lastSavedHash: levelHash(validated),
+        });
       } catch (e) {
         console.warn('editorStore.loadDraft: failed', e);
       }
@@ -586,7 +748,16 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
       // validated level where name has already been normalized).
       const { level } = parseImport(raw);
       const renamed: MazeData = { ...level, id: `custom-${generateId()}` };
-      set({ level: renamed, past: [], future: [], selection: null, dirty: false, lastSavedAt: null });
+      // F-2026-06-12-B2: the imported level IS the new save baseline.
+      set({
+        level: renamed,
+        past: [],
+        future: [],
+        selection: null,
+        dirty: false,
+        lastSavedAt: null,
+        lastSavedHash: levelHash(renamed),
+      });
     },
 
     exportJson: () => exportLevel(get().level),

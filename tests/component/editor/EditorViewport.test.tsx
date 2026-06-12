@@ -78,9 +78,29 @@ describe('EditorViewport (P2-4b #11)', () => {
   it('clicking a floor with the wall tool toggles it to a wall', () => {
     useEditorStore.setState({ tool: 'wall' });
     render(<EditorViewport />);
-    fireEvent.click(screen.getByTestId('cell-0-0'));
+    // (1,0) is a floor in the fixture, but not the start (0,0) or exit
+    // (4,3) — placeWall silently rejects start/exit cells.
+    fireEvent.click(screen.getByTestId('cell-1-0'));
     const lvl = useEditorStore.getState().level;
-    expect(lvl.walls[0]![0]).toBe(1);
+    expect(lvl.walls[0]![1]).toBe(1);
+  });
+
+  // F-2026-06-12-H2: regression test — clicking the start cell with the
+  // wall tool must NOT toggle it to a wall. The guard in `placeWall`
+  // silently rejects the click so the level remains saveable. Verify
+  // both that the wall is unchanged AND that no history/dirty side
+  // effect leaked through.
+  it('wall tool refuses to toggle the start cell (level remains saveable)', () => {
+    useEditorStore.setState({ tool: 'wall' });
+    render(<EditorViewport />);
+    // Act
+    fireEvent.click(screen.getByTestId('cell-0-0'));
+    // Assert — the start cell (0,0) is still a floor.
+    const lvl = useEditorStore.getState().level;
+    expect(lvl.walls[0]![0]).toBe(0);
+    // And no history entry was created.
+    expect(useEditorStore.getState().past).toHaveLength(0);
+    expect(useEditorStore.getState().dirty).toBe(false);
   });
 
   it('clicking a cell with the start tool moves start to that cell', () => {
