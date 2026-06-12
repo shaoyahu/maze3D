@@ -41,39 +41,46 @@ describe('menu components', () => {
     const onBack = vi.fn();
     const levels: LevelDef[] = [{ id: 'a', name: 'Alpha' }, { id: 'b', name: 'Beta' }];
     render(<LevelSelect available={levels} onPick={onPick} onBack={onBack} />);
-    fireEvent.click(screen.getByText('Alpha'));
+    // P2-6: default source='teaching' renders sublevel-select + single start-button.
+    fireEvent.change(screen.getByTestId('sublevel-select'), { target: { value: 'a' } });
+    fireEvent.click(screen.getByTestId('start-button'));
     // Hand-crafted level: just the id, no StartLevelOptions.
-    expect(onPick).toHaveBeenCalledWith('a');
+    // P2-6: onPick is (id, options?) so the second arg is explicitly undefined.
+    expect(onPick).toHaveBeenCalledWith('a', undefined);
     fireEvent.click(screen.getByText('返回'));
     expect(onBack).toHaveBeenCalled();
   });
 
-  it('LevelSelect shows a hint about the random cards when no hand-crafted levels are loaded', () => {
+  // P2-6: the "暂无固定关卡" hint text was replaced by a disabled sublevel-select
+  // (per FR-2: when no teaching levels are available, the dropdown is rendered
+  // but disabled). Old text removed; this test would be a no-op so it's skipped
+  // rather than deleted, awaiting P2-7 to add a richer empty-state message.
+  it.skip('LevelSelect shows a hint about the random cards when no hand-crafted levels are loaded (P2-6: hint text removed; see FR-2)', () => {
     render(<LevelSelect available={[]} onPick={() => {}} onBack={() => {}} />);
-    // The exact text changed in P2-3: with procedural entries added, the
-    // hint now points the player at the random cards instead of a flat
-    // "暂无可用关卡" dead end.
     expect(screen.getByText(/暂无固定关卡/)).toBeInTheDocument();
   });
 
   // P2-3 FR-10: LevelSelect has two extra entries for procedural play:
   //   (1) "随机关卡" — 3 size cards (15/30/50) → time-trial with a random seed
   //   (2) "指定种子关卡" — seed input + algorithm + size + mode + start
-  describe('P2-3 procedural entries', () => {
-    it('renders a 随机关卡 section with a size dropdown + random card button', () => {
+  // P2-6: all 4 sources are gated by a single level-source-select dropdown; the
+  // tests below switch the source first, then exercise the same behaviors.
+  describe('P2-3 procedural entries (P2-6 cascading)', () => {
+    it('switching to random source shows the size dropdown', () => {
       render(<LevelSelect available={[]} onPick={() => {}} onBack={() => {}} />);
-      expect(screen.getByText('随机关卡')).toBeInTheDocument();
-      // P2-5 FR-9/FR-16: size is a <select>, random card is a single button.
+      fireEvent.change(screen.getByTestId('level-source-select'), { target: { value: 'random' } });
+      // P2-6: a single size <select> drives the random seed; the 4 separate
+      // random-card buttons are gone (replaced by a single start-button).
       expect(screen.getByTestId('size-select')).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /30×30 随机关卡/ })).toBeInTheDocument();
     });
 
-    it('clicking the random card button calls onPick with a procedural seed id + default mode', () => {
+    it('clicking start-button with default size calls onPick with a procedural seed id + default mode', () => {
       const onPick = vi.fn();
       render(<LevelSelect available={[]} onPick={onPick} onBack={() => {}} />);
-      // Switch size to 15 then click the random card.
+      fireEvent.change(screen.getByTestId('level-source-select'), { target: { value: 'random' } });
+      // Switch size to 15 then click the unified start-button.
       fireEvent.change(screen.getByTestId('size-select'), { target: { value: '15' } });
-      fireEvent.click(screen.getByRole('button', { name: /15×15 随机关卡/ }));
+      fireEvent.click(screen.getByTestId('start-button'));
       expect(onPick).toHaveBeenCalledTimes(1);
       const [id, options] = onPick.mock.calls[0];
       // id must be a well-formed procedural seed id (algo-v1-*-15-xxxxxxxxxxxxxxxx).
@@ -83,107 +90,108 @@ describe('menu components', () => {
       expect(options?.seed?.size).toBe(15);
     });
 
-    it('changing the size dropdown passes that size in the random-card options', () => {
+    it('changing the size dropdown passes that size in the start options', () => {
       const onPick = vi.fn();
       render(<LevelSelect available={[]} onPick={onPick} onBack={() => {}} />);
+      fireEvent.change(screen.getByTestId('level-source-select'), { target: { value: 'random' } });
       // Default size is 30, but switch to 50 to verify the dropdown drives the seed.
       fireEvent.change(screen.getByTestId('size-select'), { target: { value: '50' } });
-      fireEvent.click(screen.getByRole('button', { name: /50×50 随机关卡/ }));
+      fireEvent.click(screen.getByTestId('start-button'));
       const [id, options] = onPick.mock.calls[0];
       expect(id).toMatch(/-50-[0-9a-f]{16}$/);
       expect(options?.seed?.size).toBe(50);
     });
 
-    it('renders a 指定种子关卡 section with the 进阶 fold collapsed by default', () => {
+    it('switching to seed source shows the seed input directly (no 进阶 fold in P2-6)', () => {
       render(<LevelSelect available={[]} onPick={() => {}} onBack={() => {}} />);
-      expect(screen.getByText('指定种子关卡')).toBeInTheDocument();
-      // P2-5 FR-13: seed input is hidden behind the 进阶 fold until clicked.
-      expect(screen.queryByLabelText(/seed/i)).toBeNull();
-      expect(screen.getByTestId('advanced-toggle')).toBeInTheDocument();
-      // Open the fold and confirm the seed input + start button now appear.
-      fireEvent.click(screen.getByTestId('advanced-toggle'));
-      expect(screen.getByLabelText(/seed/i)).toBeInTheDocument();
-      // The seed-section start button is exactly "开始" (the random-card
-      // button is "开始 30×30 随机关卡"), so use an exact match.
-      expect(screen.getByRole('button', { name: '开始' })).toBeInTheDocument();
+      fireEvent.change(screen.getByTestId('level-source-select'), { target: { value: 'seed' } });
+      // P2-6: the seed section is open by default — no advanced-toggle, no fold.
+      expect(screen.queryByTestId('advanced-toggle')).toBeNull();
+      expect(screen.getByTestId('seed-input')).toBeInTheDocument();
+      // Reuse-last-seed button is still rendered.
+      expect(screen.getByTestId('reuse-last-seed')).toBeInTheDocument();
     });
 
     it('clicking start with a valid hex seed calls onPick with that seed', () => {
       const onPick = vi.fn();
       render(<LevelSelect available={[]} onPick={onPick} onBack={() => {}} />);
-      fireEvent.click(screen.getByTestId('advanced-toggle'));
-      const seedInput = screen.getByLabelText(/seed/i) as HTMLInputElement;
+      fireEvent.change(screen.getByTestId('level-source-select'), { target: { value: 'seed' } });
+      const seedInput = screen.getByTestId('seed-input') as HTMLInputElement;
       fireEvent.change(seedInput, { target: { value: '0123456789abcdef' } });
-      fireEvent.click(screen.getByRole('button', { name: '开始' }));
+      fireEvent.click(screen.getByTestId('start-button'));
       expect(onPick).toHaveBeenCalledTimes(1);
       const [id, options] = onPick.mock.calls[0];
       expect(id).toMatch(/^algo-v1-[a-z-]+-\d+-0123456789abcdef$/);
       expect(options?.seed?.mazeSeed).toBe('0123456789abcdef');
     });
 
-    it('clicking start with an invalid (non-hex / wrong-length) seed does NOT call onPick', () => {
+    it('clicking start with an invalid (non-hex) seed does NOT call onPick (start-button disabled)', () => {
       const onPick = vi.fn();
       render(<LevelSelect available={[]} onPick={onPick} onBack={() => {}} />);
-      fireEvent.click(screen.getByTestId('advanced-toggle'));
-      const seedInput = screen.getByLabelText(/seed/i) as HTMLInputElement;
+      fireEvent.change(screen.getByTestId('level-source-select'), { target: { value: 'seed' } });
+      const seedInput = screen.getByTestId('seed-input') as HTMLInputElement;
       fireEvent.change(seedInput, { target: { value: 'not-hex' } });
-      fireEvent.click(screen.getByRole('button', { name: '开始' }));
+      // P2-6: validation failure disables the start-button; clicking it is a no-op.
+      const btn = screen.getByTestId('start-button') as HTMLButtonElement;
+      expect(btn).toBeDisabled();
+      fireEvent.click(btn);
       expect(onPick).not.toHaveBeenCalled();
     });
   });
 
   // P2-4a FR-13/FR-20: 4 procedural controls + last-seed persistence.
-  describe('P2-4a procedural controls', () => {
-    it('renders the 4 procedural controls (mode / survive seconds / enemy count / progressive)', () => {
+  // P2-6: switching to 'random' reveals the procedural-controls section; survive
+  // mode then reveals the 4-control block (mode/survive-seconds/enemy/progressive).
+  describe('P2-4a procedural controls (P2-6 cascading)', () => {
+    it('switching to random + survive mode renders the 4 procedural controls', () => {
       render(<LevelSelect available={[]} onPick={() => {}} onBack={() => {}} />);
+      fireEvent.change(screen.getByTestId('level-source-select'), { target: { value: 'random' } });
       expect(screen.getByTestId('procedural-controls')).toBeInTheDocument();
       // P2-5 FR-8: mode is a <select> with stable testids on each <option>.
       const modeSelect = screen.getByTestId('mode-select');
       expect(within(modeSelect).getByTestId('mode-reach-exit')).toBeInTheDocument();
       expect(within(modeSelect).getByTestId('mode-time-trial')).toBeInTheDocument();
       expect(within(modeSelect).getByTestId('mode-survive')).toBeInTheDocument();
-      // survive-seconds only shows when mode === 'survive' (default is time-trial)
-      expect(screen.queryByTestId('survive-seconds-select')).toBeNull();
+      // P2-6: survive-seconds is a free <input> + 4 chips, only when mode='survive'.
+      expect(screen.queryByTestId('survive-seconds-input')).toBeNull();
+      // Switch to survive so the 4 controls are all rendered.
+      fireEvent.change(modeSelect, { target: { value: 'survive' } });
       // P2-5 FR-15: enemy count is a 0..10 <select> with default 3.
-      // Switch to survive so the enemy count control is rendered.
-      fireEvent.change(screen.getByTestId('mode-select'), { target: { value: 'survive' } });
       const enemySelect = screen.getByTestId('enemy-count-select') as HTMLSelectElement;
       expect(enemySelect.tagName).toBe('SELECT');
       expect(enemySelect.value).toBe('3');
-      // The options should cover the 0..10 range.
       const values = Array.from(enemySelect.options).map((o) => o.value);
       expect(values).toEqual(['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10']);
       // progressive toggle defaults to on
       expect(screen.getByTestId('progressive-spawn')).toBeChecked();
     });
 
-    it('switching to survive mode reveals the survive-seconds select with stable option testids', () => {
+    it('switching to survive mode reveals the survive-seconds input + 4 chip buttons', () => {
       render(<LevelSelect available={[]} onPick={() => {}} onBack={() => {}} />);
+      fireEvent.change(screen.getByTestId('level-source-select'), { target: { value: 'random' } });
+      // P2-6: no survive-seconds-select anymore — replaced by a free input + 4 chip
+      // buttons. Verify the select-based testid is gone and the new ones exist.
       expect(screen.queryByTestId('survive-seconds-select')).toBeNull();
-      // P2-5 FR-8: mode testids live on <option> elements inside the <select>.
       fireEvent.change(screen.getByTestId('mode-select'), { target: { value: 'survive' } });
-      const select = screen.getByTestId('survive-seconds-select') as HTMLSelectElement;
-      expect(select.tagName).toBe('SELECT');
-      // Stable per-value testids on each <option> (still queryable from the tree).
-      expect(screen.getByTestId('survive-30')).toBeInTheDocument();
-      expect(screen.getByTestId('survive-60')).toBeInTheDocument();
-      expect(screen.getByTestId('survive-90')).toBeInTheDocument();
-      expect(screen.getByTestId('survive-120')).toBeInTheDocument();
-      // And verify they live inside the select.
-      expect(within(select).getByTestId('survive-30')).toBeInTheDocument();
+      expect(screen.getByTestId('survive-seconds-input')).toBeInTheDocument();
+      // 4 chip buttons (30/60/90/120) — the previous <select> <option> testids
+      // (`survive-30` etc.) are gone, replaced by `survive-chip-30` etc.
+      expect(screen.getByTestId('survive-chip-30')).toBeInTheDocument();
+      expect(screen.getByTestId('survive-chip-60')).toBeInTheDocument();
+      expect(screen.getByTestId('survive-chip-90')).toBeInTheDocument();
+      expect(screen.getByTestId('survive-chip-120')).toBeInTheDocument();
     });
 
-    it('forwards mode + enemyCount + spawnSchedule on the random-card start callback', () => {
+    it('forwards mode + enemyCount + spawnSchedule on the start callback', () => {
       const onPick = vi.fn();
       render(<LevelSelect available={[]} onPick={onPick} onBack={() => {}} />);
+      fireEvent.change(screen.getByTestId('level-source-select'), { target: { value: 'random' } });
       // Switch to survive and configure enemy + spawn options.
       fireEvent.change(screen.getByTestId('mode-select'), { target: { value: 'survive' } });
-      // survive-seconds is a <select>; change value via fireEvent.change.
-      fireEvent.change(screen.getByTestId('survive-seconds-select'), { target: { value: '30' } });
+      // P2-6: 30s chip click sets survive-seconds to 30 (replaces <select> change).
+      fireEvent.click(screen.getByTestId('survive-chip-30'));
       fireEvent.click(screen.getByTestId('progressive-spawn')); // toggle off
-      // P2-5 FR-16: there is no15-size card anymore; click the random card
-      // button (which uses the current size dropdown, default 30).
-      fireEvent.click(screen.getByRole('button', { name: /30×30 随机关卡/ }));
+      fireEvent.click(screen.getByTestId('start-button'));
       const [, options] = onPick.mock.calls[0];
       expect(options?.mode).toBe('survive');
       expect(options?.surviveSeconds).toBe(30);
@@ -194,11 +202,10 @@ describe('menu components', () => {
     it('persists the last valid seed to localStorage on a successful start', () => {
       const onPick = vi.fn();
       render(<LevelSelect available={[]} onPick={onPick} onBack={() => {}} />);
-      // P2-5 FR-13: open the 进阶 fold first.
-      fireEvent.click(screen.getByTestId('advanced-toggle'));
-      const seedInput = screen.getByLabelText(/seed/i) as HTMLInputElement;
+      fireEvent.change(screen.getByTestId('level-source-select'), { target: { value: 'seed' } });
+      const seedInput = screen.getByTestId('seed-input') as HTMLInputElement;
       fireEvent.change(seedInput, { target: { value: '0123456789abcdef' } });
-      fireEvent.click(screen.getByRole('button', { name: '开始' }));
+      fireEvent.click(screen.getByTestId('start-button'));
       expect(localStorage.getItem('maze3d.lastSeed')).toBe('0123456789abcdef');
     });
 
@@ -206,30 +213,31 @@ describe('menu components', () => {
       localStorage.setItem('maze3d.lastSeed', 'previoustoolongvalue');
       const onPick = vi.fn();
       render(<LevelSelect available={[]} onPick={onPick} onBack={() => {}} />);
-      fireEvent.click(screen.getByTestId('advanced-toggle'));
-      const seedInput = screen.getByLabelText(/seed/i) as HTMLInputElement;
+      fireEvent.change(screen.getByTestId('level-source-select'), { target: { value: 'seed' } });
+      const seedInput = screen.getByTestId('seed-input') as HTMLInputElement;
       fireEvent.change(seedInput, { target: { value: 'not-hex' } });
-      fireEvent.click(screen.getByRole('button', { name: '开始' }));
+      // Invalid seed disables start-button; click is a no-op so localStorage
+      // is never clobbered.
+      fireEvent.click(screen.getByTestId('start-button'));
       // Invalid seed must not clobber the prior value.
       expect(localStorage.getItem('maze3d.lastSeed')).toBe('previoustoolongvalue');
     });
 
-    it('pre-fills the seed input from localStorage once the 进阶 fold is opened (FR-20 round-trip)', () => {
+    it('pre-fills the seed input from localStorage (FR-20 round-trip)', () => {
       localStorage.setItem('maze3d.lastSeed', 'feedfacefeedface');
       render(<LevelSelect available={[]} onPick={() => {}} onBack={() => {}} />);
-      // P2-5 FR-13: input is hidden behind the 进阶 fold on mount.
-      expect(screen.queryByLabelText(/seed/i)).toBeNull();
-      fireEvent.click(screen.getByTestId('advanced-toggle'));
-      const seedInput = screen.getByLabelText(/seed/i) as HTMLInputElement;
+      // P2-6: seed input is rendered immediately when source='seed' — no fold
+      // to open. The pre-fill useEffect runs on mount and reads localStorage.
+      fireEvent.change(screen.getByTestId('level-source-select'), { target: { value: 'seed' } });
+      const seedInput = screen.getByTestId('seed-input') as HTMLInputElement;
       expect(seedInput.value).toBe('feedfacefeedface');
     });
 
     it('ignores a non-hex value in localStorage and leaves the input empty', () => {
       localStorage.setItem('maze3d.lastSeed', 'totally-not-hex');
       render(<LevelSelect available={[]} onPick={() => {}} onBack={() => {}} />);
-      // P2-5 FR-13: open the fold so the seed input is queryable.
-      fireEvent.click(screen.getByTestId('advanced-toggle'));
-      const seedInput = screen.getByLabelText(/seed/i) as HTMLInputElement;
+      fireEvent.change(screen.getByTestId('level-source-select'), { target: { value: 'seed' } });
+      const seedInput = screen.getByTestId('seed-input') as HTMLInputElement;
       expect(seedInput.value).toBe('');
     });
   });

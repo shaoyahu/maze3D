@@ -1,131 +1,234 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { LevelSelect } from '../../src/ui/LevelSelect';
+import { useLevelStore } from '../../src/store/levelStore';
+import { useSettingsStore } from '../../src/store/settingsStore';
+import type { MazeData } from '../../src/maze/types';
+
+function makeCustom(id: string, name: string, w: number, d: number): MazeData {
+  return {
+    id,
+    name,
+    size: { width: w, depth: d },
+    cellSize: 2,
+    start: { x: 0, z: 0 },
+    exit: { x: w - 1, z: d - 1 },
+    walls: Array.from({ length: d }, () => Array.from({ length: w }, () => 0)),
+    pickups: [],
+    enemies: [],
+    rules: { initialTime: 60, maxHealth: 3, victory: 'reach-exit', timeOnPickup: 10 },
+  };
+}
 
 beforeEach(() => {
   localStorage.clear();
+  useSettingsStore.setState({
+    pointerSensitivity: 0.002,
+    fov: 60,
+    darkMode: false,
+    set: useSettingsStore.getState().set,
+  });
+  useLevelStore.setState({ customLevels: {} });
 });
 
-describe('LevelSelect P2-5 UI revamp', () => {
-  // FR-7: 2-col grid
-  it('renders the root with grid layout', () => {
+describe('LevelSelect P2-6 cascading redesign', () => {
+  // ---- Case 1: 主 dropdown 含 4 选项,各自 testid ----
+  it('renders the main level-source dropdown with 4 options, each with stable testid', () => {
     render(<LevelSelect available={[]} onPick={() => {}} onBack={() => {}} />);
-    const root = screen.getByTestId('level-select-root');
-    expect(root.style.display).toBe('grid');
-  });
-
-  // FR-8: mode is a native <select>; testids stable on <option>
-  it('renders mode as a native select with stable testids on each option', () => {
-    render(<LevelSelect available={[]} onPick={() => {}} onBack={() => {}} />);
-    const select = screen.getByTestId('mode-select') as HTMLSelectElement;
+    const select = screen.getByTestId('level-source-select') as HTMLSelectElement;
     expect(select.tagName).toBe('SELECT');
-    expect(within(select).getByTestId('mode-reach-exit')).toBeInTheDocument();
-    expect(within(select).getByTestId('mode-time-trial')).toBeInTheDocument();
-    expect(within(select).getByTestId('mode-survive')).toBeInTheDocument();
+    expect(within(select).getByTestId('level-source-teaching')).toBeInTheDocument();
+    expect(within(select).getByTestId('level-source-random')).toBeInTheDocument();
+    expect(within(select).getByTestId('level-source-custom')).toBeInTheDocument();
+    expect(within(select).getByTestId('level-source-seed')).toBeInTheDocument();
   });
 
-  it('changing mode select updates internal state', () => {
-    const onPick = vi.fn();
-    render(<LevelSelect available={[]} onPick={onPick} onBack={() => {}} />);
+  // ---- Case 2: 默认选「教学」时 sublevel-select 渲染,available=[] 时 disabled ----
+  it('defaults to teaching and renders sublevel-select (disabled when available=[])', () => {
+    render(<LevelSelect available={[]} onPick={() => {}} onBack={() => {}} />);
+    const sub = screen.getByTestId('sublevel-select') as HTMLSelectElement;
+    expect(sub.tagName).toBe('SELECT');
+    expect(sub).toBeDisabled();
+  });
+
+  it('lists available teaching levels in sublevel-select options', () => {
+    render(
+      <LevelSelect
+        available={[
+          { id: 'level-small', name: '教学关 A' },
+          { id: 'level-tiny', name: '教学关 B' },
+        ]}
+        onPick={() => {}}
+        onBack={() => {}}
+      />,
+    );
+    const sub = screen.getByTestId('sublevel-select') as HTMLSelectElement;
+    expect(sub).not.toBeDisabled();
+    expect(within(sub).getByTestId('sublevel-option-level-small')).toBeInTheDocument();
+    expect(within(sub).getByTestId('sublevel-option-level-tiny')).toBeInTheDocument();
+  });
+
+  // ---- Case 3: 切到「随机」: mode+size dropdown 出现,sublevel-select 消失 ----
+  it('switching to random shows mode+size dropdowns and hides sublevel-select', () => {
+    render(<LevelSelect available={[{ id: 'x', name: 'X' }]} onPick={() => {}} onBack={() => {}} />);
+    const src = screen.getByTestId('level-source-select') as HTMLSelectElement;
+    fireEvent.change(src, { target: { value: 'random' } });
+    expect(screen.queryByTestId('sublevel-select')).toBeNull();
+    expect(screen.getByTestId('mode-select')).toBeInTheDocument();
+    expect(screen.getByTestId('size-select')).toBeInTheDocument();
+  });
+
+  // ---- Case 4: 切到「我的」: sublevel-select 渲染 customLevels 列表 ----
+  it('switching to custom shows sublevel-select with custom level rows', () => {
+    useLevelStore.setState({
+      customLevels: {
+        'custom-1': makeCustom('custom-1', 'My First', 10, 10),
+      },
+    });
+    render(<LevelSelect available={[]} onPick={() => {}} onBack={() => {}} />);
+    const src = screen.getByTestId('level-source-select') as HTMLSelectElement;
+    fireEvent.change(src, { target: { value: 'custom' } });
+    const sub = screen.getByTestId('sublevel-select') as HTMLSelectElement;
+    expect(within(sub).getByTestId('sublevel-option-custom-1')).toBeInTheDocument();
+  });
+
+  // ---- Case 5: 切到「指定种子」: seed-input 渲染,reuse-last-seed 可用 ----
+  it('switching to seed shows seed-input and reuse-last-seed button', () => {
+    render(<LevelSelect available={[]} onPick={() => {}} onBack={() => {}} />);
+    const src = screen.getByTestId('level-source-select') as HTMLSelectElement;
+    fireEvent.change(src, { target: { value: 'seed' } });
+    expect(screen.getByTestId('seed-input')).toBeInTheDocument();
+    expect(screen.getByTestId('reuse-last-seed')).toBeInTheDocument();
+    expect(screen.queryByTestId('sublevel-select')).toBeNull();
+  });
+
+  // ---- Case 6: mode='survive' 时 4 个设置出现(input + 4 chip + checkbox + max-input) ----
+  it('mode=survive reveals survive-seconds input + 4 chips + progressive + max-input', () => {
+    render(<LevelSelect available={[]} onPick={() => {}} onBack={() => {}} />);
+    const src = screen.getByTestId('level-source-select') as HTMLSelectElement;
+    fireEvent.change(src, { target: { value: 'random' } });
     fireEvent.change(screen.getByTestId('mode-select'), { target: { value: 'survive' } });
-    // After switch to survive, enemy-count select should appear
-    expect(screen.getByTestId('enemy-count-select')).toBeInTheDocument();
-    // And progressive-spawn checkbox
+
+    expect(screen.getByTestId('survive-seconds-input')).toBeInTheDocument();
+    expect(screen.getByTestId('survive-chip-30')).toBeInTheDocument();
+    expect(screen.getByTestId('survive-chip-60')).toBeInTheDocument();
+    expect(screen.getByTestId('survive-chip-90')).toBeInTheDocument();
+    expect(screen.getByTestId('survive-chip-120')).toBeInTheDocument();
     expect(screen.getByTestId('progressive-spawn')).toBeInTheDocument();
-    // And survive-seconds select
-    expect(screen.getByTestId('survive-seconds-select')).toBeInTheDocument();
+    expect(screen.getByTestId('progressive-max-input')).toBeInTheDocument();
   });
 
-  // FR-10 + FR-12: enemy / progressive hidden in non-survive
-  it('hides enemy-count + progressive in non-survive mode', () => {
+  // ---- Case 7: chip 点击: 同步到 input value + active className ----
+  it('clicking survive-chip-60 syncs to input value and adds active className', () => {
     render(<LevelSelect available={[]} onPick={() => {}} onBack={() => {}} />);
-    expect(screen.queryByTestId('enemy-count-select')).toBeNull();
-    expect(screen.queryByTestId('progressive-spawn')).toBeNull();
-  });
-
-  it('shows a "当前模式无敌人" placeholder in non-survive mode', () => {
-    render(<LevelSelect available={[]} onPick={() => {}} onBack={() => {}} />);
-    expect(screen.getByText(/当前模式无敌人/)).toBeInTheDocument();
-  });
-
-  // FR-9: size is a native select
-  it('renders size as a native select with 15/30/50 options', () => {
-    render(<LevelSelect available={[]} onPick={() => {}} onBack={() => {}} />);
-    const select = screen.getByTestId('size-select') as HTMLSelectElement;
-    expect(select.tagName).toBe('SELECT');
-    expect(within(select).getAllByRole('option').map((o) => o.textContent)).toEqual([
-      '15×15 (小)', '30×30 (中)', '50×50 (大)',
-    ]);
-  });
-
-  // FR-13: advanced fold
-  it('hides the seed input by default (advanced fold closed)', () => {
-    render(<LevelSelect available={[]} onPick={() => {}} onBack={() => {}} />);
-    expect(screen.queryByLabelText(/seed/i)).toBeNull();
-  });
-
-  it('reveals the seed input when 进阶 ▾ is clicked', () => {
-    render(<LevelSelect available={[]} onPick={() => {}} onBack={() => {}} />);
-    fireEvent.click(screen.getByTestId('advanced-toggle'));
-    expect(screen.getByLabelText(/seed/i)).toBeInTheDocument();
-  });
-
-  it('hides the seed input again on second click of the toggle', () => {
-    render(<LevelSelect available={[]} onPick={() => {}} onBack={() => {}} />);
-    const toggle = screen.getByTestId('advanced-toggle');
-    fireEvent.click(toggle);
-    expect(screen.getByLabelText(/seed/i)).toBeInTheDocument();
-    fireEvent.click(toggle);
-    expect(screen.queryByLabelText(/seed/i)).toBeNull();
-  });
-
-  // FR-13: "使用上次 seed" button restores a stored seed after the input is cleared.
-  it('restores the stored seed via reuse button after the input is cleared', () => {
-    localStorage.setItem('maze3d.lastSeed', 'deadbeefcafebabe');
-    render(<LevelSelect available={[]} onPick={() => {}} onBack={() => {}} />);
-    fireEvent.click(screen.getByTestId('advanced-toggle'));
-    const input = screen.getByLabelText(/seed/i) as HTMLInputElement;
-    // Clear whatever was pre-filled on mount.
-    fireEvent.change(input, { target: { value: '' } });
-    expect(input.value).toBe('');
-    // Reuse button repopulates from localStorage.
-    fireEvent.click(screen.getByTestId('reuse-last-seed'));
-    expect(input.value).toBe('deadbeefcafebabe');
-  });
-
-  // FR-16: 随机关卡按钮 用 size 下拉
-  it('uses the size dropdown value for the random card button', () => {
-    const onPick = vi.fn();
-    render(<LevelSelect available={[]} onPick={onPick} onBack={() => {}} />);
-    fireEvent.change(screen.getByTestId('size-select'), { target: { value: '50' } });
-    // 唯一存在的"开始 XXxXX 随机关卡" 按钮
-    const btn = screen.getByRole('button', { name: /50×50 随机关卡/ });
-    fireEvent.click(btn);
-    const [id, options] = onPick.mock.calls[0];
-    expect(id).toMatch(/^algo-v1-[a-z-]+-50-[0-9a-f]{16}$/);
-    expect(options?.seed?.size).toBe(50);
-  });
-
-  // FR-17: algorithmForMode 在 onPick 的 seed 编码里生效
-  it('encodes recursive-backtracker for reach-exit random level', () => {
-    const onPick = vi.fn();
-    render(<LevelSelect available={[]} onPick={onPick} onBack={() => {}} />);
-    // default mode = time-trial, but here we explicitly pick reach-exit
-    fireEvent.change(screen.getByTestId('mode-select'), { target: { value: 'reach-exit' } });
-    // Switch size dropdown to 15 so the random button reads "15×15 随机关卡".
-    fireEvent.change(screen.getByTestId('size-select'), { target: { value: '15' } });
-    fireEvent.click(screen.getByRole('button', { name: /15×15 随机关卡/ }));
-    const [id] = onPick.mock.calls[0];
-    expect(id).toMatch(/^algo-v1-recursive-backtracker-15-/);
-  });
-
-  it('encodes kruskal for survive random level', () => {
-    const onPick = vi.fn();
-    render(<LevelSelect available={[]} onPick={onPick} onBack={() => {}} />);
+    const src = screen.getByTestId('level-source-select') as HTMLSelectElement;
+    fireEvent.change(src, { target: { value: 'random' } });
     fireEvent.change(screen.getByTestId('mode-select'), { target: { value: 'survive' } });
+
+    const chip = screen.getByTestId('survive-chip-60') as HTMLButtonElement;
+    fireEvent.click(chip);
+
+    const input = screen.getByTestId('survive-seconds-input') as HTMLInputElement;
+    expect(input.value).toBe('60');
+    expect(chip.className).toContain('survive-chip--active');
+  });
+
+  // ---- Case 8: input 越界: clamp + aria-invalid="true" ----
+  it('out-of-range survive-seconds input clamps to bounds and sets aria-invalid', () => {
+    render(<LevelSelect available={[]} onPick={() => {}} onBack={() => {}} />);
+    const src = screen.getByTestId('level-source-select') as HTMLSelectElement;
+    fireEvent.change(src, { target: { value: 'random' } });
+    fireEvent.change(screen.getByTestId('mode-select'), { target: { value: 'survive' } });
+
+    const input = screen.getByTestId('survive-seconds-input') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: '5' } });
+    expect(Number(input.value)).toBeGreaterThanOrEqual(10);
+    expect(input.getAttribute('aria-invalid')).toBe('true');
+
+    fireEvent.change(input, { target: { value: '9999' } });
+    expect(Number(input.value)).toBeLessThanOrEqual(600);
+    expect(input.getAttribute('aria-invalid')).toBe('true');
+  });
+
+  // ---- Case 9: 渐进 checkbox 取消: progressive-max-input 消失 ----
+  it('unchecking progressive hides the max-input', () => {
+    render(<LevelSelect available={[]} onPick={() => {}} onBack={() => {}} />);
+    const src = screen.getByTestId('level-source-select') as HTMLSelectElement;
+    fireEvent.change(src, { target: { value: 'random' } });
+    fireEvent.change(screen.getByTestId('mode-select'), { target: { value: 'survive' } });
+
+    expect(screen.getByTestId('progressive-max-input')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('progressive-spawn'));
+    expect(screen.queryByTestId('progressive-max-input')).toBeNull();
+  });
+
+  // ---- Case 10: start-button 点击: 调用 onPick 一次 + options 字段正确 ----
+  it('clicking start-button invokes onPick once with correct id + options (random)', () => {
+    const onPick = vi.fn();
+    render(<LevelSelect available={[]} onPick={onPick} onBack={() => {}} />);
+    const src = screen.getByTestId('level-source-select') as HTMLSelectElement;
+    fireEvent.change(src, { target: { value: 'random' } });
     fireEvent.change(screen.getByTestId('size-select'), { target: { value: '15' } });
-    fireEvent.click(screen.getByRole('button', { name: /15×15 随机关卡/ }));
-    const [id] = onPick.mock.calls[0];
-    expect(id).toMatch(/^algo-v1-kruskal-15-/);
+
+    fireEvent.click(screen.getByTestId('start-button'));
+
+    expect(onPick).toHaveBeenCalledTimes(1);
+    const [id, options] = onPick.mock.calls[0];
+    expect(id).toMatch(/^algo-v1-[a-z-]+-15-[0-9a-f]{16}$/);
+    expect(options).toBeDefined();
+    expect(options.mode).toBe('time-trial');
+    expect(options.seed?.size).toBe(15);
+    expect(typeof options.enemyCount).toBe('number');
+    expect(options.spawnSchedule).toBeDefined();
+  });
+
+  // ---- Case 11: validation 失败: start-button disabled, onPick 未调 ----
+  it('disables start-button when teaching source has no available levels', () => {
+    const onPick = vi.fn();
+    render(<LevelSelect available={[]} onPick={onPick} onBack={() => {}} />);
+    // default source = teaching, available=[]
+    const btn = screen.getByTestId('start-button') as HTMLButtonElement;
+    expect(btn).toBeDisabled();
+    fireEvent.click(btn);
+    expect(onPick).not.toHaveBeenCalled();
+  });
+
+  it('disables start-button when seed source has invalid seed', () => {
+    const onPick = vi.fn();
+    render(<LevelSelect available={[]} onPick={onPick} onBack={() => {}} />);
+    const src = screen.getByTestId('level-source-select') as HTMLSelectElement;
+    fireEvent.change(src, { target: { value: 'seed' } });
+    fireEvent.change(screen.getByTestId('seed-input'), { target: { value: 'not-hex' } });
+
+    const btn = screen.getByTestId('start-button') as HTMLButtonElement;
+    expect(btn).toBeDisabled();
+    fireEvent.click(btn);
+    expect(onPick).not.toHaveBeenCalled();
+  });
+
+  // ---- Case 12: 关键老 testid 兼容 ----
+  it('preserves all P2-5 legacy testid containers (level-select-root / procedural-controls / mode-select / enemy-count-select / size-select / progressive-spawn / custom-levels-group / specified-seed-section)', () => {
+    useLevelStore.setState({
+      customLevels: { 'custom-1': makeCustom('custom-1', 'My First', 10, 10) },
+    });
+    render(
+      <LevelSelect
+        available={[{ id: 'level-small', name: '教学关 A' }]}
+        onPick={() => {}}
+        onBack={() => {}}
+      />,
+    );
+    expect(screen.getByTestId('level-select-root')).toBeInTheDocument();
+    expect(screen.getByTestId('procedural-controls')).toBeInTheDocument();
+    // mode/size/enemy/progressive require switching source to 'random' + mode='survive'
+    fireEvent.change(screen.getByTestId('level-source-select'), { target: { value: 'random' } });
+    expect(screen.getByTestId('mode-select')).toBeInTheDocument();
+    expect(screen.getByTestId('size-select')).toBeInTheDocument();
+    fireEvent.change(screen.getByTestId('mode-select'), { target: { value: 'survive' } });
+    expect(screen.getByTestId('enemy-count-select')).toBeInTheDocument();
+    expect(screen.getByTestId('progressive-spawn')).toBeInTheDocument();
+    // custom-levels-group + specified-seed-section are top-level container testids
+    expect(screen.getByTestId('custom-levels-group')).toBeInTheDocument();
+    expect(screen.getByTestId('specified-seed-section')).toBeInTheDocument();
   });
 });

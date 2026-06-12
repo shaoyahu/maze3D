@@ -111,6 +111,12 @@ export const ENEMY_COUNT_MIN = 0;
 export const ENEMY_COUNT_MAX = 10;
 export const ENEMY_COUNT_DEFAULT = 3;
 
+// P2-6: free-input range for 存活秒数. The previous SURVIVE_SECONDS_VALUES
+// (30/60/90/120) is preserved as the chip presets; the new MIN/MAX bound
+// the user-typed value used by the level-select survive-seconds input.
+export const SURVIVE_SECONDS_MIN = 10;
+export const SURVIVE_SECONDS_MAX = 600;
+
 export const SURVIVE_SECONDS_VALUES = [30, 60, 90, 120] as const;
 export type SurviveSeconds = (typeof SURVIVE_SECONDS_VALUES)[number];
 export const SURVIVE_SECONDS_DEFAULT: SurviveSeconds = 90;
@@ -120,6 +126,13 @@ export const SPAWN_SCHEDULE_DEFAULT: SpawnSchedule = {
   onPickup: true,
   enabled: true,
 };
+
+// P2-6: progressive-spawn 上限输入框约束. The runtime SPAWN_SCHEDULE_DEFAULT
+// already hard-codes `enabled: true` but does not bound the progressive
+// upper cap (engine-side it's clamped per-tick). The UI exposes a max
+// input that mirrors ENEMY_COUNT_MIN/MAX/DEFAULT naming.
+export const SPAWN_PROGRESSIVE_MAX_MIN = 1;
+export const SPAWN_PROGRESSIVE_MAX_DEFAULT = 10;
 
 export function clampEnemyCount(value: number | undefined): number {
   if (value === undefined || Number.isNaN(value)) return ENEMY_COUNT_DEFAULT;

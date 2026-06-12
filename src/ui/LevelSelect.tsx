@@ -1,15 +1,18 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button } from './components/Button';
 import {
   ENEMY_COUNT_DEFAULT,
   ENEMY_COUNT_MAX,
+  SPAWN_PROGRESSIVE_MAX_DEFAULT,
   SPAWN_SCHEDULE_DEFAULT,
   SURVIVE_SECONDS_DEFAULT,
+  SURVIVE_SECONDS_MAX,
+  SURVIVE_SECONDS_MIN,
   SURVIVE_SECONDS_VALUES,
   type MazeSize,
   type Seed,
+  type SpawnSchedule,
   type StartLevelOptions,
-  type SurviveSeconds,
   type VictoryType,
 } from '../maze/types';
 import { encodeSeed } from '../utils/seed';
@@ -19,33 +22,38 @@ import { algorithmForMode } from '../maze/AlgorithmMazeProvider';
 
 export interface LevelDef { id: string; name: string; }
 
-// P2-5 FR-13/FR-16: Mode labels and their stable data-testid values. The
-// `<option>` elements use `data-testid` so the new native `<select>` can be
-// queried the same way the old radio inputs were.
+// P2-6: 4 关卡来源(教学/随机/我的/指定种子)。每个 option 都带稳定
+// data-testid,方便 e2e 用 within(select) 精确选 option。
+type LevelSource = 'teaching' | 'random' | 'custom' | 'seed';
+
+const LEVEL_SOURCE_OPTIONS: ReadonlyArray<{ value: LevelSource; label: string; testId: string }> = [
+  { value: 'teaching', label: '教学关卡', testId: 'level-source-teaching' },
+  { value: 'random', label: '随机关卡', testId: 'level-source-random' },
+  { value: 'custom', label: '我的关卡', testId: 'level-source-custom' },
+  { value: 'seed', label: '指定种子关卡', testId: 'level-source-seed' },
+];
+
 const MODE_OPTIONS: ReadonlyArray<{ value: VictoryType; label: string; testId: string }> = [
   { value: 'reach-exit', label: '到达出口', testId: 'mode-reach-exit' },
   { value: 'time-trial', label: '限时挑战', testId: 'mode-time-trial' },
   { value: 'survive', label: '存活模式', testId: 'mode-survive' },
 ];
+
 const SIZE_OPTIONS: ReadonlyArray<{ value: MazeSize; label: string }> = [
   { value: 15, label: '15×15 (小)' },
   { value: 30, label: '30×30 (中)' },
   { value: 50, label: '50×50 (大)' },
 ];
-// P2-5 FR-15: enemy count is now a fixed 0..10 dropdown (the range slider
-// is gone). The `ENEMY_COUNT_MAX` import stays so the upper bound stays in
-// sync with the source-of-truth constant in maze/types.ts.
+
 const ENEMY_COUNT_OPTIONS: ReadonlyArray<number> = (() => {
   const out: number[] = [];
   for (let i = 0; i <= ENEMY_COUNT_MAX; i++) out.push(i);
   return out;
 })();
+
 const HEX_RE = /^[0-9a-f]{16}$/;
 const LAST_SEED_KEY = 'maze3d.lastSeed';
 
-// Generate a random 16-char lowercase hex seed using the Web Crypto API.
-// Falls back to Math.random for older runtimes / test environments where
-// crypto.getRandomValues may not be available.
 function randomHexSeed(): string {
   const bytes = new Uint8Array(8);
   if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
@@ -56,6 +64,210 @@ function randomHexSeed(): string {
   let out = '';
   for (const b of bytes) out += b.toString(16).padStart(2, '0');
   return out;
+}
+
+// P2-6 FR-13: validateSelection() 是单一真实源,既决定 start-button 的
+// disabled 状态,也决定 onClick 真正传给 onPick 的 (id, options)。组件
+// 只用这一处计算;handleStart 再次调一遍并按 FR-15 做幂等守卫
+// `if (!result.valid) return`。
+type Validation =
+  | { valid: true; id: string; options?: StartLevelOptions }
+  | { valid: false; reason: string };
+
+interface ValidationContext {
+  levelSource: LevelSource;
+  sublevelId: string | null;
+  teachingLevels: LevelDef[];
+  customLevelIds: string[];
+  mode: VictoryType;
+  selectedSize: MazeSize;
+  surviveSeconds: number;
+  enemyCount: number;
+  progressive: boolean;
+  seedInput: string;
+}
+
+function validateSelection(ctx: ValidationContext): Validation {
+  if (ctx.levelSource === 'teaching') {
+    if (ctx.teachingLevels.length === 0) return { valid: false, reason: 'no teaching levels' };
+    if (!ctx.sublevelId) return { valid: false, reason: 'no sublevel selected' };
+    const sub = ctx.teachingLevels.find((lv) => lv.id === ctx.sublevelId);
+    if (!sub) return { valid: false, reason: 'sublevel not in available' };
+    return { valid: true, id: sub.id };
+  }
+  if (ctx.levelSource === 'custom') {
+    if (ctx.customLevelIds.length === 0) return { valid: false, reason: 'no custom levels' };
+    if (!ctx.sublevelId) return { valid: false, reason: 'no sublevel selected' };
+    if (!ctx.customLevelIds.includes(ctx.sublevelId)) {
+      return { valid: false, reason: 'sublevel not in custom' };
+    }
+    return { valid: true, id: ctx.sublevelId };
+  }
+  if (ctx.levelSource === 'random') {
+    const seed: Seed = {
+      algorithm: algorithmForMode(ctx.mode),
+      size: ctx.selectedSize,
+      mazeSeed: randomHexSeed(),
+    };
+    return { valid: true, id: encodeSeed(seed), options: buildOptions(ctx, seed) };
+  }
+  if (ctx.levelSource === 'seed') {
+    if (!HEX_RE.test(ctx.seedInput)) return { valid: false, reason: 'invalid seed' };
+    const seed: Seed = {
+      algorithm: algorithmForMode(ctx.mode),
+      size: ctx.selectedSize,
+      mazeSeed: ctx.seedInput,
+    };
+    // FR-20: localStorage 写入移到 handleStart,让 validateSelection 保持纯函数
+    // (每次 render 不再无谓写盘;只在用户真的 start 时写一次)。
+    return { valid: true, id: encodeSeed(seed), options: buildOptions(ctx, seed) };
+  }
+  return { valid: false, reason: 'unknown source' };
+}
+
+function buildOptions(ctx: ValidationContext, seed: Seed): StartLevelOptions {
+  const spawnSchedule: SpawnSchedule = { ...SPAWN_SCHEDULE_DEFAULT, enabled: ctx.progressive };
+  const opts: StartLevelOptions = {
+    mode: ctx.mode,
+    enemyCount: ctx.enemyCount,
+    spawnSchedule,
+    seed,
+  };
+  if (ctx.mode === 'survive') {
+    // P2-6 FR-7: onChange 已经把输入 clamp 到 [MIN, MAX],这里再做一次
+    // 防御性 clamp,保证 options.surviveSeconds 不会越界。类型仍是字面量
+    // union 是为了不破坏现有 engine 调用方;运行时就是 number。
+    const clamped = Math.max(SURVIVE_SECONDS_MIN, Math.min(SURVIVE_SECONDS_MAX, ctx.surviveSeconds));
+    opts.surviveSeconds = clamped as 30 | 60 | 90 | 120;
+  }
+  return opts;
+}
+
+// P2-6 T5: 把 mode='survive' 那一坨 (敌人数量 + 存活秒数 input + 4 chip +
+// progressive checkbox + progressive-max input) 抽出独立组件。理由:
+// (a) LevelSelect 函数体本身有 300+ 行,survive 分支独占 100 行,影响可读性;
+// (b) survive-only 状态(enemyCount / surviveSeconds* / progressive /
+//     progressiveMax)生命周期与该面板共存,放一起便于将来按 mode 单元测试;
+// (c) parent 仍负责把这些 prop 接到 <fieldset> 的 grid 上,所以子组件
+//     只返回 <>...</> fragment,不另包容器。
+interface SurviveSettingsPanelProps {
+  enemyCount: number;
+  setEnemyCount: (n: number) => void;
+  surviveSecondsInput: number;
+  setSurviveSecondsInput: (n: number) => void;
+  surviveSecondsError: boolean;
+  setSurviveSecondsError: (b: boolean) => void;
+  progressive: boolean;
+  setProgressive: (b: boolean) => void;
+  progressiveMax: number;
+  setProgressiveMax: (n: number) => void;
+}
+
+function SurviveSettingsPanel(props: SurviveSettingsPanelProps) {
+  const {
+    enemyCount, setEnemyCount,
+    surviveSecondsInput, setSurviveSecondsInput,
+    surviveSecondsError, setSurviveSecondsError,
+    progressive, setProgressive,
+    progressiveMax, setProgressiveMax,
+  } = props;
+  return (
+    <>
+      <span style={{ fontSize: 13 }}>敌人数量</span>
+      <select
+        data-testid="enemy-count-select"
+        className="level-select-select"
+        value={enemyCount}
+        onChange={(e) => setEnemyCount(Number(e.target.value))}
+        aria-label="敌人数量"
+      >
+        {ENEMY_COUNT_OPTIONS.map((n) => (
+          <option key={n} value={n} data-testid={`enemy-count-${n}`}>{n}</option>
+        ))}
+      </select>
+
+      <span style={{ fontSize: 13 }}>存活秒数</span>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <input
+          data-testid="survive-seconds-input"
+          type="number"
+          min={SURVIVE_SECONDS_MIN}
+          max={SURVIVE_SECONDS_MAX}
+          value={surviveSecondsInput}
+          onChange={(e) => {
+            const raw = e.target.value;
+            if (raw === '') {
+              setSurviveSecondsInput(SURVIVE_SECONDS_MIN);
+              setSurviveSecondsError(true);
+              return;
+            }
+            const n = Number(raw);
+            if (Number.isNaN(n)) return;
+            if (n < SURVIVE_SECONDS_MIN) {
+              setSurviveSecondsInput(SURVIVE_SECONDS_MIN);
+              setSurviveSecondsError(true);
+            } else if (n > SURVIVE_SECONDS_MAX) {
+              setSurviveSecondsInput(SURVIVE_SECONDS_MAX);
+              setSurviveSecondsError(true);
+            } else {
+              setSurviveSecondsInput(n);
+              setSurviveSecondsError(false);
+            }
+          }}
+          aria-invalid={surviveSecondsError ? 'true' : 'false'}
+          aria-label="存活秒数"
+          style={{ fontSize: 14, padding: '4px 8px', fontFamily: 'inherit', width: 100 }}
+        />
+        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+          {SURVIVE_SECONDS_VALUES.map((s) => (
+            <button
+              key={s}
+              type="button"
+              data-testid={`survive-chip-${s}`}
+              className={`survive-chip ${surviveSecondsInput === s ? 'survive-chip--active' : ''}`}
+              onClick={() => {
+                setSurviveSecondsInput(s);
+                setSurviveSecondsError(false);
+              }}
+            >
+              {s}s
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <span />
+      <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+        <input
+          type="checkbox"
+          data-testid="progressive-spawn"
+          checked={progressive}
+          onChange={(e) => setProgressive(e.target.checked)}
+        />
+        渐进生成（每 {SPAWN_SCHEDULE_DEFAULT.intervalSec}s + 每 pickup +1）
+      </label>
+
+      {progressive && (
+        <>
+          <span style={{ fontSize: 13 }}>渐进上限</span>
+          <input
+            data-testid="progressive-max-input"
+            type="number"
+            min={1}
+            max={ENEMY_COUNT_MAX}
+            value={progressiveMax}
+            onChange={(e) => {
+              const n = Number(e.target.value);
+              if (Number.isNaN(n)) return;
+              setProgressiveMax(Math.max(1, Math.min(ENEMY_COUNT_MAX, n)));
+            }}
+            aria-label="渐进上限"
+            style={{ fontSize: 14, padding: '4px 8px', fontFamily: 'inherit', width: 80 }}
+          />
+        </>
+      )}
+    </>
+  );
 }
 
 export function LevelSelect({
@@ -69,77 +281,90 @@ export function LevelSelect({
   onPick: (id: string, options?: StartLevelOptions) => void;
   onBack: () => void;
 }) {
-  // P2-4a FR-13: 4 controls apply to both procedural entries (random +
-  // specified-seed). Sharing state keeps the entry buttons consistent: the
-  // last configuration the user picked is the one used next time, regardless
-  // of which entry they click. Hand-crafted levels still ignore the options.
+  // P2-6 FR-1: 主关卡来源 dropdown。默认 teaching,这样老玩家从顶部开始
+  // 看到的还是熟悉的关卡列表。
+  const [levelSource, setLevelSource] = useState<LevelSource>('teaching');
+  // P2-6 FR-2: 选中的 sublevel id。teaching/custom 用,random/seed 不用。
+  // 切换来源时 useEffect 重置,避免 stale id 跨源污染 onPick。
+  const [sublevelId, setSublevelId] = useState<string | null>(null);
+  // P2-6 FR-5: 程序生成共享 state (mode/size 在 random/seed 都用;
+  // survive/enemy/progressive 只在 mode=survive 时用)。
   const [mode, setMode] = useState<VictoryType>('time-trial');
-  const [surviveSeconds, setSurviveSeconds] = useState<SurviveSeconds>(SURVIVE_SECONDS_DEFAULT);
+  // P2-6 FR-7: survive-seconds free input [10, 600]。状态存的是"已 clamp
+  // 的输入值",surviveSecondsError 单独跟踪"用户尝试输入越界"这个事实,
+  // 这样 input 显示 clamp 后的数字,但 aria-invalid 仍能保持 'true'。
+  const [surviveSecondsInput, setSurviveSecondsInput] = useState<number>(SURVIVE_SECONDS_DEFAULT);
+  const [surviveSecondsError, setSurviveSecondsError] = useState<boolean>(false);
   const [enemyCount, setEnemyCount] = useState<number>(ENEMY_COUNT_DEFAULT);
   const [progressive, setProgressive] = useState<boolean>(SPAWN_SCHEDULE_DEFAULT.enabled);
+  // P2-6: 渐进生成上限从常量提到 UI,仅 progressive=true 时渲染 input。
+  const [progressiveMax, setProgressiveMax] = useState<number>(SPAWN_PROGRESSIVE_MAX_DEFAULT);
+  // P2-6 FR-21: seed-input 在 onChange (而非 onBlur) 实时 strip + 限长 16。
   const [seedInput, setSeedInput] = useState('');
-  const [seedError, setSeedError] = useState<string | null>(null);
-  // FR-16: 程序生成开局用当前下拉尺寸,而不是写死的常量。
   const [selectedSize, setSelectedSize] = useState<MazeSize>(30);
-  // FR-13: 进阶折叠默认收起,seed 输入隐藏。
-  const [advancedOpen, setAdvancedOpen] = useState(false);
 
-  // P2-4a FR-20: read the last valid hex seed on mount so a returning
-  // player doesn't have to retype it. localStorage values that don't
-  // match HEX_RE are silently ignored (don't try to repair a corrupted
-  // entry, just leave the field blank). Guard with isStorageAvailable
-  // so Safari private mode / disabled storage doesn't throw.
+  const customLevels = useLevelStore((s) => s.customLevels);
+  const deleteCustom = useLevelStore((s) => s.deleteCustom);
+  const customDefs = Object.values(customLevels)
+    .map((lv) => ({ id: lv.id, name: lv.name, size: `${lv.size.width}×${lv.size.depth}` }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'zh'));
+  const customLevelIds = customDefs.map((d) => d.id);
+
+  // P2-6 FR-2: 切换来源时清空 sublevelId,避免 stale id 跨源。
+  useEffect(() => {
+    setSublevelId(null);
+  }, [levelSource]);
+
+  // P2-4a FR-20: mount 时读 localStorage 的 lastSeed,免去老用户重复输入。
+  // localStorage 不可用 / 值不是 16hex 时静默忽略。
   useEffect(() => {
     if (!isStorageAvailable()) return;
     const last = localStorage.getItem(LAST_SEED_KEY);
     if (last && HEX_RE.test(last)) setSeedInput(last);
   }, []);
 
-  // P2-4b FR-40: "我的关卡" group shows user-saved custom levels, sorted
-  // by name for a stable order. Each entry uses the level's id (a
-  // `custom-<uuid>` prefix is enforced by the editor's `newLevel` /
-  // `importJson`) so EditorMazeProvider can resolve it on the way out.
-  const customLevels = useLevelStore((s) => s.customLevels);
-  const deleteCustom = useLevelStore((s) => s.deleteCustom);
-  const customDefs = Object.values(customLevels)
-    .map((lv) => ({ id: lv.id, name: lv.name, size: `${lv.size.width}×${lv.size.depth}` }))
-    .sort((a, b) => a.name.localeCompare(b.name, 'zh'));
+  // sublevel 列表:teaching 走 available,custom 走 customDefs。1 个时自动
+  // 选中,免去一次点击;0 个时 select 禁用。
+  const sublevelOptions: LevelDef[] = useMemo(() => {
+    if (levelSource === 'teaching') return available;
+    if (levelSource === 'custom') return customDefs.map((d) => ({ id: d.id, name: d.name }));
+    return [];
+  }, [levelSource, available, customDefs]);
 
-  const buildOptions = (seed?: Seed): StartLevelOptions => {
-    const opts: StartLevelOptions = {
-      mode,
-      enemyCount,
-      spawnSchedule: { ...SPAWN_SCHEDULE_DEFAULT, enabled: progressive },
-      ...(seed ? { seed } : {}),
-    };
-    if (mode === 'survive') opts.surviveSeconds = surviveSeconds;
-    return opts;
-  };
+  const effectiveSublevelId = sublevelId ?? sublevelOptions[0]?.id ?? null;
 
-  const startRandom = (size: MazeSize) => {
-    const seed: Seed = { algorithm: algorithmForMode(mode), size, mazeSeed: randomHexSeed() };
-    onPick(encodeSeed(seed), buildOptions(seed));
-  };
+  const validation = validateSelection({
+    levelSource,
+    sublevelId: effectiveSublevelId,
+    teachingLevels: available,
+    customLevelIds,
+    mode,
+    selectedSize,
+    surviveSeconds: surviveSecondsInput,
+    enemyCount,
+    progressive,
+    seedInput,
+  });
+  const startDisabled = !validation.valid;
 
-  const startSpecified = () => {
-    if (!HEX_RE.test(seedInput)) {
-      // FR-20: invalid seed must NOT be persisted. Only call setSeedError
-      // and bail; the LAST_SEED_KEY stays at whatever the last valid
-      // value was (or null on first run).
-      setSeedError('请输入 16 位小写 hex（例如 0123456789abcdef）');
-      return;
+  const handleStart = () => {
+    // FR-15: 幂等守卫。validateSelection 是单一真实源,即便 disabled 状态
+    // 在 React 批处理中被绕过,这里也兜底拒绝。
+    if (!validation.valid) return;
+    // FR-20: valid seed 写入 localStorage(供 reuse-last-seed 用)。
+    // 之前在 validateSelection 里写,改成 start 时写:避免每次 render 无谓
+    // 写盘;validateSelection 也回到纯函数。Safari 隐私模式 / 禁用 storage
+    // 走 try/catch,QuotaExceeded 不影响流程。
+    if (levelSource === 'seed' && isStorageAvailable()) {
+      try { localStorage.setItem(LAST_SEED_KEY, seedInput); } catch { /* quota */ }
     }
-    setSeedError(null);
-    // F-L2: Safari 隐私模式 / 禁用 storage 时 setItem 抛 QuotaExceededError。
-    // 读路径 (useEffect :92-96) 已经有 isStorageAvailable() 守卫,写路径同步对齐。
-    if (isStorageAvailable()) localStorage.setItem(LAST_SEED_KEY, seedInput);
-    const seed: Seed = {
-      algorithm: algorithmForMode(mode),
-      size: selectedSize,
-      mazeSeed: seedInput,
-    };
-    onPick(encodeSeed(seed), buildOptions(seed));
+    onPick(validation.id, validation.options);
   };
+
+  const showSublevel = levelSource === 'teaching' || levelSource === 'custom';
+  const showProceduralFields = levelSource === 'random' || levelSource === 'seed';
+  const showSeedFields = levelSource === 'seed';
+  const isSurvive = mode === 'survive';
 
   return (
     <div
@@ -147,172 +372,161 @@ export function LevelSelect({
       style={{
         position: 'absolute',
         inset: 0,
-        display: 'grid',
-        // FR-7: 左列=选项面板,右列=关卡列表。720px 以下塌成 1 列。
-        gridTemplateColumns: 'minmax(280px, 360px) 1fr',
-        gap: 16,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
         padding: 16,
         overflow: 'auto',
       }}
     >
-      <style>{`
-        @media (max-width: 720px) {
-          [data-testid="level-select-root"] {
-            grid-template-columns: 1fr !important;
-          }
-        }
-        .level-select-select {
-          padding: 6px 10px;
-          border: 1px solid var(--muted);
-          border-radius: 4px;
-          background: var(--bg, #fff);
-          color: inherit;
-          font-size: 14px;
-          min-width: 180px;
-        }
-      `}</style>
-
-      {/* FR-7 / P2-4a FR-13: 程序生成设置 (left column). */}
-      <fieldset
-        data-testid="procedural-controls"
-        style={{ border: '1px solid var(--muted)', borderRadius: 6, padding: 12, display: 'flex', flexDirection: 'column', gap: 10, minWidth: 280 }}
-      >
-        <legend style={{ fontSize: 13, fontWeight: 600 }}>程序生成设置</legend>
-
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <span style={{ fontSize: 13 }}>游戏模式</span>
-          <select
-            data-testid="mode-select"
-            className="level-select-select"
-            value={mode}
-            onChange={(e) => setMode(e.target.value as VictoryType)}
-            aria-label="游戏模式"
-          >
-            {MODE_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value} data-testid={opt.testId}>{opt.label}</option>
-            ))}
-          </select>
-        </label>
-
-        {mode === 'survive' && (
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span style={{ fontSize: 13 }}>存活秒数</span>
-            <select
-              data-testid="survive-seconds-select"
-              className="level-select-select"
-              value={surviveSeconds}
-              onChange={(e) => setSurviveSeconds(Number(e.target.value) as SurviveSeconds)}
-              aria-label="存活秒数"
-            >
-              {SURVIVE_SECONDS_VALUES.map((s) => (
-                <option key={s} value={s} data-testid={`survive-${s}`}>{s} 秒</option>
-              ))}
-            </select>
-          </label>
-        )}
-
-        {mode === 'survive' ? (
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span style={{ fontSize: 13 }}>敌人数量</span>
-            <select
-              data-testid="enemy-count-select"
-              className="level-select-select"
-              value={enemyCount}
-              onChange={(e) => setEnemyCount(Number(e.target.value))}
-              aria-label="敌人数量"
-            >
-              {ENEMY_COUNT_OPTIONS.map((n) => (
-                <option key={n} value={n} data-testid={`enemy-count-${n}`}>{n}</option>
-              ))}
-            </select>
-          </label>
-        ) : (
-          // FR-10: 非 survive 模式显示一行"无敌人"文案,代替隐藏(让玩家
-          // 知道敌人系统是有的,只是当前模式不会用)。
-          <p style={{ fontSize: 12, color: 'var(--muted)', margin: 0 }}>当前模式无敌人</p>
-        )}
-
-        {mode === 'survive' && (
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={progressive}
-              onChange={(e) => setProgressive(e.target.checked)}
-              data-testid="progressive-spawn"
-            />
-            渐进生成（每 15s + 每 pickup +1，上限 10）
-          </label>
-        )}
-
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <span style={{ fontSize: 13 }}>迷宫尺寸</span>
-          <select
-            data-testid="size-select"
-            className="level-select-select"
-            value={selectedSize}
-            onChange={(e) => setSelectedSize(Number(e.target.value) as MazeSize)}
-            aria-label="迷宫尺寸"
-          >
-            {SIZE_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
-        </label>
-      </fieldset>
-
-      {/* Right column: level lists + entry buttons. */}
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
+      <div style={{ width: '100%', maxWidth: 720, display: 'flex', flexDirection: 'column', gap: 20 }}>
         <h2>选择关卡</h2>
         {error && <p style={{ color: 'var(--danger)', maxWidth: 480, textAlign: 'center' }}>{error}</p>}
 
-        {/* P2-3 FR-10: 固定关卡 group (hand-crafted JSON levels). */}
-        {available.length > 0 && (
-          <section style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-            <h3>固定关卡</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {available.map((lv) => (
-                <Button key={lv.id} onClick={() => onPick(lv.id)}>{lv.name}</Button>
-              ))}
-            </div>
-          </section>
+        {/* P2-6 FR-1: 主关卡来源 dropdown。 */}
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <span>关卡来源</span>
+          <select
+            data-testid="level-source-select"
+            className="level-select-select"
+            value={levelSource}
+            onChange={(e) => setLevelSource(e.target.value as LevelSource)}
+            aria-label="关卡来源"
+          >
+            {LEVEL_SOURCE_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value} data-testid={opt.testId}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {/* P2-6 FR-2: sublevel dropdown (teaching 列表 / custom 列表)。 */}
+        {showSublevel && (
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <span>{levelSource === 'teaching' ? '教学关' : '我的关卡'}</span>
+            <select
+              data-testid="sublevel-select"
+              className="level-select-select"
+              value={effectiveSublevelId ?? ''}
+              onChange={(e) => setSublevelId(e.target.value || null)}
+              disabled={sublevelOptions.length === 0}
+              aria-label="子关卡"
+            >
+              {sublevelOptions.length === 0 ? (
+                <option value="" data-testid="sublevel-empty">暂无可选</option>
+              ) : (
+                sublevelOptions.map((lv) => (
+                  <option key={lv.id} value={lv.id} data-testid={`sublevel-option-${lv.id}`}>
+                    {lv.name}
+                  </option>
+                ))
+              )}
+            </select>
+          </label>
         )}
 
-        {/* P2-3 FR-10 + Q11 + P2-5 FR-16: 随机关卡 now uses the size dropdown. */}
-        <section style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-          <h3>随机关卡</h3>
-          <Button onClick={() => startRandom(selectedSize)}>
-            开始 {selectedSize}×{selectedSize} 随机关卡
-          </Button>
-        </section>
+        {/* P2-6 FR-16: procedural-controls 是 top-level container,永远在
+            DOM 里(让 e2e 稳定定位)。里面内容按 showProceduralFields 切换,
+            避免教学/我的关卡也显示一坨无关的算法选项。 */}
+        <fieldset
+          data-testid="procedural-controls"
+          style={{ border: '1px solid var(--muted)', borderRadius: 6, padding: 12 }}
+        >
+          <legend style={{ fontSize: 13, fontWeight: 600 }}>程序生成设置</legend>
+          {showProceduralFields ? (
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '120px 1fr',
+                columnGap: 12,
+                rowGap: 10,
+                alignItems: 'center',
+              }}
+            >
+              <span style={{ fontSize: 13 }}>游戏模式</span>
+              <select
+                data-testid="mode-select"
+                className="level-select-select"
+                value={mode}
+                onChange={(e) => setMode(e.target.value as VictoryType)}
+                aria-label="游戏模式"
+              >
+                {MODE_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value} data-testid={opt.testId}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
 
-        {/* P2-3 FR-10 + P2-5 FR-13: 指定种子关卡 with 进阶 fold. */}
+              <span style={{ fontSize: 13 }}>迷宫尺寸</span>
+              <select
+                data-testid="size-select"
+                className="level-select-select"
+                value={selectedSize}
+                onChange={(e) => setSelectedSize(Number(e.target.value) as MazeSize)}
+                aria-label="迷宫尺寸"
+              >
+                {SIZE_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+
+              {isSurvive ? (
+                <SurviveSettingsPanel
+                  enemyCount={enemyCount}
+                  setEnemyCount={setEnemyCount}
+                  surviveSecondsInput={surviveSecondsInput}
+                  setSurviveSecondsInput={setSurviveSecondsInput}
+                  surviveSecondsError={surviveSecondsError}
+                  setSurviveSecondsError={setSurviveSecondsError}
+                  progressive={progressive}
+                  setProgressive={setProgressive}
+                  progressiveMax={progressiveMax}
+                  setProgressiveMax={setProgressiveMax}
+                />
+              ) : (
+                <>
+                  <span />
+                  <p style={{ fontSize: 12, color: 'var(--muted)', margin: 0 }}>当前模式无敌人</p>
+                </>
+              )}
+            </div>
+          ) : (
+            <p style={{ fontSize: 12, color: 'var(--muted)', margin: 0 }}>
+              教学关卡 / 我的关卡自带规则,不需要程序生成设置。
+            </p>
+          )}
+        </fieldset>
+
+        {/* P2-6 FR-10: specified-seed section 是 top-level container,永远
+            在 DOM 里(FR-16 兼容性)。seed-input + reuse-last-seed 仅在
+            showSeedFields 时渲染。 */}
         <section
           data-testid="specified-seed-section"
-          style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}
+          style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 8 }}
         >
-          <h3>指定种子关卡</h3>
-          <Button
-            variant="secondary"
-            onClick={() => setAdvancedOpen((o) => !o)}
-            data-testid="advanced-toggle"
-            aria-expanded={advancedOpen}
-          >
-            进阶 {advancedOpen ? '▴' : '▾'}
-          </Button>
-          {advancedOpen && (
+          <h3>指定种子</h3>
+          {showSeedFields && (
             <>
-              <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <span>Seed (16 hex)</span>
                 <input
+                  data-testid="seed-input"
                   aria-label="seed"
                   value={seedInput}
-                  onChange={(e) => { setSeedInput(e.target.value); }}
+                  onChange={(e) => {
+                    // FR-21: 实时 strip 非 hex,lowercase 归一,限长 16。
+                    const stripped = e.target.value
+                      .toLowerCase()
+                      .replace(/[^0-9a-f]/g, '')
+                      .slice(0, 16);
+                    setSeedInput(stripped);
+                  }}
                   placeholder="0123456789abcdef"
                   style={{ fontFamily: 'monospace', padding: '6px 10px', minWidth: 220 }}
                 />
               </label>
-              {seedError && <p style={{ color: 'var(--danger)', fontSize: 13 }}>{seedError}</p>}
-              {/* FR-13: "使用上次 seed" 按钮 (从 localStorage 读 maze3d.lastSeed)。 */}
               <Button
                 variant="secondary"
                 onClick={() => {
@@ -320,7 +534,6 @@ export function LevelSelect({
                     const last = localStorage.getItem(LAST_SEED_KEY);
                     if (last && HEX_RE.test(last)) {
                       setSeedInput(last);
-                      setSeedError(null);
                     }
                   }
                 }}
@@ -328,27 +541,27 @@ export function LevelSelect({
               >
                 使用上次 seed
               </Button>
-              <Button onClick={startSpecified}>开始</Button>
             </>
           )}
         </section>
 
-        {/* P2-4b FR-40/41: "我的关卡" — user-saved custom levels. Hidden when
-            none exist so the menu doesn't show an empty section. */}
-        {customDefs.length > 0 && (
-          <section
-            data-testid="custom-levels-group"
-            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}
-          >
-            <h3>我的关卡</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {/* P2-6 FR-9: custom-levels-group 是 top-level container,永远在
+            DOM 里(FR-16 兼容性)。每行是 metadata + delete 按钮;点击 row
+            走 onPick 的路径是 source=custom + sublevel=id + start-button。 */}
+        <section
+          data-testid="custom-levels-group"
+          style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 8 }}
+        >
+          <h3>我的关卡</h3>
+          {customDefs.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {customDefs.map((lv) => (
                 <div
                   key={lv.id}
                   data-testid={`custom-level-${lv.id}`}
                   style={{ display: 'flex', alignItems: 'center', gap: 8 }}
                 >
-                  <Button onClick={() => onPick(lv.id)}>{lv.name}</Button>
+                  <span style={{ fontSize: 14 }}>{lv.name}</span>
                   <span style={{ fontSize: 12, opacity: 0.7 }}>{lv.size}</span>
                   <button
                     type="button"
@@ -372,14 +585,20 @@ export function LevelSelect({
                 </div>
               ))}
             </div>
-          </section>
-        )}
+          )}
+        </section>
 
-        {!error && available.length === 0 && (
-          <p style={{ fontSize: 13, color: 'var(--muted)' }}>暂无固定关卡，可以试试上方随机关卡。</p>
-        )}
-
-        <Button onClick={onBack} variant="secondary">返回</Button>
+        <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+          <Button
+            data-testid="start-button"
+            onClick={handleStart}
+            disabled={startDisabled}
+            hoverStyle="lift"
+          >
+            进入游戏
+          </Button>
+          <Button onClick={onBack} variant="secondary">返回</Button>
+        </div>
       </div>
     </div>
   );

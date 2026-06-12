@@ -96,3 +96,59 @@
   transform: translateY(-2px);
   filter: brightness(1.1);
 }
+
+/* P2-5+: 3 种可切换的按钮悬停效果,供并列按钮使用 (暂停页等)。
+   每个类都自带 transition,避免 hoverStyle 切换时缺动画。 */
+.btn-hover-lift {
+  transition: transform 150ms ease-out, filter 150ms ease-out, box-shadow 150ms ease-out;
+}
+.btn-hover-lift:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.1);
+}
+
+.btn-hover-glow {
+  transition: transform 180ms ease-out, box-shadow 180ms ease-out, filter 180ms ease-out;
+}
+.btn-hover-glow:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 0 18px var(--accent);
+  filter: brightness(1.15);
+}
+
+.btn-hover-fade {
+  transition: opacity 180ms ease-out, transform 180ms ease-out, letter-spacing 180ms ease-out;
+}
+.btn-hover-fade:hover {
+  opacity: 0.85;
+  transform: translateX(2px);
+  letter-spacing: 0.5px;
+}
+
+/* P2-6: survive-seconds 预设 chip. 沿用 .level-select-select 的色板
+   (--border / --accent / --bg) 与 150ms 过渡节奏,选中态 background=
+   --accent + color=--bg 在浅色 + 深色主题下都达成 WCAG AA 对比度 ≥ 4.5:1。 */
+.survive-chip {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--fg);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 150ms ease-out, color 150ms ease-out, border-color 150ms ease-out;
+}
+.survive-chip:hover {
+  border-color: var(--accent);
+}
+.survive-chip--active,
+.survive-chip--active:hover {
+  background: var(--accent);
+  color: var(--bg);
+  border-color: var(--accent);
+}
+.survive-chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}

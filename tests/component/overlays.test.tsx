@@ -23,8 +23,61 @@ describe('overlays', () => {
     const onResume = vi.fn();
     render(<PauseOverlay onResume={onResume} onQuit={() => {}} />);
     expect(screen.getByText(/已收集/)).toBeInTheDocument();
-    fireEvent.click(screen.getByText('继续'));
+    fireEvent.click(screen.getByText('继续游戏'));
     expect(onResume).toHaveBeenCalled();
+  });
+
+  // P2-5+ UI revamp: 暂停页 3 个垂直按钮
+  it('PauseOverlay shows 3 vertically-stacked buttons with the same width', () => {
+    useGameStore.getState().startLevel(maze);
+    render(<PauseOverlay onResume={() => {}} onQuit={() => {}} />);
+    const buttons = screen.getAllByRole('button');
+    expect(buttons).toHaveLength(3);
+    expect(buttons.map((b) => b.textContent)).toEqual(['继续游戏', '设置', '返回主菜单']);
+    // 按钮容器应为 column 布局
+    const btnRow = buttons[0].parentElement as HTMLElement;
+    expect(btnRow.style.display).toBe('flex');
+    expect(btnRow.style.flexDirection).toBe('column');
+    // 3 个按钮的 width 样式应一致
+    const widths = buttons.map((b) => (b as HTMLButtonElement).style.width);
+    expect(widths[0]).toBeTruthy();
+    expect(widths[0]).toBe(widths[1]);
+    expect(widths[1]).toBe(widths[2]);
+  });
+
+  it('PauseOverlay buttons have distinct background colors and hover styles', () => {
+    useGameStore.getState().startLevel(maze);
+    render(<PauseOverlay onResume={() => {}} onQuit={() => {}} />);
+    const buttons = screen.getAllByRole('button');
+    const bgs = buttons.map((b) => (b as HTMLButtonElement).style.background);
+    // 3 个不同背景色
+    expect(new Set(bgs).size).toBe(3);
+    // 3 个不同 hover 类
+    const hoverClasses = buttons.map((b) => {
+      const cls = (b as HTMLButtonElement).className;
+      const match = cls.match(/btn-hover-(lift|glow|fade)/);
+      return match?.[1] ?? null;
+    });
+    expect(new Set(hoverClasses).size).toBe(3);
+  });
+
+  it('PauseOverlay "设置" button opens the Settings panel', () => {
+    useGameStore.getState().startLevel(maze);
+    render(<PauseOverlay onResume={() => {}} onQuit={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: '设置' }));
+    // Settings 页面渲染 (有 <h2>设置</h2>、深色模式 checkbox 等)
+    expect(screen.getByRole('heading', { name: '设置' })).toBeInTheDocument();
+    expect(screen.getByRole('checkbox')).toBeInTheDocument();
+  });
+
+  it('PauseOverlay Settings "返回" button returns to the pause menu', () => {
+    useGameStore.getState().startLevel(maze);
+    render(<PauseOverlay onResume={() => {}} onQuit={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: '设置' }));
+    fireEvent.click(screen.getByRole('button', { name: '返回' }));
+    // 回到暂停页:标题"已暂停" + 3 个按钮
+    expect(screen.getByText('已暂停')).toBeInTheDocument();
+    expect(screen.getAllByRole('button')).toHaveLength(3);
   });
 
   it('GameOverOverlay shows retry button', () => {
