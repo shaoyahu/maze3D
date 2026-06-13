@@ -53,6 +53,22 @@ describe('EditorStatusBar (P2-4b #14)', () => {
     resetEditor();
   });
 
+  // P3-C-M3: paired with the beforeEach fake-timer install above. Without
+  // this restore, fake timers leak into any test that runs after this
+  // file in the same worker — making time-based helpers in unrelated
+  // tests fire at the wrong wall-clock and silently break.
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  // P3-C-M3: paired with the beforeEach fake-timer install above. Without
+  // this restore, fake timers leak into any test that runs after this
+  // file in the same worker — making time-based helpers in unrelated
+  // tests fire at the wrong wall-clock and silently break.
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('renders the dirty / saved / not-modified indicator', () => {
     // 1. Pristine: shows "未保存（未改动）" because dirty=false and no save.
     const { rerender } = render(<EditorStatusBar />);
