@@ -52,6 +52,20 @@ export function validateMaze(raw: unknown, id: string): MazeData {
   const m = raw as Record<string, unknown>;
 
   requireString(m, 'id', id);
+  // D-19: the caller's `id` (e.g. derived from the path
+  // "/public/levels/level-tiny.json" → "level-tiny") must match the
+  // JSON's own `id` field. Without this cross-check a misnamed fixture
+  // would silently load via the path-derived id; the error surfaced at
+  // use time would name the path-derived id and read "Maze 'level-other':
+  // missing string 'id'" — confusing because `id` IS present, just
+  // under a different name. The check below fires at module-load time
+  // (built-in provider) or import time (user import) with a clear
+  // message naming both ids.
+  if (m.id !== id) {
+    throw new LevelLoadError(
+      `Maze '${id}': filename/loader id does not match level id '${m.id as string}'`,
+    );
+  }
   requireString(m, 'name', id);
   requireObject(m, 'size', id);
   const size = m.size as Record<string, unknown>;

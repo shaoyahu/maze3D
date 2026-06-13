@@ -125,6 +125,35 @@ describe('JsonMazeProvider', () => {
     });
   });
 
+  // D-19: the path-derived id (e.g. "level-tiny" from
+  // "/public/levels/level-tiny.json") must match the JSON's own `id`
+  // field. Without the cross-check, a misnamed fixture would load via
+  // the path-derived id, and the validator's later `requireString(m,
+  // 'id', id)` would throw with a confusing "Maze 'level-other':
+  // missing string 'id'" message even though `id` IS present.
+  describe('D-19 — path-derived id must match raw.id', () => {
+    it('throws LevelLoadError when raw.id disagrees with the requested id', () => {
+      // Arrange — JSON says "level-tiny" but the caller asks for "level-other"
+      const raw = makeValidLevel({ id: 'level-tiny' });
+
+      // Act + Assert
+      expect(() => validateMaze(raw, 'level-other')).toThrow(LevelLoadError);
+      // Message names both ids so the user can see the mismatch immediately.
+      expect(() => validateMaze(raw, 'level-other')).toThrow(/does not match/i);
+    });
+
+    it('accepts the level when raw.id matches the requested id', () => {
+      // Arrange
+      const raw = makeValidLevel({ id: 'level-tiny' });
+
+      // Act
+      const data = validateMaze(raw, 'level-tiny');
+
+      // Assert
+      expect(data.id).toBe('level-tiny');
+    });
+  });
+
   describe('F6 — start === exit is rejected', () => {
     it('throws LevelLoadError when start and exit occupy the same cell', async () => {
       // Regression (F6): the validator previously allowed start.x===exit.x

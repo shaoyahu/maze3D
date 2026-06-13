@@ -832,7 +832,22 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
         // Run through validateMaze to make sure a hand-edited localStorage
         // entry can't poison the editor. validateMaze is the same gate
         // JsonMazeProvider runs hand-crafted levels through.
-        const validated = validateMaze(obj.level, 'editor-draft');
+        //
+        // D-19: validateMaze now cross-checks the caller-supplied id
+        // against the level's own id (line 54-66 of JsonMazeProvider).
+        // The previous hard-coded 'editor-draft' label silently
+        // mismatched any draft whose id was anything else, so we must
+        // pass the draft's own id here. Fall back to 'imported' (same
+        // sentinel parseImport uses, src/maze/importExport.ts:75-76)
+        // for hand-edited drafts that omit the id field — validateMaze
+        // will reject an absent id regardless, so the fallback only
+        // affects the error message.
+        const draftObj = obj.level as Record<string, unknown>;
+        const draftId =
+          typeof draftObj.id === 'string' && draftObj.id.length > 0
+            ? draftObj.id
+            : 'imported';
+        const validated = validateMaze(obj.level, draftId);
         // F-2026-06-12-B2: the loaded draft IS the new save baseline.
         // F-project-review-2026-06-13-D-5/D-18: switching to a loaded
         // level invalidates any `storageFull` / `lastDraftError` left
