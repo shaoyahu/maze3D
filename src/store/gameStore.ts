@@ -144,7 +144,15 @@ export const useGameStore = create<GameState>((set, get) => ({
       // We call injectEnemySpawns here (mirroring Game.startLevel) so the
       // HUD can show the real number; the function is pure and produces
       // the same result for the same (maze, enemyCount) input.
-      const injectedEnemies = injectEnemySpawns(maze, requestedEnemyCount);
+      //
+      // F-project-review-2026-06-13-A-L1: explicit `mode === 'survive'`
+      // gate on the spawner call. The count clamp above (non-survive → 0)
+      // already makes injectEnemySpawns a no-op via its `count === 0 →
+      // return []` short-circuit, but the explicit branch is the
+      // documented contract — same rationale as Game.startLevel.
+      const injectedEnemies = mode === 'survive'
+        ? injectEnemySpawns(maze, requestedEnemyCount)
+        : [];
       const totalEnemyCount = maze.enemies.length + injectedEnemies.length;
       return {
         screen: 'playing',

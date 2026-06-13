@@ -227,14 +227,20 @@ export class Game {
     this.currentSurviveSeconds = normalizeSurviveSeconds(options?.surviveSeconds);
     // P2-5 FR-18/FR-19/FR-21: enemy injection is hard-gated to survive mode.
     // Hand-crafted maze.enemies (FR-21) flow through unchanged in any mode.
-    // Passing count=0 to injectEnemySpawns is a documented no-op (it returns []),
-    // so the scene mesh count is correct in non-survive mode without a separate
-    // code path. This mirrors the gate in gameStore.startLevel — both call sites
-    // are updated together to keep the HUD count and the scene count in sync.
+    // F-project-review-2026-06-13-A-L1: the mode-based `count` clamp below
+    // (non-survive → 0) already makes injectEnemySpawns a no-op via its
+    // `count === 0 → return []` short-circuit. But the explicit `mode ===
+    // 'survive'` branch on the SPAWNER CALL is the documented contract —
+    // a future refactor that drops the count clamp (e.g. to honor a
+    // non-survive enemyCount UI hint) would silently double the enemy
+    // roster for hand-crafted levels. The two call sites
+    // (Game.startLevel here + gameStore.startLevel) are kept in sync.
     const requestedEnemyCount = this.currentMode === 'survive'
       ? options?.enemyCount
       : 0;
-    const generated = injectEnemySpawns(maze, requestedEnemyCount);
+    const generated = this.currentMode === 'survive'
+      ? injectEnemySpawns(maze, requestedEnemyCount)
+      : [];
     const injectedMaze: MazeData = { ...maze, enemies: [...maze.enemies, ...generated] };
     // F4: buildScene applies the palette exactly once based on the dark
     // mode flag, so the follow-up setDarkMode() (which would re-run

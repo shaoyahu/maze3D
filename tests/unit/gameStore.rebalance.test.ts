@@ -66,4 +66,32 @@ describe('gameStore.startLevel P2-5 rebalance', () => {
     );
     expect(useGameStore.getState().currentEnemyCount).toBe(1);
   });
+
+  // F-N6 (P3-Theme 6, C-M11): the progressive spawn trigger must be a no-op
+  // in non-survive modes, even when the schedule is enabled and the level
+  // has elapsed past the interval. Without the `currentMode === 'survive'`
+  // gate, the helper would still fire and ghost-increment
+  // progressiveEnemyCount — dead state with no scene effect, but a real
+  // contract violation.
+  it('progressiveEnemyCount stays at 0 in reach-exit even after a long tick (F-N6)', () => {
+    useGameStore.getState().startLevel(
+      makeMaze(),
+      { mode: 'reach-exit', enemyCount: 3, spawnSchedule: { intervalSec: 15, onPickup: true, enabled: true } },
+    );
+    expect(useGameStore.getState().progressiveEnemyCount).toBe(0);
+    // 30s elapsed: well past the 15s interval trigger; in survive mode this
+    // would bump to 4. In reach-exit the gate must short-circuit it.
+    useGameStore.getState().tick(30);
+    expect(useGameStore.getState().progressiveEnemyCount).toBe(0);
+  });
+
+  it('progressiveEnemyCount stays at 0 in time-trial even after a long tick (F-N6)', () => {
+    useGameStore.getState().startLevel(
+      makeMaze(),
+      { mode: 'time-trial', enemyCount: 5, spawnSchedule: { intervalSec: 15, onPickup: true, enabled: true } },
+    );
+    expect(useGameStore.getState().progressiveEnemyCount).toBe(0);
+    useGameStore.getState().tick(30);
+    expect(useGameStore.getState().progressiveEnemyCount).toBe(0);
+  });
 });

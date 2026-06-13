@@ -3,6 +3,16 @@ import type { MazeData } from '../maze/types';
 import { createPickupMaterial } from '../entities/Pickup';
 import { ENEMY_HEIGHT, ENEMY_RADIUS } from '../entities/Enemy';
 
+// F-D-17 (P3-Theme 6): cross-call double-dispose tracking for textures.
+// The per-call `seenTexs` inside disposeScene only dedupes within a single
+// invocation; if the same THREE.Texture is fed to a second disposeScene()
+// (e.g. React strict-mode double-mount, level-swap race, or hot-reload),
+// CanvasTexture.dispose() can throw or warn. We log once per texture and
+// skip the second call. Both sets are weak so disposed textures can be
+// GC'd normally — the warn flag is keyed on the same weak refs.
+const disposedTexs = new WeakSet<THREE.Texture>();
+const doubleDisposeWarned = new WeakSet<THREE.Texture>();
+
 function createWallTexture(): THREE.CanvasTexture {
   // Brick pattern with visible horizontal & vertical mortar lines so the
   // user can see whether the camera is rolled (lines stay level) and
@@ -325,7 +335,22 @@ export function disposeScene(
   const seenMats = new WeakSet<THREE.Material>();
   const seenTexs = new WeakSet<THREE.Texture>();
   const disposeTex = (t: THREE.Texture | undefined | null) => {
-    if (t && !seenTexs.has(t)) { seenTexs.add(t); t.dispose(); }
+    if (!t) return;
+    if (seenTexs.has(t)) return;
+    // F-D-17: cross-call double-dispose guard. `seenTexs` above only
+    // dedupes within a single disposeScene() run; if the same texture
+    // was already disposed by a previous call, log once and skip.
+    if (disposedTexs.has(t)) {
+      if (!doubleDisposeWarned.has(t)) {
+        doubleDisposeWarned.add(t);
+        // eslint-disable-next-line no-console -- diagnostics for double-dispose
+        console.warn('[Scene] double-dispose detected on texture, skipping');
+      }
+      return;
+    }
+    seenTexs.add(t);
+    disposedTexs.add(t);
+    t.dispose();
   };
   const disposeMat = (m: THREE.Material) => {
     if (seenMats.has(m)) return;

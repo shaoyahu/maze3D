@@ -82,4 +82,41 @@ describe('injectEnemySpawns', () => {
       expect(openMaze.walls[s.z][s.x]).toBe(0);
     }
   });
+
+  // F-A-L1 (P3-Theme 6): the function returns a NEW array and does not
+  // touch the input `maze`. Pin the contract here so a future refactor
+  // that mutates `maze.enemies` (or aliases the returned array onto it)
+  // is caught immediately. Callers rely on this to merge:
+  //   [...maze.enemies, ...injectEnemySpawns(...)]
+  // without losing the hand-crafted `maze.enemies` (FR-21).
+  it('does not mutate the input maze (APPEND, NOT REPLACE contract, F-A-L1)', () => {
+    const handCrafted = [
+      { id: 'hand-1', x: 1, z: 1, path: [{ x: 1, z: 1 }, { x: 2, z: 1 }] },
+      { id: 'hand-2', x: 3, z: 3, path: [{ x: 3, z: 3 }, { x: 3, z: 2 }] },
+    ];
+    const mazeWithHandCrafted: MazeData = { ...openMaze, enemies: handCrafted };
+    const spawned = injectEnemySpawns(mazeWithHandCrafted, 5);
+    // The function must return its own array, not the maze.enemies alias.
+    expect(spawned).not.toBe(mazeWithHandCrafted.enemies);
+    // The hand-crafted enemies must be untouched.
+    expect(mazeWithHandCrafted.enemies).toEqual(handCrafted);
+    // And the input maze's other fields must not have shifted.
+    expect(mazeWithHandCrafted.id).toBe(openMaze.id);
+    expect(mazeWithHandCrafted.walls).toEqual(openMaze.walls);
+  });
+
+  // F-A-L1: pin the documented caller merge pattern. Even if a future
+  // refactor returns the same array reference, the merge must still
+  // preserve the hand-crafted roster (the next step is the engine's
+  // `[...maze.enemies, ...injected]` at Game.startLevel:206-244).
+  it('caller-merge of hand-crafted + injected yields the union, not a replacement (F-A-L1)', () => {
+    const handCrafted = [
+      { id: 'hand-1', x: 1, z: 1, path: [{ x: 1, z: 1 }, { x: 2, z: 1 }] },
+    ];
+    const mazeWithHandCrafted: MazeData = { ...openMaze, enemies: handCrafted };
+    const injected = injectEnemySpawns(mazeWithHandCrafted, 3);
+    const merged = [...mazeWithHandCrafted.enemies, ...injected];
+    expect(merged.length).toBe(1 + injected.length);
+    expect(merged.slice(0, 1)).toEqual(handCrafted);
+  });
 });

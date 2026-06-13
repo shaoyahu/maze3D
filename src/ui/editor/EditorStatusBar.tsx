@@ -21,7 +21,17 @@ export function EditorStatusBar() {
   const lastDraftError = useEditorStore((s) => s.lastDraftError);
   const clearStorageFull = useEditorStore((s) => s.clearStorageFull);
 
-  const wallCount = level.walls.reduce((n, row) => n + row.filter((c) => c === 1).length, 0);
+  // F-project-review-2026-06-13-B-L14 (P3-Theme 6): single-pass wall count.
+  // The previous `reduce + filter().length` allocated a fresh array per
+  // row, so a 50×50 grid produced 50 throwaway arrays on every status-bar
+  // render. The for-of pair is O(rows × cols) with zero allocations and
+  // matches the simpler 拾取/敌人 counts on the next lines.
+  let wallCount = 0;
+  for (const row of level.walls) {
+    for (const cell of row) {
+      if (cell === 1) wallCount++;
+    }
+  }
   const pickupCount = level.pickups.length;
   const enemyCount = level.enemies.length;
   const warningCount = validateDesign(level).filter((i) => i.severity === 'warning').length;

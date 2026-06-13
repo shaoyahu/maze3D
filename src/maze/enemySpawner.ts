@@ -15,6 +15,18 @@ import type { EnemySpawn, MazeData } from './types';
 // F-L14: `count` is `number | undefined` (NOT optional-with-default) so
 // callers MUST be explicit. `undefined` falls through `clampEnemyCount` to
 // `ENEMY_COUNT_DEFAULT` (3). Pass an explicit number for any other value.
+//
+// F-A-L1 (P3-Theme 6): APPEND, NOT REPLACE. This function returns a
+// NEW array of spawns and does not touch the input `maze`. The caller
+// is responsible for merging: `[...maze.enemies, ...injectEnemySpawns(...)]`.
+// The function does NOT know about game modes — passing a non-zero
+// `count` will always generate spawns. Callers MUST gate on
+// `mode === 'survive'` (FR-18) so non-survive modes (reach-exit,
+// time-trial) never receive procedural injection. Skipping that gate
+// in a future refactor would silently double the enemy roster for
+// hand-crafted levels, since hand-crafted `maze.enemies` (FR-21) are
+// always preserved. See `Game.startLevel` and `gameStore.startLevel`
+// for the canonical mode gate.
 export function injectEnemySpawns(maze: MazeData, count: number | undefined): EnemySpawn[] {
   const target = clampEnemyCount(count);
   if (target === 0) return [];
