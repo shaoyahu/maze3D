@@ -183,22 +183,31 @@ describe('EditorToolbar (P2-4b #13)', () => {
   // (dirty→true) the toolbar shows both the stale "已保存" message and
   // the dirty indicator, which is contradictory. The local status must
   // be cleared as soon as dirty flips false→true.
-  it('clears the local "已保存" status when the user makes a new edit (dirty→true)', () => {
+  it('clears the local "已保存" status when the user makes a new edit (dirty→true)', async () => {
     // Arrange — simulate: user just saved (status="已保存", dirty=false).
     render(<ConfirmProvider><EditorToolbar /></ConfirmProvider>);
     fireEvent.click(screen.getByTestId('tool-save'));
     expect(screen.getByTestId('tool-status').textContent).toBe('已保存');
     // Act — user makes another edit (placeWall on a non-start/non-exit
     // cell toggles a wall and pushes history, which sets dirty=true).
-    // Wrap in act() so the toolbar's useEffect re-runs and clears the
-    // local status before we assert on the DOM.
-    act(() => {
-      useEditorStore.getState().placeWall(1, 0);
+    //
+    // F-project-review-2026-06-13-C-L6: previously wrapped in
+    // `act(() => { useEditorStore.getState().placeWall(1, 0) })`. The
+    // toolbar's useEffect([dirty]) may not run synchronously inside
+    // act() — zustand is an external store and React batching can
+    // defer the effect commit. Polling with waitFor() matches the
+    // import-status polling pattern at line 272 and is deterministic
+    // regardless of effect timing.
+    useEditorStore.getState().placeWall(1, 0);
+    // Assert — the stale "已保存" is gone and the dirty indicator
+    // appears; poll because the toolbar's useEffect([dirty]) is the
+    // one that actually clears the local status.
+    await waitFor(() => {
+      expect(screen.queryByTestId('tool-status')).not.toBeInTheDocument();
     });
-    // Assert — the stale "已保存" is gone, the dirty indicator appears,
-    // and the two contradictory messages are no longer both visible.
-    expect(screen.queryByTestId('tool-status')).not.toBeInTheDocument();
-    expect(screen.getByTestId('tool-dirty')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId('tool-dirty')).toBeInTheDocument();
+    });
   });
 
   // F-2026-06-12-S1: when the editor is in an invalid state (e.g. start
@@ -312,8 +321,15 @@ describe('EditorToolbar (P2-4b #13)', () => {
   // in the same status area used for save/import messages, so the user
   // learns why a click was dropped.
   it('shows lastError from the store in the status area', () => {
-    // Arrange
-    useEditorStore.setState({ lastError: '无法在起点放置墙（墙不能覆盖起点）' });
+    // Arrange — F-project-review-2026-06-13-C-L8: wrap the
+    // `useEditorStore.setState` in act() so a future lastError-reading
+    // useEffect that fires on mount (e.g. to clear stale messages)
+    // is bounded by an act() block. Without the wrap, the warning
+    // fires only after the test has already passed, hiding a
+    // legitimate test-pollution risk.
+    act(() => {
+      useEditorStore.setState({ lastError: '无法在起点放置墙（墙不能覆盖起点）' });
+    });
     // Act
     render(<ConfirmProvider><EditorToolbar /></ConfirmProvider>);
     // Assert

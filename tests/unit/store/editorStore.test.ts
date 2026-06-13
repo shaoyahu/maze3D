@@ -481,6 +481,30 @@ describe('useEditorStore', () => {
       // Assert
       expect(useEditorStore.getState().lastError).toBeNull();
     });
+
+    // F-project-review-2026-06-13-C-M10: placeStart OOB and placePickup OOB
+    // are pinned elsewhere; placeWall OOB silently no-ops but had no
+    // regression test. A future "throw on OOB" refactor would not be
+    // caught. Mirror the placeStart/placePickup OOB contract: silent
+    // no-op (no toggle, no history push, no dirty flip).
+    it('placeWall on an out-of-bounds cell is a silent no-op (C-M10)', () => {
+      // Arrange — width=5, depth=4; (99, -3) is OOB on both axes. Seed
+      // history + dirty so a regression that incorrectly pushes history
+      // or flips dirty would show up in the assertions.
+      useEditorStore.setState({ past: [], dirty: false, lastError: null });
+      const wallsBefore = useEditorStore.getState().level.walls;
+      // Act
+      useEditorStore.getState().placeWall(99, -3);
+      // Assert — state is byte-identical to the pre-call state.
+      expect(useEditorStore.getState().level.walls).toBe(wallsBefore);
+      expect(useEditorStore.getState().dirty).toBe(false);
+      expect(useEditorStore.getState().past.length).toBe(0);
+      // lastError is unchanged: OOB is not a UX-facing rejection (no
+      // user gesture would target an OOB cell in the editor — viewport
+      // click coordinates are already clamped). Pinning null here
+      // guards against a future "always set lastError" refactor.
+      expect(useEditorStore.getState().lastError).toBeNull();
+    });
   });
 
   // -----------------------------------------------------------------------

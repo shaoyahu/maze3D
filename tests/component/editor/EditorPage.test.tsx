@@ -66,10 +66,18 @@ describe('EditorPage (P2-7 ConfirmProvider)', () => {
 
   it('does not show a confirm dialog on mount when no draft exists', async () => {
     renderPage();
-    // Allow the mount-time draft-check useEffect to run; with no draft
-    // the effect short-circuits before flipping `showDraftPrompt`.
-    await Promise.resolve();
-    expect(screen.queryByTestId('confirm-dialog')).toBeNull();
+    // F-project-review-2026-06-13-C-L7: poll with waitFor instead of
+    // `await Promise.resolve()`. A single microtask flush is enough
+    // for the *current* implementation (the mount-time useEffect
+    // short-circuits synchronously), but it is racy by construction:
+    // a future refactor that defers the draft read one tick later
+    // (e.g. async localStorage hydration) would silently flip the
+    // dialog after this assertion runs. waitFor() matches the
+    // pattern at line 122 ("dialog is gone after the user clicks
+    // 放弃") and is deterministic regardless of effect timing.
+    await waitFor(() => {
+      expect(screen.queryByTestId('confirm-dialog')).toBeNull();
+    });
   });
 
   it('shows the draft-recovery dialog on mount when a draft exists', async () => {
