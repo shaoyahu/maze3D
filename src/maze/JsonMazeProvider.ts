@@ -1,10 +1,16 @@
 import { LevelLoadError } from '../utils/errors';
 import { PLAYER_RADIUS } from '../entities/Player';
 import { generateId } from '../utils/id';
-import type { MazeData, MazeProvider, CellType, PickupType, VictoryType, EnemySpawn } from './types';
+import type {
+  CellType,
+  EnemySpawn,
+  LevelRules,
+  MazeData,
+  MazeProvider,
+  Pickup,
+} from './types';
+import { isPickupType, isVictoryType } from './types';
 
-const VALID_PICKUP_TYPES: PickupType[] = ['time', 'health', 'key'];
-const VALID_VICTORY: VictoryType[] = ['reach-exit', 'survive', 'time-trial'];
 // Derived from the player's collision radius — the player needs 2*radius of
 // clearance to fit inside a single cell. Importing PLAYER_RADIUS keeps the
 // validator in lockstep with Player.createPlayer: a future radius change
@@ -49,9 +55,20 @@ export function validateMaze(raw: unknown, id: string): MazeData {
   requireString(m, 'name', id);
   requireObject(m, 'size', id);
   const size = m.size as Record<string, unknown>;
-  requireNumber(size, 'width', `${id}.size`);
-  requireNumber(size, 'depth', `${id}.size`);
-  requireNumber(m, 'cellSize', id);
+  // F-L11 / F-D-quality-D-6: requireNumber already validates and returns
+  // a typed `number`; capture it instead of re-reading `size.width as
+  // number` later (which would silently work even if `requireNumber` was
+  // skipped by a refactor). The `width`/`depth` constants below are the
+  // single source of truth for the rest of the function.
+  const width = requireNumber(size, 'width', `${id}.size`);
+  const depth = requireNumber(size, 'depth', `${id}.size`);
+  const cellSize = requireNumber(m, 'cellSize', id);
+  if (cellSize <= 0) {
+    throw new LevelLoadError(`Maze '${id}': cellSize must be a finite positive number`);
+  }
+  if (cellSize < MIN_CELL_SIZE) {
+    throw new LevelLoadError(`Maze '${id}': cellSize must be at least ${MIN_CELL_SIZE} to fit the player`);
+  }
   if (!Number.isFinite(m.cellSize as number) || (m.cellSize as number) <= 0) {
     throw new LevelLoadError(`Maze '${id}': cellSize must be a finite positive number`);
   }
@@ -70,8 +87,8 @@ export function validateMaze(raw: unknown, id: string): MazeData {
   requireNumber(exit, 'z', `${id}.exit`);
 
   if (!Array.isArray(m.walls)) throw new LevelLoadError(`Maze '${id}': walls must be array`);
-  const width = size.width as number;
-  const depth = size.depth as number;
+  // `width` / `depth` / `cellSize` captured at the top of the function
+  // from requireNumber's return value; see D-6 comment at the size block.
   if (m.walls.length !== depth) {
     throw new LevelLoadError(`Maze '${id}': walls row count (${m.walls.length}) does not match depth (${depth})`);
   }
@@ -112,69 +129,104 @@ export function validateMaze(raw: unknown, id: string): MazeData {
   // existed have no `id` field. We mint a UUID here so the resulting
   // MazeData satisfies the new required field, and the editor can later
   // refer to the pickup by id. Explicit ids are preserved verbatim.
-  const normalizedPickups: Array<Record<string, unknown>> = [];
+  //
+  // F-D-quality-D-7 + D-15: normalizedPickups is typed as `Pickup[]` from
+  // the start (each validated field is assigned by name) so the final
+  // MazeData literal can use it directly without an `as unknown as
+  // Pickup[]` cast.
+  const normalizedPickups: Pickup[] = [];
   for (const p of pickups) {
     if (typeof p !== 'object' || p === null) {
       throw new LevelLoadError(`Maze '${id}': invalid pickup`);
     }
     const pp = p as Record<string, unknown>;
-    requireNumber(pp, 'x', `${id}.pickup`);
-    requireNumber(pp, 'z', `${id}.pickup`);
-    requireNumber(pp, 'value', `${id}.pickup`);
-    if (!Number.isFinite(pp.value as number) || (pp.value as number) <= 0) {
+    const px = requireNumber(pp, 'x', `${id}.pickup`);
+    const pz = requireNumber(pp, 'z', `${id}.pickup`);
+    const pvalue = requireNumber(pp, 'value', `${id}.pickup`);
+    if (pvalue <= 0) {
       throw new LevelLoadError(`Maze '${id}': pickup value must be a finite positive number`);
     }
-    requireInBounds(pp, 'x', 'z', `${id}.pickup`, width, depth);
-    if (!VALID_PICKUP_TYPES.includes(pp.type as PickupType)) {
+    requireInBounds({ x: px, z: pz }, 'x', 'z', `${id}.pickup`, width, depth);
+    // F-D-quality-D-7: type guard instead of local VALID_PICKUP_TYPES
+    // array; the runtime whitelist now lives once in src/maze/types.ts.
+    if (!isPickupType(pp.type)) {
       throw new LevelLoadError(`Maze '${id}': invalid pickup type`);
     }
-    if (pp.x === (m.start as Record<string, unknown>).x && pp.z === (m.start as Record<string, unknown>).z) {
+    if (px === start.x && pz === start.z) {
       throw new LevelLoadError(`Maze '${id}': pickup is on the start cell`);
     }
     // F-N10: also reject pickup on the exit cell. Without this, the
     // player would collect the pickup and immediately win on the same
     // frame (findPickupAt fires before crossesExit), earning the pickup
     // for free. Mirrors the start-cell check above.
-    if (pp.x === (m.exit as Record<string, unknown>).x && pp.z === (m.exit as Record<string, unknown>).z) {
+    if (px === exit.x && pz === exit.z) {
       throw new LevelLoadError(`Maze '${id}': pickup is on the exit cell`);
     }
-    if (walls[pp.z as number][pp.x as number] === 1) {
+    if (walls[pz][px] === 1) {
       throw new LevelLoadError(`Maze '${id}': pickup is on a wall`);
     }
-    const cellKey = `${pp.x},${pp.z}`;
+    const cellKey = `${px},${pz}`;
     if (seenCells.has(cellKey)) {
-      throw new LevelLoadError(`Maze '${id}': duplicate pickup at (${pp.x}, ${pp.z})`);
+      throw new LevelLoadError(`Maze '${id}': duplicate pickup at (${px}, ${pz})`);
     }
     seenCells.add(cellKey);
     const pickupId = typeof pp.id === 'string' && pp.id.length > 0 ? pp.id : generateId();
-    // Preserve all the original fields; only inject the id when missing.
-    normalizedPickups.push({ ...pp, id: pickupId });
+    // F-D-quality-D-15: build a typed Pickup literal instead of spreading
+    // the raw Record. isPickupType above narrows pp.type to PickupType;
+    // every other field has been validated by requireNumber.
+    normalizedPickups.push({ id: pickupId, x: px, z: pz, type: pp.type, value: pvalue });
   }
 
   requireObject(m, 'rules', id);
   const r = m.rules as Record<string, unknown>;
-  requireNumber(r, 'initialTime', `${id}.rules`);
-  requireNumber(r, 'maxHealth', `${id}.rules`);
-  requireNumber(r, 'timeOnPickup', `${id}.rules`);
-  const initialTime = r.initialTime as number;
-  const maxHealth = r.maxHealth as number;
-  const timeOnPickup = r.timeOnPickup as number;
-  if (!(initialTime > 0) || !Number.isFinite(initialTime)) {
+  // F-L11 / F-D-quality-D-6: capture requireNumber return; the values
+  // are already non-NaN + finite so the redundant `Number.isFinite`
+  // checks collapse into a single `> 0` test (the catch in requireNumber
+  // would have thrown on NaN / Infinity before we got here).
+  const initialTime = requireNumber(r, 'initialTime', `${id}.rules`);
+  const maxHealth = requireNumber(r, 'maxHealth', `${id}.rules`);
+  const timeOnPickup = requireNumber(r, 'timeOnPickup', `${id}.rules`);
+  if (initialTime <= 0) {
     throw new LevelLoadError(`Maze '${id}': initialTime must be a finite positive number`);
   }
-  if (!(maxHealth > 0) || !Number.isFinite(maxHealth)) {
+  if (maxHealth <= 0) {
     throw new LevelLoadError(`Maze '${id}': maxHealth must be a finite positive number`);
   }
-  if (!Number.isFinite(timeOnPickup) || timeOnPickup <= 0) {
+  if (timeOnPickup <= 0) {
     throw new LevelLoadError(`Maze '${id}': timeOnPickup must be a finite positive number`);
   }
-  if (!VALID_VICTORY.includes(r.victory as VictoryType)) {
+  // F-D-quality-D-7: route through the same type guard the UI uses
+  // (src/maze/types.ts isVictoryType) so adding a new VictoryType literal
+  // here automatically widens both layers.
+  if (!isVictoryType(r.victory)) {
     throw new LevelLoadError(`Maze '${id}': invalid victory type`);
   }
+  const rules: LevelRules = { initialTime, maxHealth, timeOnPickup, victory: r.victory };
 
   const enemies = parseEnemies(m.enemies, id, width, depth, walls);
 
-  return { ...m, pickups: normalizedPickups, enemies } as unknown as MazeData;
+  // F-D-quality-D-15: assemble the MazeData by name instead of `{ ...m,
+  // ... } as unknown as MazeData`. Every field is validated above; the
+  // literal here gives TypeScript the per-field types it needs to satisfy
+  // the interface without an unchecked double-cast. `id` / `name` are
+  // re-cast from the Record lookup because requireString only validates,
+  // it does not narrow. start / exit stay typed as their validated
+  // Record<string, unknown> shape since the loop bodies above never
+  // mutate them after requireNumber; the per-field types flow through
+  // when the literal is built.
+  const maze: MazeData = {
+    id: m.id as string,
+    name: m.name as string,
+    size: { width, depth },
+    cellSize,
+    start: { x: start.x as number, z: start.z as number },
+    exit: { x: exit.x as number, z: exit.z as number },
+    walls,
+    pickups: normalizedPickups,
+    rules,
+    enemies,
+  };
+  return maze;
 }
 
 // Returns [] when the field is missing or not an array, drops any enemy
