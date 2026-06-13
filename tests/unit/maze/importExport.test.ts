@@ -6,6 +6,7 @@ import {
   sanitizeFilename,
   downloadAsJsonFile,
   readJsonFile,
+  MAX_IMPORT_BYTES,
 } from '../../../src/maze/importExport';
 import type { MazeData } from '../../../src/maze/types';
 
@@ -265,6 +266,65 @@ describe('importExport', () => {
 
       // Act + Assert
       await expect(readJsonFile(file)).rejects.toThrow(ImportError);
+    });
+
+    // D-25: readJsonFile must reject absurdly large files before
+    // loading them into memory. Without the guard, a 500 MB JSON pick
+    // freezes the tab via FileReader.readAsText + JSON.parse blocking
+    // the main thread. We synthesize a small file and override the
+    // `size` getter to report the over-limit value, so the test stays
+    // fast (no actual 1 MB allocation) while still exercising the
+    // real guard path: the implementation reads `file.size` before
+    // calling `file.text()`.
+    it('throws ImportError when file.size exceeds MAX_IMPORT_BYTES (D-25)', async () => {
+      // Arrange — real File with 1 byte, then spoof the size to
+      // MAX_IMPORT_BYTES + 1 so the guard trips.
+      const file = makeFile('huge.json', 'x');
+      Object.defineProperty(file, 'size', {
+        value: MAX_IMPORT_BYTES + 1,
+        configurable: true,
+      });
+
+      // Act + Assert
+      await expect(readJsonFile(file)).rejects.toThrow(ImportError);
+      await expect(readJsonFile(file)).rejects.toThrow(/too large/i);
+    });
+
+    it('accepts a file at exactly MAX_IMPORT_BYTES (boundary is strict >)', async () => {
+      // Arrange — spoof size to exactly the cap; the guard's strict
+      // `>` comparison must let this through to file.text().
+      const file = makeFile('boundary.json', '{"a":5}');
+      Object.defineProperty(file, 'size', {
+        value: MAX_IMPORT_BYTES,
+        configurable: true,
+      });
+
+      // Act
+      const result = await readJsonFile(file);
+
+      // Assert
+      expect(result).toBe('{"a":5}');
+    });
+
+    it('error message names both the actual and maximum size for the user (D-25)', async () => {
+      // Arrange — spoof to a recognizable over-limit value.
+      const file = makeFile('huge.json', 'x');
+      const overLimit = MAX_IMPORT_BYTES + 12345;
+      Object.defineProperty(file, 'size', { value: overLimit, configurable: true });
+
+      // Act
+      let caught: unknown;
+      try {
+        await readJsonFile(file);
+      } catch (e) {
+        caught = e;
+      }
+
+      // Assert — the message exposes the actual size and the cap so
+      // the user can see how much they overran by.
+      expect(caught).toBeInstanceOf(ImportError);
+      expect((caught as Error).message).toContain(String(overLimit));
+      expect((caught as Error).message).toContain(String(MAX_IMPORT_BYTES));
     });
   });
 });

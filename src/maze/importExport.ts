@@ -17,6 +17,11 @@ import type { MazeData } from './types';
 const ACCEPTED_SCHEMA_VERSION = 1;
 const JSON_EXTENSION = '.json';
 const MAZE3D_JSON_EXTENSION = '.maze3d.json';
+// D-25: hard cap on imported JSON size. A 50x50 maze exports to ~10 KB,
+// so 1 MiB leaves ~100x headroom for hand-edited additions while
+// refusing anything that would freeze the tab via FileReader.readAsText
+// + JSON.parse blocking the main thread.
+export const MAX_IMPORT_BYTES = 1_048_576;
 
 export class ImportError extends Error {
   constructor(message: string) {
@@ -106,10 +111,20 @@ export function downloadAsJsonFile(filename: string, content: string): void {
 // binary or text file from disk. We accept `.json` and the project-
 // specific `.maze3d.json` (used by Export) but reject anything else
 // before reading the bytes, so the error message is clear.
+//
+// D-25: also rejects files larger than MAX_IMPORT_BYTES *before* loading
+// them. Without this guard, a 500 MB pick would freeze the tab via
+// FileReader.readAsText + JSON.parse blocking the main thread. The
+// boundary is strict `>`, so a file exactly at the cap is accepted.
 export async function readJsonFile(file: File): Promise<string> {
   const lower = file.name.toLowerCase();
   if (!lower.endsWith(JSON_EXTENSION) && !lower.endsWith(MAZE3D_JSON_EXTENSION)) {
     throw new ImportError(`File '${file.name}' is not a .json or .maze3d.json file`);
+  }
+  if (file.size > MAX_IMPORT_BYTES) {
+    throw new ImportError(
+      `File too large: ${file.size} bytes; max ${MAX_IMPORT_BYTES}`,
+    );
   }
   return file.text();
 }
