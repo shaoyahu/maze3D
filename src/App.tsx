@@ -10,7 +10,7 @@ import { PauseOverlay } from './ui/PauseOverlay';
 import { GameOverOverlay } from './ui/GameOverOverlay';
 import { WinOverlay } from './ui/WinOverlay';
 import { GameCanvas } from './ui/GameCanvas';
-import { JsonMazeProvider } from './maze/JsonMazeProvider';
+import { BUILT_IN_JSON_PROVIDER } from './maze/builtInLevels';
 import { EditorMazeProvider } from './maze/EditorMazeProvider';
 import { AlgorithmMazeProvider } from './maze/AlgorithmMazeProvider';
 import { EditorPage } from './ui/editor/EditorPage';
@@ -48,29 +48,17 @@ export function App() {
   const darkMode = useSettingsStore((s) => s.darkMode);
   const customLevels = useLevelStore((s) => s.customLevels);
 
-  // P2-4b: wrap the built-in JsonMazeProvider in an EditorMazeProvider so a
-  // custom level and a built-in level with the same id both resolve, and so
-  // the same lookup path is used for `startLevel` and the level list. The
-  // loaders (one per public/levels/*.json) are stable; only `customLevels`
-  // changes at runtime.
-  const provider = useMemo(() => {
-    const modules = import.meta.glob('/public/levels/*.json');
-    const jsonProvider = new JsonMazeProvider(
-      Object.fromEntries(
-        Object.entries(modules).map(([path, loader]) => {
-          const id = path.split('/').pop()!.replace('.json', '');
-          return [
-            id,
-            async () => {
-              const mod = await loader();
-              return (mod as { default?: unknown }).default ?? mod;
-            },
-          ];
-        }),
-      ),
-    );
-    return new EditorMazeProvider(customLevels, jsonProvider);
-  }, [customLevels]);
+  // P2-4b + F-project-review-2026-06-13-A-HIGH-4: wrap the module-level
+  // BUILT_IN_JSON_PROVIDER singleton in an EditorMazeProvider so a custom
+  // level and a built-in level with the same id both resolve, and so the
+  // same lookup path is used for `startLevel` and the level list. The
+  // built-in provider is constructed once at module load (see
+  // `builtInLevels.ts`); only the editor overlay needs to rebuild when
+  // `customLevels` changes.
+  const provider = useMemo(
+    () => new EditorMazeProvider(customLevels, BUILT_IN_JSON_PROVIDER),
+    [customLevels],
+  );
 
   useLayoutEffect(() => {
     const root = document.documentElement;
