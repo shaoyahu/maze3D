@@ -106,3 +106,88 @@ export function saveJSON(key: string, value: unknown): void {
     console.warn('persist: failed to save', key, result.reason);
   }
 }
+
+/**
+ * F-A-architecture-M7: debounced writer for hot-path setters. A slider
+ * drag fires the same setter dozens of times per second; calling
+ * {@link saveJSON} synchronously on each one means N JSON.stringify +
+ * localStorage.setItem round-trips. The debounce coalesces writes to
+ * the same key within {@link DEBOUNCE_WRITE_MS} into a single write of
+ * the latest value. Use this for the settings hot path; keep
+ * {@link saveJSON} for infrequent, must-persist-now writes (best
+ * records, custom-level save).
+ *
+ * 250ms is chosen because it is:
+ *  - long enough to swallow a single drag's intermediate values;
+ *  - short enough that a delayed flush is imperceptible to the user;
+ *  - matches the A-M7 finding's recommended cadence.
+ */
+export const DEBOUNCE_WRITE_MS = 250;
+
+interface PendingWrite {
+  value: unknown;
+  timer: ReturnType<typeof setTimeout>;
+}
+const pendingWrites = new Map<string, PendingWrite>();
+
+export function saveJSONDebounced(
+  key: string,
+  value: unknown,
+  debounceMs: number = DEBOUNCE_WRITE_MS,
+): void {
+  const existing = pendingWrites.get(key);
+  if (existing) {
+    // Re-arm: cancel the previous timer so the new value extends the
+    // window. Without this, the first write in a burst would fire
+    // before the drag finishes, splitting one logical change into
+    // two localStorage writes.
+    clearTimeout(existing.timer);
+  }
+  const timer = setTimeout(() => {
+    pendingWrites.delete(key);
+    saveJSON(key, value);
+  }, debounceMs);
+  pendingWrites.set(key, { value, timer });
+}
+
+/**
+ * F-A-architecture-M7: synchronous flush of pending debounced writes.
+ * Production code does not need to call this — the module-level
+ * `pagehide` / `visibilitychange` listeners below cover the
+ * close-tab / background cases. The export exists for two reasons:
+ *
+ *  1. **Tests**: a deterministic seam so unit tests don't depend on
+ *     real timers or `vi.useFakeTimers()` everywhere.
+ *  2. **Forced checkpoints**: future code (e.g. "save settings on
+ *     logout") can demand a flush without knowing whether a write is
+ *     already pending.
+ */
+export function flushPendingWrites(key?: string): void {
+  if (key !== undefined) {
+    const entry = pendingWrites.get(key);
+    if (!entry) return;
+    clearTimeout(entry.timer);
+    pendingWrites.delete(key);
+    saveJSON(key, entry.value);
+    return;
+  }
+  // Snapshot the keys before iteration — `saveJSON` is synchronous so
+  // deleting the entry in-place is safe, but iterating a mutating Map
+  // is undefined per spec. Copy first.
+  for (const k of Array.from(pendingWrites.keys())) {
+    flushPendingWrites(k);
+  }
+}
+
+// Production-side flush guarantee. `pagehide` covers all navigation
+// (close tab, reload, back/forward cache restore); `visibilitychange`
+// to `hidden` covers mobile backgrounding. Both fire `flushPendingWrites`
+// which is idempotent and a no-op when the map is empty. The
+// `typeof window` guard keeps SSR / unit-test contexts from registering
+// listeners on `undefined`.
+if (typeof window !== 'undefined') {
+  window.addEventListener('pagehide', () => flushPendingWrites());
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') flushPendingWrites();
+  });
+}

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { loadJSON, saveJSON, isStorageAvailable } from '../../src/store/persist';
+import { loadJSON, saveJSON, isStorageAvailable, saveJSONDebounced, flushPendingWrites, DEBOUNCE_WRITE_MS } from '../../src/store/persist';
 
 describe('persist', () => {
   beforeEach(() => {
@@ -193,6 +193,142 @@ describe('persist', () => {
       localStorage.setItem('m', JSON.stringify({ l1: incomplete }));
       const result = loadJSON<Record<string, BestRecord>>('m', {}, isBestRecordMap);
       expect(result).toEqual({});
+    });
+  });
+
+  // P2-11 (A-M7) — debounced writer for hot-path settings. A slider drag
+  // can fire `set(...)` dozens of times per second; without debouncing,
+  // each call JSON.stringify + localStorage.setItem synchronously. The
+  // debounce coalesces N writes within DEBOUNCE_WRITE_MS into 1 write of
+  // the latest value. The `flushPendingWrites(key?)` test seam lets tests
+  // advance the debounce deterministically without relying on real timers
+  // (a `vi.useFakeTimers` + `vi.advanceTimersByTime` path is also covered
+  // so the timer mechanism itself is pinned, not just the seam).
+  describe('A-M7 — saveJSONDebounced / flushPendingWrites', () => {
+    const KEY_A = 'debounce.test.a';
+    const KEY_B = 'debounce.test.b';
+
+    beforeEach(() => {
+      // Each test starts with no pending writes; leftover timers from a
+      // previous test would silently fire during the next assertion and
+      // pollute localStorage. The seam makes the cleanup explicit.
+      flushPendingWrites();
+      localStorage.clear();
+    });
+
+    it('exposes DEBOUNCE_WRITE_MS = 250 so the cadence is part of the contract', () => {
+      // The constant is exported so a regression that widens the window
+      // (e.g. 1000ms) shows up in the type signature of the import, not
+      // buried in a magic number. The value matches the A-M7
+      // recommendation: long enough to coalesce a slider drag's
+      // intermediate values, short enough that a delayed flush is
+      // imperceptible to the user.
+      expect(DEBOUNCE_WRITE_MS).toBe(250);
+    });
+
+    it('does not write synchronously — localStorage stays empty after the call', () => {
+      // The whole point: the hot path (settings setters) is decoupled
+      // from the disk write. If saveJSONDebounced wrote synchronously
+      // this test would fail and the A-M7 fix would be a no-op.
+      saveJSONDebounced(KEY_A, { x: 1 });
+      expect(localStorage.getItem(KEY_A)).toBeNull();
+    });
+
+    it('flushPendingWrites(key) writes the latest value and clears the pending entry', () => {
+      saveJSONDebounced(KEY_A, { x: 1 });
+      flushPendingWrites(KEY_A);
+      expect(JSON.parse(localStorage.getItem(KEY_A)!)).toEqual({ x: 1 });
+      // A second flush on the same key is a no-op (the pending entry
+      // was removed by the first flush, not just the timer cleared).
+      localStorage.removeItem(KEY_A);
+      flushPendingWrites(KEY_A);
+      expect(localStorage.getItem(KEY_A)).toBeNull();
+    });
+
+    it('coalesces N writes within the window into 1 write of the latest value', () => {
+      // The realistic A-M7 case: a slider drag fires set('pointerSensitivity', 0.002)
+      // then set(..., 0.003) then set(..., 0.004) within ~100ms. The
+      // debounce must keep only the latest value and call setItem once.
+      saveJSONDebounced(KEY_A, { v: 1 });
+      saveJSONDebounced(KEY_A, { v: 2 });
+      saveJSONDebounced(KEY_A, { v: 3 });
+      flushPendingWrites(KEY_A);
+      // Only the latest value lands in localStorage.
+      expect(JSON.parse(localStorage.getItem(KEY_A)!)).toEqual({ v: 3 });
+    });
+
+    it('is per-key — a pending write on key B is not flushed when key A is flushed', () => {
+      // Each key has its own timer; flushing one must not touch the
+      // other's pending entry. A regression that used a single shared
+      // timer (or a single payload object) would fail this.
+      saveJSONDebounced(KEY_A, { v: 'A' });
+      saveJSONDebounced(KEY_B, { v: 'B' });
+      flushPendingWrites(KEY_A);
+      expect(localStorage.getItem(KEY_A)).toBeTruthy();
+      expect(localStorage.getItem(KEY_B)).toBeNull();
+      flushPendingWrites(KEY_B);
+      expect(localStorage.getItem(KEY_B)).toBeTruthy();
+    });
+
+    it('flushPendingWrites() with no arg flushes every pending key', () => {
+      saveJSONDebounced(KEY_A, { v: 'A' });
+      saveJSONDebounced(KEY_B, { v: 'B' });
+      flushPendingWrites();
+      expect(localStorage.getItem(KEY_A)).toBeTruthy();
+      expect(localStorage.getItem(KEY_B)).toBeTruthy();
+    });
+
+    it('flushPendingWrites(unknownKey) is a no-op', () => {
+      // The seam must be safe to call speculatively (e.g. from a useEffect
+      // cleanup that doesn't know whether a write is pending). Pinning
+      // this prevents a future refactor from introducing a `delete on
+      // missing key` exception path.
+      saveJSONDebounced(KEY_A, { v: 1 });
+      expect(() => flushPendingWrites('does.not.exist')).not.toThrow();
+      // KEY_A's pending write is still intact.
+      expect(localStorage.getItem(KEY_A)).toBeNull();
+      flushPendingWrites(KEY_A);
+      expect(localStorage.getItem(KEY_A)).toBeTruthy();
+    });
+
+    it('the timer mechanism (not just the test seam) fires after DEBOUNCE_WRITE_MS', () => {
+      // The seam is a convenience for tests; the production code path
+      // is the setTimeout. Fake timers + advance proves the timer
+      // actually fires the debounced write on its own.
+      vi.useFakeTimers();
+      try {
+        saveJSONDebounced(KEY_A, { v: 'late' });
+        expect(localStorage.getItem(KEY_A)).toBeNull();
+        vi.advanceTimersByTime(DEBOUNCE_WRITE_MS - 1);
+        expect(localStorage.getItem(KEY_A)).toBeNull();
+        vi.advanceTimersByTime(1);
+        expect(JSON.parse(localStorage.getItem(KEY_A)!)).toEqual({ v: 'late' });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('re-arming within the window resets the timer (the drag-while-debouncing case)', () => {
+      // If the user releases the slider and re-grabs it before the
+      // debounce fires, the timer must extend — otherwise the first
+      // release's value would land on disk before the second grab's
+      // intermediate values. The implementation does this by
+      // clearTimeout on the existing entry when a new write arrives.
+      vi.useFakeTimers();
+      try {
+        saveJSONDebounced(KEY_A, { v: 1 });
+        vi.advanceTimersByTime(200);
+        saveJSONDebounced(KEY_A, { v: 2 });
+        vi.advanceTimersByTime(200);
+        // 400ms total since the first call, but the timer was reset at
+        // 200ms so nothing should be written yet.
+        expect(localStorage.getItem(KEY_A)).toBeNull();
+        vi.advanceTimersByTime(50);
+        // Now 250ms since the second call → the timer fires.
+        expect(JSON.parse(localStorage.getItem(KEY_A)!)).toEqual({ v: 2 });
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 });

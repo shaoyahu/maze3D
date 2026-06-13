@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { loadJSON, saveJSON } from './persist';
+import { loadJSON, saveJSONDebounced } from './persist';
 import type { EnemyAggression } from '../maze/types';
 
 const VALID_AGGRESSION: EnemyAggression[] = ['easy', 'medium', 'hard'];
@@ -85,7 +85,14 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       return;
     }
     const next: Settings = { ...pickSettings(get()), [k]: v };
-    saveJSON(STORAGE_KEY, next);
+    // F-A-architecture-M7: a slider drag fires `set` dozens of times
+    // per second. Debouncing the localStorage write coalesces the
+    // burst into a single setItem 250ms after the last change. The
+    // in-memory zustand state still updates immediately (line below),
+    // so the UI is responsive; only the persistence is deferred. The
+    // pagehide/visibilitychange listeners in persist.ts flush
+    // pending writes on tab close.
+    saveJSONDebounced(STORAGE_KEY, next);
     set(next);
   },
 }));
