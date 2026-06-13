@@ -242,6 +242,28 @@ describe('EditorPage (P2-7 ConfirmProvider)', () => {
     expect(useEditorStore.getState().past.length).toBe(1);
   });
 
+  it('autosave does not write before the 2s debounce elapses (F-project-review-2026-06-13-C-M4)', () => {
+    // Local fake timers — the file otherwise uses real timers so that
+    // async dialog tests can rely on `findByTestId` polling.
+    vi.useFakeTimers();
+    try {
+      renderPage();
+      act(() => {
+        useEditorStore.getState().placeWall(1, 1);
+      });
+      // 1ms shy of the debounce: nothing must be persisted yet. This is
+      // the C-M4 guard: a future change that flipped the strict-`<` to
+      // `<=` (or any other "off-by-one at the boundary" mistake) would
+      // write here, and this assertion would catch it.
+      act(() => {
+        vi.advanceTimersByTime(1999);
+      });
+      expect(localStorage.getItem(DRAFT_KEY)).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('autosave writes the draft to localStorage 2s after a level change', () => {
     // Local fake timers — the file otherwise uses real timers so that
     // async dialog tests can rely on `findByTestId` polling.

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, fireEvent, screen, waitFor, act } from '@testing-library/react';
-import { EditorToolbar } from '../../../src/ui/editor/EditorToolbar';
+import { EditorToolbar, LAST_ERROR_DISPLAY_MS } from '../../../src/ui/editor/EditorToolbar';
 import { useEditorStore } from '../../../src/store/editorStore';
 import { useLevelStore } from '../../../src/store/levelStore';
 import { ConfirmProvider } from '../../../src/ui/useConfirm';
@@ -322,11 +322,14 @@ describe('EditorToolbar (P2-4b #13)', () => {
       useEditorStore.setState({ lastError: 'stale' });
       render(<ConfirmProvider><EditorToolbar /></ConfirmProvider>);
       expect(screen.getByTestId('tool-status').textContent).toMatch(/stale/);
-      // Act — advance past the 3s auto-clear window. The useEffect inside
+      // Act — advance past the auto-clear window. The useEffect inside
       // EditorToolbar schedules a setTimeout that calls clearLastError.
-      // The toolbar uses LAST_ERROR_DISPLAY_MS = 3000; 3050 gives a small
-      // safety margin without coupling this test to that internal constant.
-      vi.advanceTimersByTime(3050);
+      // F-project-review-2026-06-13-C-M5: import the constant instead
+      // of hardcoding 3050 so a future bump to LAST_ERROR_DISPLAY_MS is
+      // reflected in the test (the +50ms is a small safety margin for
+      // timer rounding — kept as an explicit expression so the margin
+      // itself is named, not magic).
+      vi.advanceTimersByTime(LAST_ERROR_DISPLAY_MS + 50);
       // Assert
       expect(useEditorStore.getState().lastError).toBeNull();
     } finally {

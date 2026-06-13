@@ -17,7 +17,11 @@ import { useLevelStore } from '../../store/levelStore';
 // F-2026-06-12-H1: how long a `lastError` from the store stays visible
 // before the toolbar auto-clears it. Long enough to read, short enough
 // that a stale message from an earlier click doesn't haunt the user.
-const LAST_ERROR_DISPLAY_MS = 3000;
+// F-project-review-2026-06-13-C-M5: exported so the auto-clear test
+// pins this exact value instead of a magic 3050ms offset. A future
+// bump (or shrink) to this constant is reflected in the test on the
+// next run, not silently passing or failing because of a stale offset.
+export const LAST_ERROR_DISPLAY_MS = 3000;
 
 const TOOLS: readonly { tool: EditorTool; label: string; hint: string }[] = [
   { tool: 'select', label: '选择', hint: 'V' },
