@@ -55,16 +55,30 @@ export function useAutoSave(options: UseAutoSaveOptions = {}): void {
   onAutoSaveErrorRef.current = onAutoSaveError;
 
   useEffect(() => {
+    // F-project-review-2026-06-13-A-HIGH-1: the interval closure lazily
+    // reads `useEditorStore.getState().dirty` on every tick, so a stale
+    // store report of `dirty=true` could still drive `saveLevel()` even
+    // after the consumer has unmounted. StrictMode's dev double-mount
+    // amplifies this race — the first mount's interval can outlive the
+    // second mount's cleanup. The local `mounted` flag guarantees the
+    // tick is a no-op (and the callbacks are not invoked) once the host
+    // component is gone.
+    let mounted = true;
     const id = window.setInterval(() => {
+      if (!mounted) return;
       const state = useEditorStore.getState();
       if (!state.dirty) return;
       const result = state.saveLevel();
+      if (!mounted) return;
       if (result.ok) {
         onAutoSavedRef.current?.(Date.now());
       } else {
         onAutoSaveErrorRef.current?.(result.error);
       }
     }, intervalMs);
-    return () => window.clearInterval(id);
+    return () => {
+      mounted = false;
+      window.clearInterval(id);
+    };
   }, [intervalMs]);
 }

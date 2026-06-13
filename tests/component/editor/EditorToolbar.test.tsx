@@ -3,6 +3,7 @@ import { render, fireEvent, screen, waitFor, act } from '@testing-library/react'
 import { EditorToolbar } from '../../../src/ui/editor/EditorToolbar';
 import { useEditorStore } from '../../../src/store/editorStore';
 import { useLevelStore } from '../../../src/store/levelStore';
+import { ConfirmProvider } from '../../../src/ui/useConfirm';
 
 vi.mock('../../../src/maze/importExport', async () => {
   const actual = await vi.importActual<typeof import('../../../src/maze/importExport')>(
@@ -48,7 +49,7 @@ describe('EditorToolbar (P2-4b #13)', () => {
   });
 
   it('renders all 7 tool buttons', () => {
-    render(<EditorToolbar />);
+    render(<ConfirmProvider><EditorToolbar /></ConfirmProvider>);
     expect(screen.getByTestId('tool-select')).toBeInTheDocument();
     expect(screen.getByTestId('tool-wall')).toBeInTheDocument();
     expect(screen.getByTestId('tool-start')).toBeInTheDocument();
@@ -60,31 +61,31 @@ describe('EditorToolbar (P2-4b #13)', () => {
 
   it('marks the active tool with aria-pressed=true', () => {
     useEditorStore.setState({ tool: 'wall' });
-    render(<EditorToolbar />);
+    render(<ConfirmProvider><EditorToolbar /></ConfirmProvider>);
     expect(screen.getByTestId('tool-wall').getAttribute('aria-pressed')).toBe('true');
     expect(screen.getByTestId('tool-select').getAttribute('aria-pressed')).toBe('false');
   });
 
   it('clicking a tool button dispatches setTool', () => {
-    render(<EditorToolbar />);
+    render(<ConfirmProvider><EditorToolbar /></ConfirmProvider>);
     fireEvent.click(screen.getByTestId('tool-pickup'));
     expect(useEditorStore.getState().tool).toBe('pickup');
   });
 
   it('Undo is disabled when past is empty', () => {
-    render(<EditorToolbar />);
+    render(<ConfirmProvider><EditorToolbar /></ConfirmProvider>);
     expect(screen.getByTestId('tool-undo')).toBeDisabled();
   });
 
   it('Redo is disabled when future is empty', () => {
-    render(<EditorToolbar />);
+    render(<ConfirmProvider><EditorToolbar /></ConfirmProvider>);
     expect(screen.getByTestId('tool-redo')).toBeDisabled();
   });
 
   it('Undo is enabled when past is non-empty and triggers undo on click', () => {
     const pastLevel = { ...useEditorStore.getState().level };
     useEditorStore.setState({ past: [{ level: pastLevel, selection: null }] });
-    render(<EditorToolbar />);
+    render(<ConfirmProvider><EditorToolbar /></ConfirmProvider>);
     expect(screen.getByTestId('tool-undo')).not.toBeDisabled();
     fireEvent.click(screen.getByTestId('tool-undo'));
     expect(useEditorStore.getState().past.length).toBe(0);
@@ -93,14 +94,14 @@ describe('EditorToolbar (P2-4b #13)', () => {
   it('Redo is enabled when future is non-empty and triggers redo on click', () => {
     const futureLevel = { ...useEditorStore.getState().level };
     useEditorStore.setState({ future: [{ level: futureLevel, selection: null }] });
-    render(<EditorToolbar />);
+    render(<ConfirmProvider><EditorToolbar /></ConfirmProvider>);
     expect(screen.getByTestId('tool-redo')).not.toBeDisabled();
     fireEvent.click(screen.getByTestId('tool-redo'));
     expect(useEditorStore.getState().future.length).toBe(0);
   });
 
   it('name input is controlled and updateName is called on change', () => {
-    render(<EditorToolbar />);
+    render(<ConfirmProvider><EditorToolbar /></ConfirmProvider>);
     const input = screen.getByTestId('tool-name-input') as HTMLInputElement;
     expect(input.value).toBe('Test');
     fireEvent.change(input, { target: { value: 'Renamed' } });
@@ -109,44 +110,54 @@ describe('EditorToolbar (P2-4b #13)', () => {
 
   it('shows the dirty marker when dirty is true', () => {
     useEditorStore.setState({ dirty: true });
-    render(<EditorToolbar />);
+    render(<ConfirmProvider><EditorToolbar /></ConfirmProvider>);
     expect(screen.getByTestId('tool-dirty')).toBeInTheDocument();
   });
 
   it('hides the dirty marker when not dirty', () => {
     useEditorStore.setState({ dirty: false });
-    render(<EditorToolbar />);
+    render(<ConfirmProvider><EditorToolbar /></ConfirmProvider>);
     expect(screen.queryByTestId('tool-dirty')).not.toBeInTheDocument();
   });
 
   it('New button calls newLevel(15, 15) without confirm when not dirty', () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
-    render(<EditorToolbar />);
+    render(<ConfirmProvider><EditorToolbar /></ConfirmProvider>);
     fireEvent.click(screen.getByTestId('tool-new'));
     expect(confirmSpy).not.toHaveBeenCalled();
     expect(useEditorStore.getState().level.size).toEqual({ width: 15, depth: 15 });
   });
 
-  it('New button shows confirm when dirty and aborts if declined', () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+  it('New button shows confirm when dirty and aborts if declined', async () => {
     useEditorStore.setState({ dirty: true });
-    render(<EditorToolbar />);
-    fireEvent.click(screen.getByTestId('tool-new'));
-    expect(confirmSpy).toHaveBeenCalled();
+    render(<ConfirmProvider><EditorToolbar /></ConfirmProvider>);
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('tool-new'));
+    });
+    expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('confirm-action-cancel'));
+    });
+    expect(screen.queryByTestId('confirm-dialog')).toBeNull();
     // Still the original level.
     expect(useEditorStore.getState().level.size).toEqual({ width: 5, depth: 4 });
   });
 
-  it('New button creates a new level when dirty and confirmed', () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
+  it('New button creates a new level when dirty and confirmed', async () => {
     useEditorStore.setState({ dirty: true });
-    render(<EditorToolbar />);
-    fireEvent.click(screen.getByTestId('tool-new'));
+    render(<ConfirmProvider><EditorToolbar /></ConfirmProvider>);
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('tool-new'));
+    });
+    expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('confirm-action-ok'));
+    });
     expect(useEditorStore.getState().level.size).toEqual({ width: 15, depth: 15 });
   });
 
   it('Save calls saveLevel (levelStore.saveCustom) and shows success status', () => {
-    render(<EditorToolbar />);
+    render(<ConfirmProvider><EditorToolbar /></ConfirmProvider>);
     fireEvent.click(screen.getByTestId('tool-save'));
     expect(useLevelStore.getState().customLevels['custom-test-id']).toBeDefined();
     expect(screen.getByTestId('tool-status').textContent).toBe('已保存');
@@ -160,7 +171,7 @@ describe('EditorToolbar (P2-4b #13)', () => {
   // be cleared as soon as dirty flips false→true.
   it('clears the local "已保存" status when the user makes a new edit (dirty→true)', () => {
     // Arrange — simulate: user just saved (status="已保存", dirty=false).
-    render(<EditorToolbar />);
+    render(<ConfirmProvider><EditorToolbar /></ConfirmProvider>);
     fireEvent.click(screen.getByTestId('tool-save'));
     expect(screen.getByTestId('tool-status').textContent).toBe('已保存');
     // Act — user makes another edit (placeWall on a non-start/non-exit
@@ -197,7 +208,7 @@ describe('EditorToolbar (P2-4b #13)', () => {
         rules: { initialTime: 60, maxHealth: 3, victory: 'reach-exit', timeOnPickup: 10 },
       },
     });
-    render(<EditorToolbar />);
+    render(<ConfirmProvider><EditorToolbar /></ConfirmProvider>);
     // Act
     fireEvent.click(screen.getByTestId('tool-save'));
     // Assert
@@ -208,21 +219,21 @@ describe('EditorToolbar (P2-4b #13)', () => {
 
   it('Save & Exit calls onSaveAndExit on success', () => {
     const onSaveAndExit = vi.fn();
-    render(<EditorToolbar onSaveAndExit={onSaveAndExit} />);
+    render(<ConfirmProvider><EditorToolbar onSaveAndExit={onSaveAndExit} /></ConfirmProvider>);
     fireEvent.click(screen.getByTestId('tool-save-exit'));
     expect(onSaveAndExit).toHaveBeenCalled();
   });
 
   it('Save & Exit falls back to onExit when onSaveAndExit is not provided', () => {
     const onExit = vi.fn();
-    render(<EditorToolbar onExit={onExit} />);
+    render(<ConfirmProvider><EditorToolbar onExit={onExit} /></ConfirmProvider>);
     fireEvent.click(screen.getByTestId('tool-save-exit'));
     expect(onExit).toHaveBeenCalled();
   });
 
   it('Export calls exportJson and downloadAsJsonFile with sanitized filename', () => {
     useEditorStore.setState({ level: { ...useEditorStore.getState().level, name: 'Test 关卡 / 1' } });
-    render(<EditorToolbar />);
+    render(<ConfirmProvider><EditorToolbar /></ConfirmProvider>);
     fireEvent.click(screen.getByTestId('tool-export'));
     expect(downloadAsJsonFile).toHaveBeenCalledTimes(1);
     const [filename, content] = (downloadAsJsonFile as ReturnType<typeof vi.fn>).mock.calls[0]!;
@@ -248,18 +259,24 @@ describe('EditorToolbar (P2-4b #13)', () => {
       },
     });
     const file = new File([validJson], 'good.maze3d.json', { type: 'application/json' });
-    render(<EditorToolbar />);
+    render(<ConfirmProvider><EditorToolbar /></ConfirmProvider>);
     fireEvent.change(screen.getByTestId('tool-import-input'), { target: { files: [file] } });
     await waitFor(() => {
       expect(useEditorStore.getState().level.id.startsWith('custom-')).toBe(true);
     });
     expect(useEditorStore.getState().level.name).toBe('Imported');
-    expect(screen.getByTestId('tool-status').textContent).toMatch(/已导入/);
+    // P2-7: the import's setStatus can land one microtask after the
+    // importJson-driven re-render (zustand external store + React
+    // setState don't always batch through <ConfirmProvider>), so poll
+    // for the status text instead of asserting immediately.
+    await waitFor(() => {
+      expect(screen.getByTestId('tool-status').textContent).toMatch(/已导入/);
+    });
   });
 
   it('Import shows an error status when the file is invalid', async () => {
     const file = new File(['not-json-at-all'], 'bad.maze3d.json', { type: 'application/json' });
-    render(<EditorToolbar />);
+    render(<ConfirmProvider><EditorToolbar /></ConfirmProvider>);
     fireEvent.change(screen.getByTestId('tool-import-input'), { target: { files: [file] } });
     await waitFor(() => {
       expect(screen.getByTestId('tool-status').textContent).toMatch(/导入失败/);
@@ -269,7 +286,7 @@ describe('EditorToolbar (P2-4b #13)', () => {
   it('Import shows an error status when schemaVersion is not 1', async () => {
     const badJson = JSON.stringify({ schemaVersion: 2, level: {} });
     const file = new File([badJson], 'wrong-version.maze3d.json', { type: 'application/json' });
-    render(<EditorToolbar />);
+    render(<ConfirmProvider><EditorToolbar /></ConfirmProvider>);
     fireEvent.change(screen.getByTestId('tool-import-input'), { target: { files: [file] } });
     await waitFor(() => {
       expect(screen.getByTestId('tool-status').textContent).toMatch(/导入失败/);
@@ -284,7 +301,7 @@ describe('EditorToolbar (P2-4b #13)', () => {
     // Arrange
     useEditorStore.setState({ lastError: '无法在起点放置墙（墙不能覆盖起点）' });
     // Act
-    render(<EditorToolbar />);
+    render(<ConfirmProvider><EditorToolbar /></ConfirmProvider>);
     // Assert
     expect(screen.getByTestId('tool-status').textContent).toMatch(/无法在起点放置墙/);
   });
@@ -293,7 +310,7 @@ describe('EditorToolbar (P2-4b #13)', () => {
     // Arrange
     useEditorStore.setState({ lastError: null });
     // Act
-    render(<EditorToolbar />);
+    render(<ConfirmProvider><EditorToolbar /></ConfirmProvider>);
     // Assert
     expect(screen.queryByTestId('tool-status')).not.toBeInTheDocument();
   });
@@ -303,7 +320,7 @@ describe('EditorToolbar (P2-4b #13)', () => {
     try {
       // Arrange
       useEditorStore.setState({ lastError: 'stale' });
-      render(<EditorToolbar />);
+      render(<ConfirmProvider><EditorToolbar /></ConfirmProvider>);
       expect(screen.getByTestId('tool-status').textContent).toMatch(/stale/);
       // Act — advance past the 3s auto-clear window. The useEffect inside
       // EditorToolbar schedules a setTimeout that calls clearLastError.
@@ -326,7 +343,7 @@ describe('EditorToolbar (P2-4b #13)', () => {
     try {
       const now = new Date('2026-06-12T03:04:05').getTime();
       vi.setSystemTime(now);
-      render(<EditorToolbar />);
+      render(<ConfirmProvider><EditorToolbar /></ConfirmProvider>);
       // Make the level dirty so the hook actually fires saveLevel on tick.
       act(() => {
         useEditorStore.getState().placeWall(1, 0);
@@ -378,7 +395,7 @@ describe('EditorToolbar (P2-4b #13)', () => {
         },
         dirty: true,
       });
-      render(<EditorToolbar />);
+      render(<ConfirmProvider><EditorToolbar /></ConfirmProvider>);
       act(() => {
         vi.advanceTimersByTime(30_000);
       });

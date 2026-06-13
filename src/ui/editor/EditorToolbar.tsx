@@ -8,6 +8,7 @@ import {
 import { ImportError } from '../../maze/importExport';
 import type { EditorTool } from '../../maze/types';
 import { useAutoSave } from '../../hooks/useAutoSave';
+import { useConfirm } from '../useConfirm';
 
 // F-2026-06-12-H1: how long a `lastError` from the store stays visible
 // before the toolbar auto-clears it. Long enough to read, short enough
@@ -70,6 +71,8 @@ export interface EditorToolbarProps {
 }
 
 export function EditorToolbar({ onExit, onSaveAndExit }: EditorToolbarProps) {
+  // P2-7: themed confirm dialog replaces native window.confirm().
+  const confirm = useConfirm();
   const tool = useEditorStore((s) => s.tool);
   const setTool = useEditorStore((s) => s.setTool);
   const level = useEditorStore((s) => s.level);
@@ -121,8 +124,18 @@ export function EditorToolbar({ onExit, onSaveAndExit }: EditorToolbarProps) {
     prevDirtyRef.current = dirty;
   }, [dirty]);
 
-  const handleNew = (): void => {
-    if (dirty && !window.confirm('当前关卡有未保存的修改，确定新建？')) return;
+  const handleNew = async (): Promise<void> => {
+    if (dirty) {
+      const choice = await confirm({
+        title: '未保存的修改',
+        message: '当前关卡有未保存的修改，确定新建？',
+        actions: [
+          { label: '取消', value: 'cancel', variant: 'secondary' },
+          { label: '确定', value: 'ok', variant: 'primary' },
+        ],
+      });
+      if (choice !== 'ok') return;
+    }
     newLevel(15, 15);
     setStatus({ kind: 'ok', message: '已新建 15×15 空关卡' });
   };
@@ -163,7 +176,17 @@ export function EditorToolbar({ onExit, onSaveAndExit }: EditorToolbarProps) {
     // F-N4: don't silently overwrite unsaved work. importJson clears
     // past/future + resets dirty, so a single click can obliterate
     // 10 minutes of editing. Match handleNew's confirm pattern.
-    if (dirty && !window.confirm('当前关卡有未保存的修改，确定导入？')) return;
+    if (dirty) {
+      const choice = await confirm({
+        title: '未保存的修改',
+        message: '当前关卡有未保存的修改，确定导入？',
+        actions: [
+          { label: '取消', value: 'cancel', variant: 'secondary' },
+          { label: '确定', value: 'ok', variant: 'primary' },
+        ],
+      });
+      if (choice !== 'ok') return;
+    }
     try {
       const raw = await readJsonFile(file);
       importJson(raw);
@@ -226,7 +249,21 @@ export function EditorToolbar({ onExit, onSaveAndExit }: EditorToolbarProps) {
       <input
         type="text"
         value={level.name}
-        onChange={(e) => updateName(e.target.value)}
+        // F-project-review-2026-06-13-D-1: clamp the level name so a
+        // single paste can't balloon `maze3d.editorDraft.v1` autosaves
+        // (a 10k-char CJK string × every-2s draft = a quick way to hit
+        // the 5MB localStorage quota). Newlines are collapsed to spaces
+        // so the name stays single-line in the toolbar input and the
+        // exported JSON. The cap matches the public/levels/*.json
+        // authoring limit (64 chars, ASCII-or-CJK mixed).
+        onChange={(e) => {
+          const sanitized = e.target.value
+            .replace(/[\r\n]+/g, ' ')
+            .slice(0, 64);
+          updateName(sanitized);
+        }}
+        maxLength={64}
+        title="最长 64 字符，换行会被替换成空格"
         data-testid="tool-name-input"
         aria-label="关卡名"
         style={{

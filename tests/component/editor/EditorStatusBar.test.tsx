@@ -38,6 +38,11 @@ function resetEditor(overrides: Partial<MazeData> = {}): void {
     future: [],
     dirty: false,
     lastSavedAt: null,
+    // F-project-review-2026-06-13-D-5/D-18: reset the draft-storage
+    // banner flags so a prior test that triggered a quota failure
+    // doesn't leak into this one.
+    storageFull: false,
+    lastDraftError: null,
   });
 }
 
@@ -101,5 +106,58 @@ describe('EditorStatusBar (P2-4b #14)', () => {
     // 13:07:42 UTC, but the format is local time. The status bar is local
     // — the assertion just verifies the format HH:MM:SS.
     expect(screen.getByTestId('status-dirty').textContent).toMatch(/^已保存于 \d{2}:\d{2}:\d{2}$/);
+  });
+
+  // F-project-review-2026-06-13-D-5/D-18: the storage banner closes the
+  // last hop of the P0-2 chain — saveDraft sets `storageFull` +
+  // `lastDraftError` on a quota / too-large failure, and the status bar
+  // is the user-facing surface that turns those flags into a red banner
+  // they can actually see (and dismiss).
+  describe('storage banner', () => {
+    it('renders no storage banner when no draft error is pending', () => {
+      render(<EditorStatusBar />);
+      expect(screen.queryByTestId('status-storage')).toBeNull();
+    });
+
+    it('renders the red banner with the message when lastDraftError is set', () => {
+      useEditorStore.setState({
+        storageFull: true,
+        lastDraftError: '本地存储已满，自动保存失败（请删除旧关卡后重试）',
+      });
+      render(<EditorStatusBar />);
+      const banner = screen.getByTestId('status-storage');
+      expect(banner).not.toBeNull();
+      expect(banner.textContent).toContain('本地存储已满');
+      // The banner uses var(--danger) so the user reads "this is bad,
+      // not just a warning".
+      expect(banner.getAttribute('style')).toMatch(/var\(--danger\)/);
+    });
+
+    it('renders the banner for non-quota errors too (e.g. unavailable / serialization)', () => {
+      // A serialization failure isn't "full" but it IS a draft failure
+      // worth surfacing — keep the banner visible so the user knows
+      // autosave is broken.
+      useEditorStore.setState({
+        storageFull: false,
+        lastDraftError: '关卡数据无法序列化，自动保存失败',
+      });
+      render(<EditorStatusBar />);
+      expect(screen.getByTestId('status-storage').textContent).toContain('无法序列化');
+    });
+
+    it('clicking the dismiss button clears both storageFull and lastDraftError', () => {
+      useEditorStore.setState({
+        storageFull: true,
+        lastDraftError: '本地存储已满，自动保存失败（请删除旧关卡后重试）',
+      });
+      render(<EditorStatusBar />);
+      const dismiss = screen.getByTestId('status-storage-dismiss');
+      act(() => {
+        dismiss.click();
+      });
+      expect(useEditorStore.getState().storageFull).toBe(false);
+      expect(useEditorStore.getState().lastDraftError).toBeNull();
+      expect(screen.queryByTestId('status-storage')).toBeNull();
+    });
   });
 });

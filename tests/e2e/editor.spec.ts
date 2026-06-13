@@ -79,6 +79,13 @@ test.describe('editor (P2-4b)', () => {
 
     // 进入 关卡选择 看见 我的关卡 分组.
     await page.getByRole('button', { name: '开始' }).click();
+    // F-project-review-2026-06-13-C-H2: explicitly wait for the
+    // source-select to mount so we know the levelStore hydration from
+    // localStorage has settled. Without this wait, a future refactor
+    // that moves hydration into a deferred effect would flake this
+    // test intermittently (the `custom-levels-group` appears earlier
+    // than the actual data is in the store).
+    await expect(page.getByTestId('level-source-select')).toBeVisible();
     // P2-6: custom-levels-group is still a top-level container, but the
     // level name is now rendered as a <span> (no longer a clickable card
     // button — the click target to start a custom level is the
@@ -104,6 +111,12 @@ test.describe('editor (P2-4b)', () => {
         rules: { initialTime: 60, maxHealth: 3, victory: 'reach-exit', timeOnPickup: 10 },
       };
       localStorage.setItem('maze3d.customLevels.v1', JSON.stringify({ 'custom-abc': level }));
+      // F-project-review-2026-06-13-C-L5: explicitly clear
+      // `maze3d.editorDraft.v1` in the seed step. A prior spec's
+      // autosave (2s debounce) can land AFTER this clear; without the
+      // removeItem the delete spec would see a leftover draft that
+      // the editor would later hydrate and confuse the assertions.
+      localStorage.removeItem('maze3d.editorDraft.v1');
     });
     await page.reload();
     await page.getByRole('button', { name: '开始' }).click();
@@ -111,13 +124,18 @@ test.describe('editor (P2-4b)', () => {
     await expect(page.getByText('ToDelete')).toBeVisible();
 
     // Decline confirm → level stays.
-    page.once('dialog', (d) => d.dismiss());
+    // P2-7: the confirm dialog is a themed DOM component, not a native
+    // browser dialog, so we click `confirm-action-cancel` (the action
+    // with value='cancel') instead of attaching a `page.once('dialog')` handler.
     await page.getByTestId('delete-custom-custom-abc').click();
+    await expect(page.getByTestId('confirm-dialog')).toBeVisible();
+    await page.getByTestId('confirm-action-cancel').click();
     await expect(page.getByText('ToDelete')).toBeVisible();
 
     // Accept confirm → level removed.
-    page.once('dialog', (d) => d.accept());
     await page.getByTestId('delete-custom-custom-abc').click();
+    await expect(page.getByTestId('confirm-dialog')).toBeVisible();
+    await page.getByTestId('confirm-action-ok').click();
     // P2-6: custom-levels-group is always in the DOM (FR-9 top-level
     // container). What disappears is the row + delete button for the
     // specific level. Asserting on the delete-button testid prefix is
@@ -125,13 +143,17 @@ test.describe('editor (P2-4b)', () => {
     await expect(page.locator('[data-testid^="delete-custom-"]')).toHaveCount(0);
   });
 
-  // Skip: pre-existing wall-tool validation ("无法在终点放置墙") — not a
-  // P2-6 regression. The carveLShape helper at editor.spec.ts:16 toggles
-  // the default exit cell into a wall, which now trips the editor's
-  // exit-on-floor guard. To restore this test, rewrite carveLShape to
-  // keep (4, 3) (or whatever the default exit is) as a floor cell, then
-  // un-skip. Filed for follow-up; tracked alongside the editor tests.
-  test.skip('export / import roundtrip preserves the level', async ({ page }) => {
+  // F-project-review-2026-06-13-C-H1: convert stale `test.skip` to
+  // `test.fixme` so the export/import roundtrip is visible in the run
+  // output (Playwright reports `test.fixme` separately) and the reason
+  // is in-tree. The carveLShape helper at editor.spec.ts:16 toggles
+  // the default exit cell into a wall, which trips the editor's
+  // exit-on-floor guard ("无法在终点放置墙").
+  // TODO: rewrite `carveLShape` to keep the default exit cell as a
+  // floor (skip the (4, 3) toggle, or rebuild the level first), then
+  // un-fixme. Tracked alongside the editor autosave + draft-recovery
+  // work in the 2026-06-13 project review.
+  test.fixme('export / import roundtrip preserves the level', async ({ page }) => {
     await freshPage(page);
     await page.getByTestId('main-menu-editor').click();
 

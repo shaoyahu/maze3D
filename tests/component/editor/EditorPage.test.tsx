@@ -1,8 +1,13 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, act, fireEvent } from '@testing-library/react';
-import { EditorPage, DIRTY_EXIT_PROMPT } from '../../../src/ui/editor/EditorPage';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { render, screen, act, fireEvent, waitFor } from '@testing-library/react';
+import {
+  EditorPage,
+  DIRTY_EXIT_TITLE,
+  DIRTY_EXIT_MESSAGE,
+} from '../../../src/ui/editor/EditorPage';
 import { useEditorStore } from '../../../src/store/editorStore';
 import { useLevelStore } from '../../../src/store/levelStore';
+import { ConfirmProvider } from '../../../src/ui/useConfirm';
 
 const DRAFT_KEY = 'maze3d.editorDraft.v1';
 
@@ -11,7 +16,7 @@ function resetEditor(): void {
   useLevelStore.setState({ customLevels: {} });
   useEditorStore.setState({
     level: {
-      id: 'test-level',
+      id: 'custom-test-level',
       name: 'Test',
       size: { width: 5, depth: 4 },
       cellSize: 2,
@@ -28,37 +33,46 @@ function resetEditor(): void {
     past: [],
     future: [],
     dirty: false,
-    lastSavedAt: null,
   });
 }
 
-describe('EditorPage (P2-4b #15)', () => {
+function renderPage(props: { onExit?: () => void } = {}): ReturnType<typeof render> {
+  return render(
+    <ConfirmProvider>
+      <EditorPage onExit={props.onExit ?? (() => {})} />
+    </ConfirmProvider>,
+  );
+}
+
+// P2-7: EditorPage migrated from `window.confirm()` to `useConfirm()`.
+// These tests use the themed dialog DOM via testids (`confirm-dialog`,
+// `confirm-title`, `confirm-action-{value}`) instead of spying on the
+// native window.confirm. Global fake timers are intentionally avoided
+// here because async dialog tests use `findByTestId` which polls real
+// time — the autosave test enables fake timers locally only.
+describe('EditorPage (P2-7 ConfirmProvider)', () => {
   beforeEach(() => {
-    vi.useFakeTimers();
     resetEditor();
   });
 
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  it('renders toolbar, viewport, properties panel, and status bar', () => {
-    render(<EditorPage onExit={() => {}} />);
+  it('renders editor-page container with toolbar, viewport, properties panel, and status bar', () => {
+    renderPage();
+    expect(screen.getByTestId('editor-page')).toBeInTheDocument();
     expect(screen.getByTestId('editor-toolbar')).toBeInTheDocument();
     expect(screen.getByTestId('editor-viewport')).toBeInTheDocument();
     expect(screen.getByTestId('editor-properties-panel')).toBeInTheDocument();
     expect(screen.getByTestId('editor-status-bar')).toBeInTheDocument();
   });
 
-  it('does not show a confirm on mount when no draft exists', () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
-    render(<EditorPage onExit={() => {}} />);
-    expect(confirmSpy).not.toHaveBeenCalled();
+  it('does not show a confirm dialog on mount when no draft exists', async () => {
+    renderPage();
+    // Allow the mount-time draft-check useEffect to run; with no draft
+    // the effect short-circuits before flipping `showDraftPrompt`.
+    await Promise.resolve();
+    expect(screen.queryByTestId('confirm-dialog')).toBeNull();
   });
 
-  it('shows draft-recovery confirm on mount when a draft exists', () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
-    // Pre-seed a valid draft that the loader can sanitize.
+  it('shows the draft-recovery dialog on mount when a draft exists', async () => {
     const draft = {
       level: {
         id: 'draft-level',
@@ -74,23 +88,76 @@ describe('EditorPage (P2-4b #15)', () => {
       },
     };
     localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
-    render(<EditorPage onExit={() => {}} />);
-    expect(confirmSpy).toHaveBeenCalledWith(expect.stringMatching(/未保存的草稿/));
-    // Accepted → editor level becomes the draft's level.
-    expect(useEditorStore.getState().level.id).toBe('draft-level');
+    renderPage();
+    const dialog = await screen.findByTestId('confirm-dialog');
+    expect(dialog).toBeInTheDocument();
+    expect(screen.getByTestId('confirm-title').textContent).toMatch(/恢复草稿/);
   });
 
-  it('drops the draft when the user declines recovery', () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(false);
-    localStorage.setItem(DRAFT_KEY, JSON.stringify({ level: {} }));
-    render(<EditorPage onExit={() => {}} />);
-    expect(localStorage.getItem(DRAFT_KEY)).toBeNull();
+  it('loads the draft when the user clicks 恢复 (confirm-action-ok)', async () => {
+    const draft = {
+      level: {
+        id: 'draft-level',
+        name: 'Draft',
+        size: { width: 3, depth: 3 },
+        cellSize: 2,
+        start: { x: 0, z: 0 },
+        exit: { x: 2, z: 2 },
+        walls: [[0,0,0],[0,0,0],[0,0,0]],
+        pickups: [],
+        enemies: [],
+        rules: { initialTime: 60, maxHealth: 3, victory: 'reach-exit', timeOnPickup: 10 },
+      },
+    };
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    renderPage();
+    await screen.findByTestId('confirm-dialog');
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('confirm-action-ok'));
+    });
+    await waitFor(() => {
+      expect(useEditorStore.getState().level.id).toBe('draft-level');
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId('confirm-dialog')).toBeNull();
+    });
+  });
+
+  it('drops the draft when the user clicks 放弃 (confirm-action-cancel)', async () => {
+    localStorage.setItem(
+      DRAFT_KEY,
+      JSON.stringify({
+        level: {
+          id: 'draft-level',
+          name: 'Draft',
+          size: { width: 3, depth: 3 },
+          cellSize: 2,
+          start: { x: 0, z: 0 },
+          exit: { x: 2, z: 2 },
+          walls: [[0,0,0],[0,0,0],[0,0,0]],
+          pickups: [],
+          enemies: [],
+          rules: { initialTime: 60, maxHealth: 3, victory: 'reach-exit', timeOnPickup: 10 },
+        },
+      }),
+    );
+    renderPage();
+    await screen.findByTestId('confirm-dialog');
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('confirm-action-cancel'));
+    });
+    await waitFor(() => {
+      expect(localStorage.getItem(DRAFT_KEY)).toBeNull();
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId('confirm-dialog')).toBeNull();
+    });
   });
 
   it('Cmd/Ctrl+Z triggers undo when focus is not in an input', () => {
     const pastLevel = { ...useEditorStore.getState().level };
     useEditorStore.setState({ past: [{ level: pastLevel, selection: null }] });
-    render(<EditorPage onExit={() => {}} />);
+    renderPage();
     fireEvent.keyDown(document, { key: 'z', metaKey: true });
     expect(useEditorStore.getState().past.length).toBe(0);
   });
@@ -98,7 +165,7 @@ describe('EditorPage (P2-4b #15)', () => {
   it('Cmd/Ctrl+Shift+Z triggers redo', () => {
     const futureLevel = { ...useEditorStore.getState().level };
     useEditorStore.setState({ future: [{ level: futureLevel, selection: null }] });
-    render(<EditorPage onExit={() => {}} />);
+    renderPage();
     fireEvent.keyDown(document, { key: 'Z', metaKey: true, shiftKey: true });
     expect(useEditorStore.getState().future.length).toBe(0);
   });
@@ -106,7 +173,7 @@ describe('EditorPage (P2-4b #15)', () => {
   it('Ctrl+Y triggers redo', () => {
     const futureLevel = { ...useEditorStore.getState().level };
     useEditorStore.setState({ future: [{ level: futureLevel, selection: null }] });
-    render(<EditorPage onExit={() => {}} />);
+    renderPage();
     fireEvent.keyDown(document, { key: 'y', ctrlKey: true });
     expect(useEditorStore.getState().future.length).toBe(0);
   });
@@ -114,74 +181,72 @@ describe('EditorPage (P2-4b #15)', () => {
   it('Cmd+Z does NOT trigger undo when focus is inside an input', () => {
     const pastLevel = { ...useEditorStore.getState().level };
     useEditorStore.setState({ past: [{ level: pastLevel, selection: null }] });
-    render(<EditorPage onExit={() => {}} />);
+    renderPage();
     const input = screen.getByTestId('tool-name-input');
     fireEvent.keyDown(input, { key: 'z', metaKey: true });
     expect(useEditorStore.getState().past.length).toBe(1);
   });
 
-  it('autosave writes to localStorage 2s after a level change', () => {
-    render(<EditorPage onExit={() => {}} />);
-    act(() => {
-      useEditorStore.setState({ dirty: true });
-      // Touch a field that produces a new level reference.
-      useEditorStore.getState().placeWall(1, 1);
-    });
-    // Before 2s: nothing saved.
-    expect(localStorage.getItem(DRAFT_KEY)).toBeNull();
-    act(() => vi.advanceTimersByTime(2000));
-    const raw = localStorage.getItem(DRAFT_KEY);
-    expect(raw).not.toBeNull();
-    expect(JSON.parse(raw!).level.id).toBe(useEditorStore.getState().level.id);
+  it('autosave writes the draft to localStorage 2s after a level change', () => {
+    // Local fake timers — the file otherwise uses real timers so that
+    // async dialog tests can rely on `findByTestId` polling.
+    vi.useFakeTimers();
+    try {
+      renderPage();
+      act(() => {
+        useEditorStore.getState().placeWall(1, 1);
+      });
+      // Before the 2s debounce elapses, nothing is persisted.
+      expect(localStorage.getItem(DRAFT_KEY)).toBeNull();
+      act(() => {
+        vi.advanceTimersByTime(2000);
+      });
+      const raw = localStorage.getItem(DRAFT_KEY);
+      expect(raw).not.toBeNull();
+      expect(JSON.parse(raw!).level.id).toBe(useEditorStore.getState().level.id);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
-  it('exit with dirty=false calls onExit and clears the draft', () => {
+  it('save-and-exit with dirty=false calls onExit and clears the draft', () => {
     localStorage.setItem(DRAFT_KEY, JSON.stringify({ level: {} }));
     const onExit = vi.fn();
-    render(<EditorPage onExit={onExit} />);
+    renderPage({ onExit });
     fireEvent.click(screen.getByTestId('tool-save-exit'));
     expect(onExit).toHaveBeenCalled();
     expect(localStorage.getItem(DRAFT_KEY)).toBeNull();
   });
 
-  it('exit with dirty=true and confirm=true saves then calls onExit', () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
+  // The "保存并退出" button always saves first inside EditorToolbar, so by
+  // the time handleExit's dirty check runs the level has been persisted
+  // and dirty has already flipped to false. The 3-option dirty-exit
+  // dialog therefore stays unreachable through this UI path; assert
+  // that no confirm-dialog ever appears here.
+  it('save-and-exit with dirty=true saves then calls onExit without showing the 3-option dialog', () => {
     useEditorStore.setState({ dirty: true });
     const onExit = vi.fn();
-    render(<EditorPage onExit={onExit} />);
+    renderPage({ onExit });
     fireEvent.click(screen.getByTestId('tool-save-exit'));
     expect(onExit).toHaveBeenCalled();
     expect(useEditorStore.getState().dirty).toBe(false);
+    expect(screen.queryByTestId('confirm-dialog')).toBeNull();
   });
 
-  it('exit with dirty=true and confirm=false drops the draft and calls onExit', () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(false);
-    useEditorStore.setState({ dirty: true });
-    localStorage.setItem(DRAFT_KEY, JSON.stringify({ level: {} }));
-    const onExit = vi.fn();
-    render(<EditorPage onExit={onExit} />);
-    fireEvent.click(screen.getByTestId('tool-save-exit'));
-    expect(onExit).toHaveBeenCalled();
-    expect(localStorage.getItem(DRAFT_KEY)).toBeNull();
+  // P2-7 regression PINs for the 3-option dirty-exit dialog wording.
+  // The dialog itself is currently unreachable through the toolbar UI
+  // (the "保存并退出" button clears dirty before handleExit's dirty
+  // check runs), but the constants are still wired into handleExit so
+  // a future "plain exit" entry point will reuse the same wording.
+  // Pinning the strings is the most stable guard against drift between
+  // intent ("safe stay" default) and code.
+  it('DIRTY_EXIT_TITLE matches the "未保存的修改" intent', () => {
+    expect(DIRTY_EXIT_TITLE).toMatch(/未保存的修改/);
   });
 
-  // F3 (P0) regression pin: the dirty-exit prompt wording is the load-
-  // bearing piece of the bug fix. If the wording ever drifts back to
-  // "取消 = 不退出" the static text would contradict the code (and the
-  // original P0 footgun returns). The toolbar's "保存并退出" button
-  // always clears dirty via saveLevel() before handleExit runs, so the
-  // dialog itself is only reachable from a future plain-exit path —
-  // pinning the constant is the most stable regression guard we have
-  // without rearchitecting the test entry point.
-  it('DIRTY_EXIT_PROMPT pairs the safe default (cancel = stay) with the discard action', () => {
-    // "取消" must mean "continue editing" (safe), not "discard" or
-    // "exit" (data loss). The pre-fix prompt said "取消 = 不退出",
-    // which the actual code then implemented as "不保存并退出" — the
-    // exact silent-data-loss path this constant replaces.
-    expect(DIRTY_EXIT_PROMPT).toMatch(/取消\s*=\s*继续编辑/);
-    // "确定" is the explicit, opt-in data-loss path.
-    expect(DIRTY_EXIT_PROMPT).toMatch(/确定\s*=\s*放弃修改并退出/);
-    // Belt-and-suspenders: the pre-fix footgun phrase must never come back.
-    expect(DIRTY_EXIT_PROMPT).not.toMatch(/取消\s*=\s*不退出/);
+  it('DIRTY_EXIT_MESSAGE describes the three-option choice with a safe-stay hint', () => {
+    expect(DIRTY_EXIT_MESSAGE).toMatch(/未保存的修改/);
+    expect(DIRTY_EXIT_MESSAGE).toMatch(/继续编辑/);
+    expect(DIRTY_EXIT_MESSAGE).toMatch(/留在此页/);
   });
 });

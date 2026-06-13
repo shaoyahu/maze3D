@@ -19,6 +19,7 @@ import { encodeSeed } from '../utils/seed';
 import { isStorageAvailable } from '../store/persist';
 import { useLevelStore } from '../store/levelStore';
 import { algorithmForMode } from '../maze/AlgorithmMazeProvider';
+import { useConfirm } from './useConfirm';
 
 export interface LevelDef { id: string; name: string; }
 
@@ -305,6 +306,8 @@ export function LevelSelect({
 
   const customLevels = useLevelStore((s) => s.customLevels);
   const deleteCustom = useLevelStore((s) => s.deleteCustom);
+  // P2-7: themed confirm dialog replaces native window.confirm().
+  const confirm = useConfirm();
   const customDefs = Object.values(customLevels)
     .map((lv) => ({ id: lv.id, name: lv.name, size: `${lv.size.width}×${lv.size.depth}` }))
     .sort((a, b) => a.name.localeCompare(b.name, 'zh'));
@@ -565,8 +568,17 @@ export function LevelSelect({
                   <span style={{ fontSize: 12, opacity: 0.7 }}>{lv.size}</span>
                   <button
                     type="button"
-                    onClick={() => {
-                      if (window.confirm(`删除关卡「${lv.name}」？`)) deleteCustom(lv.id);
+                    onClick={async () => {
+                      const choice = await confirm({
+                        title: '删除关卡',
+                        message: `确定删除「${lv.name}」？此操作不可撤销。`,
+                        actions: [
+                          { label: '取消', value: 'cancel', variant: 'secondary' },
+                          { label: '删除', value: 'ok', variant: 'danger' },
+                        ],
+                        danger: true,
+                      });
+                      if (choice === 'ok') deleteCustom(lv.id);
                     }}
                     aria-label={`删除 ${lv.name}`}
                     data-testid={`delete-custom-${lv.id}`}

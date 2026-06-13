@@ -4,6 +4,7 @@ import { MainMenu } from '../../src/ui/MainMenu';
 import { LevelSelect, type LevelDef } from '../../src/ui/LevelSelect';
 import { Settings } from '../../src/ui/Settings';
 import { useSettingsStore } from '../../src/store/settingsStore';
+import { ConfirmProvider } from '../../src/ui/useConfirm';
 
 describe('menu components', () => {
   beforeEach(() => {
@@ -40,7 +41,7 @@ describe('menu components', () => {
     const onPick = vi.fn();
     const onBack = vi.fn();
     const levels: LevelDef[] = [{ id: 'a', name: 'Alpha' }, { id: 'b', name: 'Beta' }];
-    render(<LevelSelect available={levels} onPick={onPick} onBack={onBack} />);
+    render(<ConfirmProvider><LevelSelect available={levels} onPick={onPick} onBack={onBack} /></ConfirmProvider>);
     // P2-6: default source='teaching' renders sublevel-select + single start-button.
     fireEvent.change(screen.getByTestId('sublevel-select'), { target: { value: 'a' } });
     fireEvent.click(screen.getByTestId('start-button'));
@@ -56,7 +57,7 @@ describe('menu components', () => {
   // but disabled). Old text removed; this test would be a no-op so it's skipped
   // rather than deleted, awaiting P2-7 to add a richer empty-state message.
   it.skip('LevelSelect shows a hint about the random cards when no hand-crafted levels are loaded (P2-6: hint text removed; see FR-2)', () => {
-    render(<LevelSelect available={[]} onPick={() => {}} onBack={() => {}} />);
+    render(<ConfirmProvider><LevelSelect available={[]} onPick={() => {}} onBack={() => {}} /></ConfirmProvider>);
     expect(screen.getByText(/暂无固定关卡/)).toBeInTheDocument();
   });
 
@@ -67,7 +68,7 @@ describe('menu components', () => {
   // tests below switch the source first, then exercise the same behaviors.
   describe('P2-3 procedural entries (P2-6 cascading)', () => {
     it('switching to random source shows the size dropdown', () => {
-      render(<LevelSelect available={[]} onPick={() => {}} onBack={() => {}} />);
+      render(<ConfirmProvider><LevelSelect available={[]} onPick={() => {}} onBack={() => {}} /></ConfirmProvider>);
       fireEvent.change(screen.getByTestId('level-source-select'), { target: { value: 'random' } });
       // P2-6: a single size <select> drives the random seed; the 4 separate
       // random-card buttons are gone (replaced by a single start-button).
@@ -76,7 +77,7 @@ describe('menu components', () => {
 
     it('clicking start-button with default size calls onPick with a procedural seed id + default mode', () => {
       const onPick = vi.fn();
-      render(<LevelSelect available={[]} onPick={onPick} onBack={() => {}} />);
+      render(<ConfirmProvider><LevelSelect available={[]} onPick={onPick} onBack={() => {}} /></ConfirmProvider>);
       fireEvent.change(screen.getByTestId('level-source-select'), { target: { value: 'random' } });
       // Switch size to 15 then click the unified start-button.
       fireEvent.change(screen.getByTestId('size-select'), { target: { value: '15' } });
@@ -92,7 +93,7 @@ describe('menu components', () => {
 
     it('changing the size dropdown passes that size in the start options', () => {
       const onPick = vi.fn();
-      render(<LevelSelect available={[]} onPick={onPick} onBack={() => {}} />);
+      render(<ConfirmProvider><LevelSelect available={[]} onPick={onPick} onBack={() => {}} /></ConfirmProvider>);
       fireEvent.change(screen.getByTestId('level-source-select'), { target: { value: 'random' } });
       // Default size is 30, but switch to 50 to verify the dropdown drives the seed.
       fireEvent.change(screen.getByTestId('size-select'), { target: { value: '50' } });
@@ -103,7 +104,7 @@ describe('menu components', () => {
     });
 
     it('switching to seed source shows the seed input directly (no 进阶 fold in P2-6)', () => {
-      render(<LevelSelect available={[]} onPick={() => {}} onBack={() => {}} />);
+      render(<ConfirmProvider><LevelSelect available={[]} onPick={() => {}} onBack={() => {}} /></ConfirmProvider>);
       fireEvent.change(screen.getByTestId('level-source-select'), { target: { value: 'seed' } });
       // P2-6: the seed section is open by default — no advanced-toggle, no fold.
       expect(screen.queryByTestId('advanced-toggle')).toBeNull();
@@ -114,7 +115,7 @@ describe('menu components', () => {
 
     it('clicking start with a valid hex seed calls onPick with that seed', () => {
       const onPick = vi.fn();
-      render(<LevelSelect available={[]} onPick={onPick} onBack={() => {}} />);
+      render(<ConfirmProvider><LevelSelect available={[]} onPick={onPick} onBack={() => {}} /></ConfirmProvider>);
       fireEvent.change(screen.getByTestId('level-source-select'), { target: { value: 'seed' } });
       const seedInput = screen.getByTestId('seed-input') as HTMLInputElement;
       fireEvent.change(seedInput, { target: { value: '0123456789abcdef' } });
@@ -127,7 +128,7 @@ describe('menu components', () => {
 
     it('clicking start with an invalid (non-hex) seed does NOT call onPick (start-button disabled)', () => {
       const onPick = vi.fn();
-      render(<LevelSelect available={[]} onPick={onPick} onBack={() => {}} />);
+      render(<ConfirmProvider><LevelSelect available={[]} onPick={onPick} onBack={() => {}} /></ConfirmProvider>);
       fireEvent.change(screen.getByTestId('level-source-select'), { target: { value: 'seed' } });
       const seedInput = screen.getByTestId('seed-input') as HTMLInputElement;
       fireEvent.change(seedInput, { target: { value: 'not-hex' } });
@@ -144,7 +145,7 @@ describe('menu components', () => {
   // mode then reveals the 4-control block (mode/survive-seconds/enemy/progressive).
   describe('P2-4a procedural controls (P2-6 cascading)', () => {
     it('switching to random + survive mode renders the 4 procedural controls', () => {
-      render(<LevelSelect available={[]} onPick={() => {}} onBack={() => {}} />);
+      render(<ConfirmProvider><LevelSelect available={[]} onPick={() => {}} onBack={() => {}} /></ConfirmProvider>);
       fireEvent.change(screen.getByTestId('level-source-select'), { target: { value: 'random' } });
       expect(screen.getByTestId('procedural-controls')).toBeInTheDocument();
       // P2-5 FR-8: mode is a <select> with stable testids on each <option>.
@@ -167,7 +168,7 @@ describe('menu components', () => {
     });
 
     it('switching to survive mode reveals the survive-seconds input + 4 chip buttons', () => {
-      render(<LevelSelect available={[]} onPick={() => {}} onBack={() => {}} />);
+      render(<ConfirmProvider><LevelSelect available={[]} onPick={() => {}} onBack={() => {}} /></ConfirmProvider>);
       fireEvent.change(screen.getByTestId('level-source-select'), { target: { value: 'random' } });
       // P2-6: no survive-seconds-select anymore — replaced by a free input + 4 chip
       // buttons. Verify the select-based testid is gone and the new ones exist.
@@ -184,7 +185,7 @@ describe('menu components', () => {
 
     it('forwards mode + enemyCount + spawnSchedule on the start callback', () => {
       const onPick = vi.fn();
-      render(<LevelSelect available={[]} onPick={onPick} onBack={() => {}} />);
+      render(<ConfirmProvider><LevelSelect available={[]} onPick={onPick} onBack={() => {}} /></ConfirmProvider>);
       fireEvent.change(screen.getByTestId('level-source-select'), { target: { value: 'random' } });
       // Switch to survive and configure enemy + spawn options.
       fireEvent.change(screen.getByTestId('mode-select'), { target: { value: 'survive' } });
@@ -201,7 +202,7 @@ describe('menu components', () => {
 
     it('persists the last valid seed to localStorage on a successful start', () => {
       const onPick = vi.fn();
-      render(<LevelSelect available={[]} onPick={onPick} onBack={() => {}} />);
+      render(<ConfirmProvider><LevelSelect available={[]} onPick={onPick} onBack={() => {}} /></ConfirmProvider>);
       fireEvent.change(screen.getByTestId('level-source-select'), { target: { value: 'seed' } });
       const seedInput = screen.getByTestId('seed-input') as HTMLInputElement;
       fireEvent.change(seedInput, { target: { value: '0123456789abcdef' } });
@@ -212,7 +213,7 @@ describe('menu components', () => {
     it('does NOT persist a seed that fails the hex check (FR-20)', () => {
       localStorage.setItem('maze3d.lastSeed', 'previoustoolongvalue');
       const onPick = vi.fn();
-      render(<LevelSelect available={[]} onPick={onPick} onBack={() => {}} />);
+      render(<ConfirmProvider><LevelSelect available={[]} onPick={onPick} onBack={() => {}} /></ConfirmProvider>);
       fireEvent.change(screen.getByTestId('level-source-select'), { target: { value: 'seed' } });
       const seedInput = screen.getByTestId('seed-input') as HTMLInputElement;
       fireEvent.change(seedInput, { target: { value: 'not-hex' } });
@@ -225,7 +226,7 @@ describe('menu components', () => {
 
     it('pre-fills the seed input from localStorage (FR-20 round-trip)', () => {
       localStorage.setItem('maze3d.lastSeed', 'feedfacefeedface');
-      render(<LevelSelect available={[]} onPick={() => {}} onBack={() => {}} />);
+      render(<ConfirmProvider><LevelSelect available={[]} onPick={() => {}} onBack={() => {}} /></ConfirmProvider>);
       // P2-6: seed input is rendered immediately when source='seed' — no fold
       // to open. The pre-fill useEffect runs on mount and reads localStorage.
       fireEvent.change(screen.getByTestId('level-source-select'), { target: { value: 'seed' } });
@@ -235,7 +236,7 @@ describe('menu components', () => {
 
     it('ignores a non-hex value in localStorage and leaves the input empty', () => {
       localStorage.setItem('maze3d.lastSeed', 'totally-not-hex');
-      render(<LevelSelect available={[]} onPick={() => {}} onBack={() => {}} />);
+      render(<ConfirmProvider><LevelSelect available={[]} onPick={() => {}} onBack={() => {}} /></ConfirmProvider>);
       fireEvent.change(screen.getByTestId('level-source-select'), { target: { value: 'seed' } });
       const seedInput = screen.getByTestId('seed-input') as HTMLInputElement;
       expect(seedInput.value).toBe('');

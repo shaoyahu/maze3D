@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent, within, act } from '@testing-library/react';
 import { LevelSelect } from '../../src/ui/LevelSelect';
 import { useLevelStore } from '../../src/store/levelStore';
 import { useSettingsStore } from '../../src/store/settingsStore';
+import { ConfirmProvider } from '../../src/ui/useConfirm';
 import type { MazeData } from '../../src/maze/types';
 
 function makeCustom(id: string, name: string, w: number, d: number): MazeData {
@@ -22,10 +23,15 @@ function makeCustom(id: string, name: string, w: number, d: number): MazeData {
 
 // P2-6 适配: 渲染 LevelSelect 并切到「我的」源, 返回 sublevel-select 元素。
 // 把"切源 + 拿到 dropdown"这一步抽出来, 6 case 共享。
+// P2-7: 必须包 <ConfirmProvider>, 因为 LevelSelect 在 render 期就调 useConfirm()
 function renderWithCustomSource(
   props: { available: Array<{ id: string; name: string }>; onPick: (id: string, options?: unknown) => void; onBack: () => void },
 ) {
-  render(<LevelSelect {...props} />);
+  render(
+    <ConfirmProvider>
+      <LevelSelect {...props} />
+    </ConfirmProvider>,
+  );
   fireEvent.change(screen.getByTestId('level-source-select'), { target: { value: 'custom' } });
   return screen.getByTestId('sublevel-select') as HTMLSelectElement;
 }
@@ -95,25 +101,45 @@ describe('LevelSelect custom levels group (P2-4b #17 / P2-6 cascading)', () => {
   });
 
   // Case 4 (老: 删除按钮) → FR-16 兼容: delete-custom-{id} 按钮保留,
-  // window.confirm 弹出, 同意则调用 useLevelStore.deleteCustom。
-  it('clicking the delete button (after confirm) calls deleteCustom', () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
+  // P2-7 自定义 confirm 弹窗, 同意则调用 useLevelStore.deleteCustom。
+  it('clicking the delete button (after confirm) calls deleteCustom', async () => {
     useLevelStore.setState({
       customLevels: { 'custom-1': makeCustom('custom-1', 'My First', 10, 10) },
     });
-    render(<LevelSelect available={[]} onPick={() => {}} onBack={() => {}} />);
-    fireEvent.click(screen.getByTestId('delete-custom-custom-1'));
+    render(
+      <ConfirmProvider>
+        <LevelSelect available={[]} onPick={() => {}} onBack={() => {}} />
+      </ConfirmProvider>,
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('delete-custom-custom-1'));
+    });
+    expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('confirm-action-ok'));
+    });
+    expect(screen.queryByTestId('confirm-dialog')).toBeNull();
     expect(useLevelStore.getState().customLevels['custom-1']).toBeUndefined();
   });
 
-  // Case 5 (老: 删除按钮取消) → 同上, confirm 返回 false 时不删。
-  it('clicking the delete button without confirm does NOT delete', () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(false);
+  // Case 5 (老: 删除按钮取消) → 同上, 取消时不删。
+  it('clicking the delete button without confirm does NOT delete', async () => {
     useLevelStore.setState({
       customLevels: { 'custom-1': makeCustom('custom-1', 'My First', 10, 10) },
     });
-    render(<LevelSelect available={[]} onPick={() => {}} onBack={() => {}} />);
-    fireEvent.click(screen.getByTestId('delete-custom-custom-1'));
+    render(
+      <ConfirmProvider>
+        <LevelSelect available={[]} onPick={() => {}} onBack={() => {}} />
+      </ConfirmProvider>,
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('delete-custom-custom-1'));
+    });
+    expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('confirm-action-cancel'));
+    });
+    expect(screen.queryByTestId('confirm-dialog')).toBeNull();
     expect(useLevelStore.getState().customLevels['custom-1']).toBeDefined();
   });
 

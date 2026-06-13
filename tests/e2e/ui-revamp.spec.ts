@@ -47,20 +47,10 @@ test.describe('P2-5 UI revamp', () => {
     await expect(page.getByText(/当前模式无敌人/)).toBeVisible();
   });
 
-  // P2-6 REMOVED the 进阶 fold that P2-5 used to gate the seed input.
-  // The new gating mechanism is the 4-way source dropdown: switching
-  // to the 种子 source reveals the seed input, and switching to any
-  // other source hides it. That replacement is covered in the new
-  // tests/e2e/level-select-cascading.spec.ts spec; this test is kept
-  // here (skipped + JIRA-style reason per T7 spec) so the removal is
-  // visible in the test history.
-  test.skip('进阶 ▾ reveals the seed input; second click hides it (P2-6 removed 进阶 fold; see level-select-cascading.spec.ts)', async ({ page }) => {
-    await page.goto('/');
-    await page.getByTestId('main-menu-start').click();
-    await expect(page.getByLabel(/seed/i)).toHaveCount(0);
-    await page.getByTestId('advanced-toggle').click();
-    await expect(page.getByLabel(/seed/i)).toBeVisible();
-    await page.getByTestId('advanced-toggle').click();
-    await expect(page.getByLabel(/seed/i)).toHaveCount(0);
-  });
+  // F-project-review-2026-06-13-C-H3: the P2-6 进阶 ▾ fold test was
+  // skipped because P2-6 replaced the fold with a 4-way source dropdown.
+  // The replacement behavior (seed input reveals on 种子 source) is
+  // covered by tests/e2e/level-select-cascading.spec.ts. Per the
+  // review's mitigation, this stale skip is deleted (the new spec
+  // already exercises the same user-facing behavior).
 });

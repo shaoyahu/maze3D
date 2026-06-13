@@ -11,7 +11,7 @@
 | 字段 | 值 |
 |---|---|
 | 活跃增量 | (无 - 等待用户决策下一个增量) (2026-06-12) |
-| 已完成 | P2-2 14/14 ✅ + P2-3 14/14 ✅ + P2-4a 16/16 ✅ + P2-4b 20/20 ✅ + P2-5 16/16 ✅ + P2-6 10/10 ✅ |
+| 已完成 | P2-2 14/14 ✅ + P2-3 14/14 ✅ + P2-4a 16/16 ✅ + P2-4b 20/20 ✅ + P2-5 16/16 ✅ + P2-6 10/10 ✅ + P2-7 8/8 ✅ |
 | 下一个任务 | (待用户决策 — 候选池 3 项:音频 / 移动端 / 额外 pickup 子类型) |
 | 最后更新 | 2026-06-12 |
 | 最近 commit | 见 `git log --oneline -1`（避免追尾，由 Claude 主动查） |
@@ -45,6 +45,7 @@
 | P2-4b | 关卡编辑器 | P2 | — | Large | `docs/increments/level-editor/` | ✅ done (2026-06-10) |
 | P2-5 | UI 改版 + 存活模式重平衡 (MainMenu 3D + LevelSelect 重设计 + 敌人按模式硬门 + algorithmForMode) | P1 | — | Large | `docs/increments/p2-5-ui-and-rebalance/` | ✅ done (2026-06-11) |
 | P2-6 | LevelSelect 级联重构 (主 dropdown 4 关卡源 + 单一「进入游戏」+ 存活模式 4 设置成组 + 关键老 testid 全保留) | P1 | — | Medium | `docs/increments/level-select-cascading-redesign/` | ✅ done (10/10) (2026-06-12) |
+| P2-7 | 自定义 Dialog 系统 (替换 5 处 `window.confirm` + E2E `page.once('dialog')`；`<ConfirmProvider>` 主题化；3 选项脏数据退出 + 草稿恢复) | P1 | — | Small | `docs/increments/p2-7-custom-dialog/` | ✅ done (8/8) (2026-06-12) |
 
 > **P2-1 已删除**：原计划"多关卡 JSON（中/大尺寸）"被 P2-3 算法生成取代。MVP 保留 `level-small.json` 作为"教学关"，`level-tiny.json` 留 E2E。
 > **P2-4 拆分**：原"敌人 + 编辑器"X-Large 拆成 P2-4a（敌人+survive mode，依赖 P2-3）和 P2-4b（编辑器，独立）。

@@ -14,6 +14,7 @@ import { JsonMazeProvider } from './maze/JsonMazeProvider';
 import { EditorMazeProvider } from './maze/EditorMazeProvider';
 import { AlgorithmMazeProvider } from './maze/AlgorithmMazeProvider';
 import { EditorPage } from './ui/editor/EditorPage';
+import { ConfirmProvider } from './ui/useConfirm';
 import type { MazeData, StartLevelOptions } from './maze/types';
 
 type UiScreen = 'menu' | 'levels' | 'settings' | 'game' | 'editor';
@@ -176,6 +177,7 @@ export function App() {
   };
 
   return (
+    <ConfirmProvider>
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       {uiScreen === 'game' && activeMaze && (
         <GameCanvas key={activeMaze.id} maze={activeMaze} options={activeOptions} />
@@ -223,5 +225,6 @@ export function App() {
       {uiScreen === 'settings' && <Settings onBack={() => setUiScreen('menu')} />}
       {uiScreen === 'editor' && <EditorPage onExit={() => setUiScreen('menu')} />}
     </div>
+    </ConfirmProvider>
   );
 }

@@ -35,6 +35,7 @@ import { exportLevel, parseImport } from '../maze/importExport';
 import { validateMaze } from '../maze/JsonMazeProvider';
 import { generateId } from '../utils/id';
 import { useLevelStore } from './levelStore';
+import { safeSetItem, MAX_DRAFT_BYTES } from './persist';
 
 // Re-export the EditorSelection union from editorHistory so the rest of
 // the editor codebase can import it from a single place. Keeping the
@@ -102,6 +103,15 @@ export interface EditorStoreState {
    *  force dirty=true forever after the first edit, even if the user
    *  undid back to a saved snapshot). */
   lastSavedHash: string | null;
+  /** F-project-review-2026-06-13-D-5/D-18: true when the most recent
+   *  draft write was rejected because localStorage is full. The status
+   *  bar reads this to show a red "存储已满" banner. Cleared via
+   *  {@link clearStorageFull} once the user takes a corrective action
+   *  (saves to the level store, deletes a custom level, etc.). */
+  storageFull: boolean;
+  /** User-facing message for the most recent draft failure. `null` when
+   *  no error is pending. Reset on the next successful `saveDraft`. */
+  lastDraftError: string | null;
 
   // session lifecycle
   newLevel: (width: number, depth: number) => void;
@@ -125,6 +135,12 @@ export interface EditorStoreState {
   /** Clears the user-facing error banner. Call this from a useEffect
    *  timer (or after the user dismisses the message). F-2026-06-12-H1. */
   clearLastError: () => void;
+  /** F-project-review-2026-06-13-D-5/D-18: clears the
+   *  `storageFull` / `lastDraftError` pair once the user takes a
+   *  corrective action (saves to the level store, deletes a custom
+   *  level, etc.). The status bar reads these to render a red banner;
+   *  the banner's dismissal handler invokes this. */
+  clearStorageFull: () => void;
 
   // placement actions (push history)
   placeWall: (x: number, z: number) => void;
@@ -316,6 +332,10 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
     lastSavedAt: null,
     lastError: null,
     lastSavedHash: initialLastSavedHash,
+    // F-project-review-2026-06-13-D-5/D-18: a fresh editor session has
+    // never written to localStorage, so neither flag is pending.
+    storageFull: false,
+    lastDraftError: null,
 
     // ---- session lifecycle ----
     newLevel: (width, depth) => {
@@ -323,6 +343,9 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
       // F-2026-06-12-B2: a freshly built level is the new save baseline —
       // dirty must start false so the toolbar doesn't show "● 未保存" on
       // a brand-new, unedited canvas.
+      // F-project-review-2026-06-13-D-5/D-18: switching to a fresh level
+      // is a corrective action — clear the storageFull / lastDraftError
+      // pair so the red banner disappears in the same render.
       set({
         level,
         past: [],
@@ -332,11 +355,16 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
         lastSavedAt: null,
         lastError: null,
         lastSavedHash: levelHash(level),
+        storageFull: false,
+        lastDraftError: null,
       });
     },
 
     loadLevel: (maze) => {
       // F-2026-06-12-B2: the loaded level IS the new save baseline.
+      // F-project-review-2026-06-13-D-5/D-18: switching to a loaded
+      // level is a corrective action — clear storageFull /
+      // lastDraftError so the red banner disappears.
       set({
         level: maze,
         past: [],
@@ -346,6 +374,8 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
         lastSavedAt: null,
         lastError: null,
         lastSavedHash: levelHash(maze),
+        storageFull: false,
+        lastDraftError: null,
       });
     },
 
@@ -371,7 +401,17 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
         // the pre-save one. dirty=false is now derived from the hash, but
         // we set it explicitly so the toolbar's "● 未保存" disappears the
         // moment the user clicks Save (before the next render).
-        set({ dirty: false, lastSavedAt: Date.now(), lastSavedHash: levelHash(level) });
+        // F-project-review-2026-06-13-D-5/D-18: a successful saveCustom
+        // means the level store accepted the level (which means there's
+        // room on disk), so clear the storageFull / lastDraftError pair
+        // and let the red banner disappear.
+        set({
+          dirty: false,
+          lastSavedAt: Date.now(),
+          lastSavedHash: levelHash(level),
+          storageFull: false,
+          lastDraftError: null,
+        });
         return { ok: true } as const;
       } catch (e) {
         // Defensive: validateMaze is the documented thrower, but we don't
@@ -394,6 +434,13 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
     clearSelection: () => set({ selection: null }),
 
     clearLastError: () => set({ lastError: null }),
+
+    // F-project-review-2026-06-13-D-5/D-18: a successful levelStore
+    // save (or a corrective edit that shrinks the draft below
+    // MAX_DRAFT_BYTES) means the storage is no longer "full" from
+    // the editor's point of view. Resetting both flags here lets the
+    // EditorStatusBar's red banner disappear in the same render.
+    clearStorageFull: () => set({ storageFull: false, lastDraftError: null }),
 
     // ---- placement actions ----
     placeWall: (x, z) => {
@@ -706,12 +753,47 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
 
     // ---- persistence helpers ----
     saveDraft: () => {
-      try {
-        const payload = JSON.stringify({ level: get().level });
-        localStorage.setItem(DRAFT_STORAGE_KEY, payload);
-      } catch (e) {
-        console.warn('editorStore.saveDraft: failed', e);
+      // F-project-review-2026-06-13 (A-HIGH-3, D-5, D-18, D-23, D-26,
+      // D-29): route the autosave through `safeSetItem` so a quota /
+      // too-large / unavailable failure is surfaced through the
+      // `storageFull` + `lastDraftError` pair instead of being
+      // swallowed by a `console.warn` and silently dropping the
+      // user's last 2s of edits. The `MAX_DRAFT_BYTES` cap bails
+      // BEFORE calling `setItem` when the payload would blow past
+      // 1 MiB, so a single oversized write can't evict unrelated
+      // keys (e.g. `maze3d.customLevels.v1`) on quota-strict browsers.
+      const result = safeSetItem(
+        DRAFT_STORAGE_KEY,
+        { level: get().level },
+        MAX_DRAFT_BYTES,
+      );
+      if (result.ok) {
+        // Clear a stale banner left by the previous failure. Guard
+        // the `set` to avoid waking subscribers when neither flag is
+        // actually pending (the common case — most ticks succeed).
+        const { storageFull, lastDraftError } = get();
+        if (storageFull || lastDraftError !== null) {
+          set({ storageFull: false, lastDraftError: null });
+        }
+        return;
       }
+      // Failure: map the discriminated reason to a Chinese message.
+      // Only `quota` and `too-large` toggle `storageFull` (which the
+      // status bar reads to render a red banner) — `unavailable`
+      // (private mode, no localStorage) and `serialization` (cyclic
+      // data, BigInt) are surfaced through `lastDraftError` but the
+      // banner color stays a normal warning since "full" isn't the
+      // right diagnosis.
+      const MESSAGES: Record<typeof result.reason, string> = {
+        unavailable: '浏览器存储不可用，自动保存已禁用',
+        'too-large': '当前关卡过大，自动保存被跳过（请删除部分拾取/敌人或缩小地图）',
+        quota: '本地存储已满，自动保存失败（请删除旧关卡后重试）',
+        serialization: '关卡数据无法序列化，自动保存失败',
+      };
+      set({
+        storageFull: result.reason === 'quota' || result.reason === 'too-large',
+        lastDraftError: MESSAGES[result.reason],
+      });
     },
 
     loadDraft: () => {
@@ -727,6 +809,9 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
         // JsonMazeProvider runs hand-crafted levels through.
         const validated = validateMaze(obj.level, 'editor-draft');
         // F-2026-06-12-B2: the loaded draft IS the new save baseline.
+        // F-project-review-2026-06-13-D-5/D-18: switching to a loaded
+        // level invalidates any `storageFull` / `lastDraftError` left
+        // by a prior session's failed draft writes.
         set({
           level: validated,
           past: [],
@@ -734,7 +819,15 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
           selection: null,
           dirty: false,
           lastSavedHash: levelHash(validated),
+          storageFull: false,
+          lastDraftError: null,
         });
+        // F-project-review-2026-06-13-D-10: re-write the validated
+        // form back to localStorage so a hand-edited (but still
+        // schema-passing) draft is canonicalized on next read. If
+        // the re-write itself fails (quota / too-large), saveDraft
+        // surfaces it via the same banner machinery.
+        get().saveDraft();
       } catch (e) {
         console.warn('editorStore.loadDraft: failed', e);
       }
@@ -749,6 +842,9 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
       const { level } = parseImport(raw);
       const renamed: MazeData = { ...level, id: `custom-${generateId()}` };
       // F-2026-06-12-B2: the imported level IS the new save baseline.
+      // F-project-review-2026-06-13-D-5/D-18: switching to an imported
+      // level is a corrective action — clear storageFull /
+      // lastDraftError so the red banner disappears.
       set({
         level: renamed,
         past: [],
@@ -757,6 +853,8 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
         dirty: false,
         lastSavedAt: null,
         lastSavedHash: levelHash(renamed),
+        storageFull: false,
+        lastDraftError: null,
       });
     },
 

@@ -3,6 +3,7 @@ import { render, screen, fireEvent, within } from '@testing-library/react';
 import { LevelSelect } from '../../src/ui/LevelSelect';
 import { useLevelStore } from '../../src/store/levelStore';
 import { useSettingsStore } from '../../src/store/settingsStore';
+import { ConfirmProvider } from '../../src/ui/useConfirm';
 import type { MazeData } from '../../src/maze/types';
 
 function makeCustom(id: string, name: string, w: number, d: number): MazeData {
@@ -34,7 +35,7 @@ beforeEach(() => {
 describe('LevelSelect P2-6 cascading redesign', () => {
   // ---- Case 1: 主 dropdown 含 4 选项,各自 testid ----
   it('renders the main level-source dropdown with 4 options, each with stable testid', () => {
-    render(<LevelSelect available={[]} onPick={() => {}} onBack={() => {}} />);
+    render(<ConfirmProvider><LevelSelect available={[]} onPick={() => {}} onBack={() => {}} /></ConfirmProvider>);
     const select = screen.getByTestId('level-source-select') as HTMLSelectElement;
     expect(select.tagName).toBe('SELECT');
     expect(within(select).getByTestId('level-source-teaching')).toBeInTheDocument();
@@ -45,7 +46,7 @@ describe('LevelSelect P2-6 cascading redesign', () => {
 
   // ---- Case 2: 默认选「教学」时 sublevel-select 渲染,available=[] 时 disabled ----
   it('defaults to teaching and renders sublevel-select (disabled when available=[])', () => {
-    render(<LevelSelect available={[]} onPick={() => {}} onBack={() => {}} />);
+    render(<ConfirmProvider><LevelSelect available={[]} onPick={() => {}} onBack={() => {}} /></ConfirmProvider>);
     const sub = screen.getByTestId('sublevel-select') as HTMLSelectElement;
     expect(sub.tagName).toBe('SELECT');
     expect(sub).toBeDisabled();
@@ -53,6 +54,7 @@ describe('LevelSelect P2-6 cascading redesign', () => {
 
   it('lists available teaching levels in sublevel-select options', () => {
     render(
+      <ConfirmProvider>
       <LevelSelect
         available={[
           { id: 'level-small', name: '教学关 A' },
@@ -60,7 +62,8 @@ describe('LevelSelect P2-6 cascading redesign', () => {
         ]}
         onPick={() => {}}
         onBack={() => {}}
-      />,
+      />
+      </ConfirmProvider>,
     );
     const sub = screen.getByTestId('sublevel-select') as HTMLSelectElement;
     expect(sub).not.toBeDisabled();
@@ -70,7 +73,7 @@ describe('LevelSelect P2-6 cascading redesign', () => {
 
   // ---- Case 3: 切到「随机」: mode+size dropdown 出现,sublevel-select 消失 ----
   it('switching to random shows mode+size dropdowns and hides sublevel-select', () => {
-    render(<LevelSelect available={[{ id: 'x', name: 'X' }]} onPick={() => {}} onBack={() => {}} />);
+    render(<ConfirmProvider><LevelSelect available={[{ id: 'x', name: 'X' }]} onPick={() => {}} onBack={() => {}} /></ConfirmProvider>);
     const src = screen.getByTestId('level-source-select') as HTMLSelectElement;
     fireEvent.change(src, { target: { value: 'random' } });
     expect(screen.queryByTestId('sublevel-select')).toBeNull();
@@ -85,7 +88,7 @@ describe('LevelSelect P2-6 cascading redesign', () => {
         'custom-1': makeCustom('custom-1', 'My First', 10, 10),
       },
     });
-    render(<LevelSelect available={[]} onPick={() => {}} onBack={() => {}} />);
+    render(<ConfirmProvider><LevelSelect available={[]} onPick={() => {}} onBack={() => {}} /></ConfirmProvider>);
     const src = screen.getByTestId('level-source-select') as HTMLSelectElement;
     fireEvent.change(src, { target: { value: 'custom' } });
     const sub = screen.getByTestId('sublevel-select') as HTMLSelectElement;
@@ -94,7 +97,7 @@ describe('LevelSelect P2-6 cascading redesign', () => {
 
   // ---- Case 5: 切到「指定种子」: seed-input 渲染,reuse-last-seed 可用 ----
   it('switching to seed shows seed-input and reuse-last-seed button', () => {
-    render(<LevelSelect available={[]} onPick={() => {}} onBack={() => {}} />);
+    render(<ConfirmProvider><LevelSelect available={[]} onPick={() => {}} onBack={() => {}} /></ConfirmProvider>);
     const src = screen.getByTestId('level-source-select') as HTMLSelectElement;
     fireEvent.change(src, { target: { value: 'seed' } });
     expect(screen.getByTestId('seed-input')).toBeInTheDocument();
@@ -104,7 +107,7 @@ describe('LevelSelect P2-6 cascading redesign', () => {
 
   // ---- Case 6: mode='survive' 时 4 个设置出现(input + 4 chip + checkbox + max-input) ----
   it('mode=survive reveals survive-seconds input + 4 chips + progressive + max-input', () => {
-    render(<LevelSelect available={[]} onPick={() => {}} onBack={() => {}} />);
+    render(<ConfirmProvider><LevelSelect available={[]} onPick={() => {}} onBack={() => {}} /></ConfirmProvider>);
     const src = screen.getByTestId('level-source-select') as HTMLSelectElement;
     fireEvent.change(src, { target: { value: 'random' } });
     fireEvent.change(screen.getByTestId('mode-select'), { target: { value: 'survive' } });
@@ -120,7 +123,7 @@ describe('LevelSelect P2-6 cascading redesign', () => {
 
   // ---- Case 7: chip 点击: 同步到 input value + active className ----
   it('clicking survive-chip-60 syncs to input value and adds active className', () => {
-    render(<LevelSelect available={[]} onPick={() => {}} onBack={() => {}} />);
+    render(<ConfirmProvider><LevelSelect available={[]} onPick={() => {}} onBack={() => {}} /></ConfirmProvider>);
     const src = screen.getByTestId('level-source-select') as HTMLSelectElement;
     fireEvent.change(src, { target: { value: 'random' } });
     fireEvent.change(screen.getByTestId('mode-select'), { target: { value: 'survive' } });
@@ -135,7 +138,7 @@ describe('LevelSelect P2-6 cascading redesign', () => {
 
   // ---- Case 8: input 越界: clamp + aria-invalid="true" ----
   it('out-of-range survive-seconds input clamps to bounds and sets aria-invalid', () => {
-    render(<LevelSelect available={[]} onPick={() => {}} onBack={() => {}} />);
+    render(<ConfirmProvider><LevelSelect available={[]} onPick={() => {}} onBack={() => {}} /></ConfirmProvider>);
     const src = screen.getByTestId('level-source-select') as HTMLSelectElement;
     fireEvent.change(src, { target: { value: 'random' } });
     fireEvent.change(screen.getByTestId('mode-select'), { target: { value: 'survive' } });
@@ -152,7 +155,7 @@ describe('LevelSelect P2-6 cascading redesign', () => {
 
   // ---- Case 9: 渐进 checkbox 取消: progressive-max-input 消失 ----
   it('unchecking progressive hides the max-input', () => {
-    render(<LevelSelect available={[]} onPick={() => {}} onBack={() => {}} />);
+    render(<ConfirmProvider><LevelSelect available={[]} onPick={() => {}} onBack={() => {}} /></ConfirmProvider>);
     const src = screen.getByTestId('level-source-select') as HTMLSelectElement;
     fireEvent.change(src, { target: { value: 'random' } });
     fireEvent.change(screen.getByTestId('mode-select'), { target: { value: 'survive' } });
@@ -165,7 +168,7 @@ describe('LevelSelect P2-6 cascading redesign', () => {
   // ---- Case 10: start-button 点击: 调用 onPick 一次 + options 字段正确 ----
   it('clicking start-button invokes onPick once with correct id + options (random)', () => {
     const onPick = vi.fn();
-    render(<LevelSelect available={[]} onPick={onPick} onBack={() => {}} />);
+    render(<ConfirmProvider><LevelSelect available={[]} onPick={onPick} onBack={() => {}} /></ConfirmProvider>);
     const src = screen.getByTestId('level-source-select') as HTMLSelectElement;
     fireEvent.change(src, { target: { value: 'random' } });
     fireEvent.change(screen.getByTestId('size-select'), { target: { value: '15' } });
@@ -185,7 +188,7 @@ describe('LevelSelect P2-6 cascading redesign', () => {
   // ---- Case 11: validation 失败: start-button disabled, onPick 未调 ----
   it('disables start-button when teaching source has no available levels', () => {
     const onPick = vi.fn();
-    render(<LevelSelect available={[]} onPick={onPick} onBack={() => {}} />);
+    render(<ConfirmProvider><LevelSelect available={[]} onPick={onPick} onBack={() => {}} /></ConfirmProvider>);
     // default source = teaching, available=[]
     const btn = screen.getByTestId('start-button') as HTMLButtonElement;
     expect(btn).toBeDisabled();
@@ -195,7 +198,7 @@ describe('LevelSelect P2-6 cascading redesign', () => {
 
   it('disables start-button when seed source has invalid seed', () => {
     const onPick = vi.fn();
-    render(<LevelSelect available={[]} onPick={onPick} onBack={() => {}} />);
+    render(<ConfirmProvider><LevelSelect available={[]} onPick={onPick} onBack={() => {}} /></ConfirmProvider>);
     const src = screen.getByTestId('level-source-select') as HTMLSelectElement;
     fireEvent.change(src, { target: { value: 'seed' } });
     fireEvent.change(screen.getByTestId('seed-input'), { target: { value: 'not-hex' } });
@@ -212,11 +215,13 @@ describe('LevelSelect P2-6 cascading redesign', () => {
       customLevels: { 'custom-1': makeCustom('custom-1', 'My First', 10, 10) },
     });
     render(
+      <ConfirmProvider>
       <LevelSelect
         available={[{ id: 'level-small', name: '教学关 A' }]}
         onPick={() => {}}
         onBack={() => {}}
-      />,
+      />
+      </ConfirmProvider>,
     );
     expect(screen.getByTestId('level-select-root')).toBeInTheDocument();
     expect(screen.getByTestId('procedural-controls')).toBeInTheDocument();
