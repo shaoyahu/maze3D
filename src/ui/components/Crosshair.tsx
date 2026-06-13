@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type { CSSProperties } from 'react';
 
 // Always rendered as a sibling of the canvas so it stays centered on the
@@ -39,7 +40,10 @@ const STYLE_DOT: CSSProperties = {
   boxShadow: '0 0 0 1px rgba(0,0,0,0.5)',
 };
 
-export function Crosshair() {
+// P3-B-L5: wrap in React.memo so HUD/GameCanvas re-renders (player
+// movement, animation ticks) don't re-render the static crosshair.
+// displayName is set explicitly so the perf contract is pin-testable.
+export const Crosshair = memo(function Crosshair() {
   return (
     <div aria-hidden="true" data-testid="crosshair" style={STYLE_CENTER}>
       <div style={STYLE_HORIZONTAL} />
@@ -47,4 +51,5 @@ export function Crosshair() {
       <div style={STYLE_DOT} />
     </div>
   );
-}
+});
+Crosshair.displayName = 'Crosshair';

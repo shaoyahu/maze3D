@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useEditorStore } from '../../store/editorStore';
 import type { EnemySpawn, Pickup, PickupType } from '../../maze/types';
 
@@ -54,7 +54,11 @@ export function EditorViewport() {
   const select = useEditorStore((s) => s.select);
   const clearSelection = useEditorStore((s) => s.clearSelection);
 
-  const { pickupByCell, enemyByCell } = buildLookups(level);
+  // P3-B-L30: memoize the cell lookups. pick/enemy lookup happens on
+  // every mouse hover and every click in the viewport, so re-walking
+  // pickups + enemies on each render wastes O(n+m) work. level is
+  // stable while the user is moving the cursor around.
+  const { pickupByCell, enemyByCell } = useMemo(() => buildLookups(level), [level]);
   // Right-button drag pan. Stored in a ref so the move handler reads the
   // latest pointer position without re-binding on every state change.
   const panStateRef = useRef<{ x: number; y: number } | null>(null);

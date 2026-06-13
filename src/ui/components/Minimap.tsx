@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react';
 import type { MutableRefObject } from 'react';
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import type { Game } from '../../engine/Game';
 import type { MazeData } from '../../maze/types';
 import { useGameStore } from '../../store/gameStore';
@@ -123,11 +123,16 @@ export function Minimap({ maze, gameRef }: MinimapProps) {
  const cs = maze.cellSize;
  const playerGridX = p.x / cs;
  const playerGridZ = p.z / cs;
+ // P3-B-L11: memoize the viewBox string. w/d are stable for the
+ // lifetime of a maze, so building a fresh template-literal string
+ // every render is pure waste (and a fresh string would also force
+ // SVG attribute re-set on every tick).
+ const viewBox = useMemo(() => `0 0 ${w} ${d}`, [w, d]);
 
  return (
  <div aria-hidden="true" data-testid="minimap" style={STYLE_CONTAINER}>
  <svg
- viewBox={`0 0 ${w} ${d}`}
+ viewBox={viewBox}
  width="100%"
  height="100%"
  preserveAspectRatio="xMidYMid meet"
