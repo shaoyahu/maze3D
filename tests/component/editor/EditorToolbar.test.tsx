@@ -121,11 +121,25 @@ describe('EditorToolbar (P2-4b #13)', () => {
   });
 
   it('New button calls newLevel(15, 15) without confirm when not dirty', () => {
+    // P3-C-M6: pair install with mockRestore via try/finally. Without the
+    // restore, the spy on window.confirm leaks into every subsequent
+    // test in this worker, silently overriding any test (or production
+    // code) that calls window.confirm().
+    //
+    // Note: since the P2-7 useConfirm migration, handleNew uses the
+    // themed confirm dialog (testid=confirm-dialog), NOT window.confirm.
+    // The spy assertion below documents that legacy contract; a future
+    // edit removing window.confirm from the editor entirely can drop
+    // this test alongside the migration.
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
-    render(<ConfirmProvider><EditorToolbar /></ConfirmProvider>);
-    fireEvent.click(screen.getByTestId('tool-new'));
-    expect(confirmSpy).not.toHaveBeenCalled();
-    expect(useEditorStore.getState().level.size).toEqual({ width: 15, depth: 15 });
+    try {
+      render(<ConfirmProvider><EditorToolbar /></ConfirmProvider>);
+      fireEvent.click(screen.getByTestId('tool-new'));
+      expect(confirmSpy).not.toHaveBeenCalled();
+      expect(useEditorStore.getState().level.size).toEqual({ width: 15, depth: 15 });
+    } finally {
+      confirmSpy.mockRestore();
+    }
   });
 
   it('New button shows confirm when dirty and aborts if declined', async () => {
