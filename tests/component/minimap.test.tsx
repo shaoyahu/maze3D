@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render } from '@testing-library/react';
 import { useRef } from 'react';
-import { Minimap } from '../../src/ui/components/Minimap';
+import { Minimap, snapshotsEqual } from '../../src/ui/components/Minimap';
 import type { Game } from '../../src/engine/Game';
 import type { MazeData } from '../../src/maze/types';
 
@@ -151,5 +151,126 @@ describe('Minimap', () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     expect(() => render(<Minimap maze={maze} gameRef={nullRef} />)).not.toThrow();
     consoleSpy.mockRestore();
+  });
+});
+
+// P2-10 (A-M6) pins the epsilon-threshold contract of the polling
+// tick's early-out. The hook compares the last snapshot to the next
+// one and skips setTick when nothing visibly changed; that comparison
+// is a 4-field AND of strict-< per epsilon. These cases are unit-level
+// (no DOM, no Three.js) so the contract is exercised without relying
+// on the render path — the only place this contract is observable in
+// production code is "the React tree doesn't churn at 10Hz when the
+// player is idle", which is impossible to assert deterministically
+// from a Vitest case.
+describe('snapshotsEqual (A-M6 epsilon early-out)', () => {
+  // The thresholds are exported only as comments in Minimap.tsx; we
+  // mirror them here as plain numbers so a regression that loosens or
+  // tightens the constants in the source fails these tests loudly.
+  const POS_EPSILON = 1 / 8;
+  const YAW_EPSILON_RAD = (0.5 * Math.PI) / 180;
+  const FOV_EPSILON_DEG = 0.1;
+
+  // A structurally-compatible shape: PlayerSnapshot isn't exported, so
+  // we let TypeScript infer the literal type from snapshotsEqual's
+  // parameter signature.
+  const base = () => ({ pos: { x: 1, z: 1 }, yaw: 0, fov: 60 });
+
+  it('returns true for identical snapshots', () => {
+    expect(snapshotsEqual(base(), base())).toBe(true);
+  });
+
+  it('returns true when pos.x is within 1/8 of a cell', () => {
+    const a = base();
+    const b = { ...base(), pos: { x: a.pos.x + POS_EPSILON / 2, z: a.pos.z } };
+    expect(snapshotsEqual(a, b)).toBe(true);
+  });
+
+  it('returns true when pos.z is within 1/8 of a cell', () => {
+    const a = base();
+    const b = { ...base(), pos: { x: a.pos.x, z: a.pos.z - POS_EPSILON / 2 } };
+    expect(snapshotsEqual(a, b)).toBe(true);
+  });
+
+  it('returns true when yaw is within 0.5° in radians', () => {
+    const a = base();
+    const b = { ...base(), yaw: a.yaw + YAW_EPSILON_RAD / 2 };
+    expect(snapshotsEqual(a, b)).toBe(true);
+  });
+
+  it('returns true when fov is within 0.1°', () => {
+    const a = base();
+    const b = { ...base(), fov: a.fov + FOV_EPSILON_DEG / 2 };
+    expect(snapshotsEqual(a, b)).toBe(true);
+  });
+
+  it('returns false when pos.x exceeds 1/8 of a cell (1 full cell away)', () => {
+    const a = base();
+    const b = { ...base(), pos: { x: a.pos.x + 1, z: a.pos.z } };
+    expect(snapshotsEqual(a, b)).toBe(false);
+  });
+
+  it('returns false when pos.z exceeds 1/8 of a cell (1 full cell away)', () => {
+    const a = base();
+    const b = { ...base(), pos: { x: a.pos.x, z: a.pos.z - 1 } };
+    expect(snapshotsEqual(a, b)).toBe(false);
+  });
+
+  it('returns false when yaw exceeds 0.5° in radians (1° away)', () => {
+    const a = base();
+    const b = { ...base(), yaw: a.yaw + 1 * (Math.PI / 180) };
+    expect(snapshotsEqual(a, b)).toBe(false);
+  });
+
+  it('returns false when fov exceeds 0.1° (1° away)', () => {
+    const a = base();
+    const b = { ...base(), fov: a.fov + 1 };
+    expect(snapshotsEqual(a, b)).toBe(false);
+  });
+
+  it('boundary: pos.x delta of exactly 1/8 cell returns false (strict <, not <=)', () => {
+    // The function uses Math.abs(...) < epsilon, not <=. A regression
+    // that flipped to <= would silently include 1/8-cell motion in the
+    // "no visible change" bucket and would not be caught by the
+    // half-epsilon positive case above.
+    const a = base();
+    const b = { ...base(), pos: { x: a.pos.x + POS_EPSILON, z: a.pos.z } };
+    expect(snapshotsEqual(a, b)).toBe(false);
+  });
+
+  it('boundary: yaw delta of exactly 0.5° in radians returns false (strict <)', () => {
+    const a = base();
+    const b = { ...base(), yaw: a.yaw + YAW_EPSILON_RAD };
+    expect(snapshotsEqual(a, b)).toBe(false);
+  });
+
+  it('boundary: fov delta of exactly 0.1° returns false (strict <)', () => {
+    const a = base();
+    const b = { ...base(), fov: a.fov + FOV_EPSILON_DEG };
+    expect(snapshotsEqual(a, b)).toBe(false);
+  });
+
+  it('all four deltas at half-epsilon return true (the "noise" case)', () => {
+    // The realistic case: a polling tick where the engine's
+    // getPlayerPosition / yaw / fov return values wobble by less than
+    // half-epsilon on every field simultaneously. The early-out must
+    // accept this as a no-visible-change.
+    const a = base();
+    const b = {
+      pos: { x: a.pos.x + POS_EPSILON / 2, z: a.pos.z - POS_EPSILON / 2 },
+      yaw: a.yaw + YAW_EPSILON_RAD / 2,
+      fov: a.fov + FOV_EPSILON_DEG / 2,
+    };
+    expect(snapshotsEqual(a, b)).toBe(true);
+  });
+
+  it('a single exceeding delta short-circuits to false even when the other three are exactly equal', () => {
+    // The contract is && of strict-<; if a future refactor accidentally
+    // uses ||, a single exceeding delta would still return true, and
+    // the polling tick would skip a real re-render. This case pins the
+    // AND semantics.
+    const a = base();
+    const b = { pos: { x: a.pos.x + 1, z: a.pos.z }, yaw: a.yaw, fov: a.fov };
+    expect(snapshotsEqual(a, b)).toBe(false);
   });
 });

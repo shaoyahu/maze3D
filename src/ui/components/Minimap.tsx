@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react';
 import type { MutableRefObject } from 'react';
-import { memo, useEffect, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import type { Game } from '../../engine/Game';
 import type { MazeData } from '../../maze/types';
 import { useGameStore } from '../../store/gameStore';
@@ -152,10 +152,54 @@ export function Minimap({ maze, gameRef }: MinimapProps) {
  );
 }
 
+// Snapshot of the player state captured by the polling tick. The
+// hook below keeps the last snapshot in a ref so it can early-out
+// when nothing visibly changed (A-M6) without forcing a re-render.
+interface PlayerSnapshot {
+ pos: { x: number; z: number };
+ yaw: number; // radians
+ fov: number; // degrees
+}
+
+// F-A-architecture-M6: epsilon thresholds below which a delta is
+// treated as no visible change. The player marker is 1 grid cell
+// wide, so 1/8 of a cell is well below the user-perceptible
+// granularity; the yaw/FOV deltas match a sub-degree rotation,
+// finer than the arrow polygon's apex. Exported (via snapshotsEqual)
+// so the threshold logic is pinned by a unit test.
+const POS_EPSILON = 1 / 8;
+const YAW_EPSILON_RAD = (0.5 * Math.PI) / 180;
+const FOV_EPSILON_DEG = 0.1;
+
+// Returns true when `a` and `b` are within the epsilon thresholds on
+// every field. The hook calls this to decide whether to skip setTick
+// and avoid a wasted re-render.
+export function snapshotsEqual(a: PlayerSnapshot, b: PlayerSnapshot): boolean {
+ return (
+ Math.abs(a.pos.x - b.pos.x) < POS_EPSILON &&
+ Math.abs(a.pos.z - b.pos.z) < POS_EPSILON &&
+ Math.abs(a.yaw - b.yaw) < YAW_EPSILON_RAD &&
+ Math.abs(a.fov - b.fov) < FOV_EPSILON_DEG
+ );
+}
+
 // Local hook kept in this file so the polling cadence is colocated with
 // the only consumer. Bumps a counter every intervalMs to schedule a
 // re-render; the actual player position is read from the ref on each
-// render so the source of truth stays in the engine.
+// render so the source of truth stays in the engine. Two cross-cutting
+// fixes live here:
+//
+// - F-A-architecture-M6 (early-out): the last snapshot is held in a
+//   ref and compared on each tick. If every field is within the
+//   epsilon thresholds, setTick is skipped — a paused or idle player
+//   no longer churns the React tree at 10Hz.
+//
+// - F-D-quality-D-11 (pending guard): an unmount-only effect flips a
+//   cancelled flag; an in-flight setInterval callback checks the
+//   flag before calling setTick. Without this, a tick landing
+//   between clearInterval and unmount completion could call setTick
+//   on an unmounted component. Mirrors the pointerLockTimerRef
+//   pattern in GameCanvas.tsx:26-31.
 function useTickRef(gameRef: MutableRefObject<Game | null>, intervalMs: number): void {
  const [, setTick] = useState(0);
  // F-L13: gate the polling interval on the game screen. Without this
@@ -164,10 +208,35 @@ function useTickRef(gameRef: MutableRefObject<Game | null>, intervalMs: number):
  // position. Including `screen` in deps re-runs the effect: when
  // playing → start interval; otherwise → cleanup the running one.
  const screen = useGameStore((s) => s.screen);
+ const lastSnapshotRef = useRef<PlayerSnapshot | null>(null);
+ const cancelledRef = useRef(false);
+
+ // Unmount-only cleanup. The empty-deps effect runs once on mount
+ // and the cleanup runs once on unmount, regardless of the
+ // screen-gated polling state above.
+ useEffect(() => {
+ return () => {
+ cancelledRef.current = true;
+ };
+ }, []);
+
  useEffect(() => {
  if (screen !== 'playing') return;
  const id = setInterval(() => {
- if (gameRef.current?.getPlayerPosition()) setTick((t) => t +1);
+ if (cancelledRef.current) return; // D-11 in-flight guard
+ const game = gameRef.current;
+ if (!game) return;
+ const pos = game.getPlayerPosition();
+ if (!pos) return;
+ const next: PlayerSnapshot = {
+ pos,
+ yaw: game.getPlayerYaw(),
+ fov: game.getCameraFov(),
+ };
+ const prev = lastSnapshotRef.current;
+ if (prev && snapshotsEqual(prev, next)) return; // A-M6 early-out
+ lastSnapshotRef.current = next;
+ setTick((t) => t + 1);
  }, intervalMs);
  return () => clearInterval(id);
  }, [gameRef, intervalMs, screen]);
