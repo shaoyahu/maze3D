@@ -155,6 +155,7 @@ export function EditorViewport() {
   return (
     <div
       data-testid="editor-viewport"
+      id="editor-viewport"
       ref={viewportRef}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}

@@ -217,7 +217,7 @@ export function EditorToolbar({ onExit, onSaveAndExit }: EditorToolbarProps) {
 
   return (
     <div data-testid="editor-toolbar" style={TOOLBAR_STYLE}>
-      <div style={{ display: 'flex', gap: 4 }} role="toolbar" aria-label="Editor tools">
+      <div style={{ display: 'flex', gap: 4 }} role="toolbar" aria-label="Editor tools" aria-controls="editor-viewport">
         {TOOLS.map(({ tool: t, label, hint }) => {
           const active = tool === t;
           return (
@@ -295,7 +295,12 @@ export function EditorToolbar({ onExit, onSaveAndExit }: EditorToolbarProps) {
         }}
       />
       {dirty && (
-        <span data-testid="tool-dirty" style={{ color: 'var(--accent)', fontSize: 13 }}>
+        <span
+          data-testid="tool-dirty"
+          role="status"
+          aria-live="polite"
+          style={{ color: 'var(--accent)', fontSize: 13 }}
+        >
           ● 未保存
         </span>
       )}
@@ -348,6 +353,7 @@ export function EditorToolbar({ onExit, onSaveAndExit }: EditorToolbarProps) {
         accept=".json,.maze3d.json,application/json"
         onChange={handleImportChange}
         data-testid="tool-import-input"
+        aria-label="导入关卡文件"
         style={{ display: 'none' }}
       />
 
