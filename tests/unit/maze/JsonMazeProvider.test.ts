@@ -279,4 +279,63 @@ describe('JsonMazeProvider', () => {
       ]);
     });
   });
+
+  // F-D-quality-D-30: every LevelLoadError site that interpolates a
+  // user-controlled value must keep the rendered message bounded so
+  // the LevelSelect error UI doesn't render a multi-MB paragraph into
+  // the DOM. The unit-level helper (clampErrorValue) is covered by
+  // tests/unit/utils/errors.test.ts; these two tests pin the
+  // integration: a huge enemy id / cell value reaches the error
+  // message bounded.
+  describe('D-30 — LevelLoadError clamps user-controlled values to 80 chars', () => {
+    it('clamps a 10 KB enemy id in the path-must-be-array error message', async () => {
+      // The "enemy ${clampErrorValue(ee.id)} path must be array" branch
+      // (JsonMazeProvider.ts:268) is the most exposed: an enemy id is
+      // user-authored text in the editor, and the validator throws
+      // before anything else can sanitize it. The full message must
+      // remain small regardless of id length.
+      const hugeId = 'X'.repeat(10_000);
+      const level = makeValidLevel({
+        enemies: [{ id: hugeId, x: 0, z: 0, path: 'not-an-array' }],
+      });
+      const provider = new JsonMazeProvider({ 'level-test': level });
+
+      const err = await provider.load('level-test').catch((e) => e);
+      expect(err).toBeInstanceOf(LevelLoadError);
+      const msg = (err as LevelLoadError).message;
+      // The 10 KB id must not surface verbatim.
+      expect(msg.length).toBeLessThan(10_000);
+      // The truncation ellipsis confirms the id was clipped (vs. the
+      // helper silently dropping it).
+      expect(msg).toContain('…');
+      // Absolute cap: with the id clamped to 80+1 chars and the rest
+      // of the template around 60 chars, the total is ~140. 500 gives
+      // comfortable headroom for template tweaks without letting a
+      // regression slip a full 10 KB id through.
+      expect(msg.length).toBeLessThan(500);
+    });
+
+    it('clamps a 10 KB cell value in the walls[z][x] error message', async () => {
+      // The walls[z][x] !== 0/1 branch (JsonMazeProvider.ts:119) uses
+      // `clampErrorValue(v)` to bound the offending cell value. A
+      // hand-crafted JSON could put any string in a cell slot, and
+      // without clamping the error message would carry the full
+      // string into the LevelSelect error UI.
+      const hugeCell = 'Y'.repeat(10_000);
+      const walls: Array<Array<unknown>> = [
+        [0, 0, 0, 0, 0],
+        [0, hugeCell, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+      ];
+      const level = makeValidLevel({ walls });
+      const provider = new JsonMazeProvider({ 'level-test': level });
+
+      const err = await provider.load('level-test').catch((e) => e);
+      expect(err).toBeInstanceOf(LevelLoadError);
+      const msg = (err as LevelLoadError).message;
+      expect(msg.length).toBeLessThan(10_000);
+      expect(msg).toContain('…');
+      expect(msg.length).toBeLessThan(500);
+    });
+  });
 });

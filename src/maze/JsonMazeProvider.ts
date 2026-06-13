@@ -1,4 +1,4 @@
-import { LevelLoadError } from '../utils/errors';
+import { LevelLoadError, clampErrorValue } from '../utils/errors';
 import { PLAYER_RADIUS } from '../entities/Player';
 import { generateId } from '../utils/id';
 import type {
@@ -63,7 +63,7 @@ export function validateMaze(raw: unknown, id: string): MazeData {
   // message naming both ids.
   if (m.id !== id) {
     throw new LevelLoadError(
-      `Maze '${id}': filename/loader id does not match level id '${m.id as string}'`,
+      `Maze '${id}': filename/loader id does not match level id '${clampErrorValue(m.id)}'`,
     );
   }
   requireString(m, 'name', id);
@@ -116,7 +116,7 @@ export function validateMaze(raw: unknown, id: string): MazeData {
     for (let x = 0; x < width; x++) {
       const v = row[x];
       if (v !== 0 && v !== 1) {
-        throw new LevelLoadError(`Maze '${id}': walls[${z}][${x}] must be 0 or 1 (got ${v})`);
+        throw new LevelLoadError(`Maze '${id}': walls[${z}][${x}] must be 0 or 1 (got ${clampErrorValue(v)})`);
       }
       cells.push(v as CellType);
     }
@@ -265,13 +265,13 @@ function parseEnemies(raw: unknown, id: string, width: number, depth: number, wa
     requireInBounds(ee, 'x', 'z', `${id}.enemies[${i}]`, width, depth);
 
     if (!Array.isArray(ee.path)) {
-      throw new LevelLoadError(`Maze '${id}': enemy ${ee.id} path must be array`);
+      throw new LevelLoadError(`Maze '${id}': enemy ${clampErrorValue(ee.id)} path must be array`);
     }
     const path: Array<{ x: number; z: number }> = [];
     for (let j = 0; j < ee.path.length; j++) {
       const node = ee.path[j];
       if (typeof node !== 'object' || node === null) {
-        throw new LevelLoadError(`Maze '${id}': enemy ${ee.id} path[${j}] must be an object`);
+        throw new LevelLoadError(`Maze '${id}': enemy ${clampErrorValue(ee.id)} path[${j}] must be an object`);
       }
       const nn = node as Record<string, unknown>;
       // F7: requireNumber allowed {x:99,z:-2} and {x:1.5,z:1} to slip
@@ -282,7 +282,7 @@ function parseEnemies(raw: unknown, id: string, width: number, depth: number, wa
       // on a wall.
       requireInBounds(nn, 'x', 'z', `${id}.enemies[${i}].path[${j}]`, width, depth);
       if (walls[nn.z as number][nn.x as number] === 1) {
-        throw new LevelLoadError(`Maze '${id}': enemy ${ee.id} path[${j}] is on a wall`);
+        throw new LevelLoadError(`Maze '${id}': enemy ${clampErrorValue(ee.id)} path[${j}] is on a wall`);
       }
       path.push({ x: nn.x as number, z: nn.z as number });
     }
