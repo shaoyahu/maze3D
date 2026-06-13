@@ -11,6 +11,28 @@ import { useLevelStore } from '../store/levelStore';
  *  keystroke. Tunable per-mount via `useAutoSave({ intervalMs })`. */
 export const DEFAULT_AUTOSAVE_INTERVAL_MS = 30_000;
 
+// F-project-review-2026-06-13-B-ui-M-5: exponential backoff after
+// consecutive auto-save failures. The toolbar surfaces "自动保存失败: ..."
+// every tick the hook fires onAutoSaveError. Without backoff, a structurally
+// invalid editor state (e.g. start on a wall) means the error pops every 30s
+// indefinitely — pure noise after the first one, because the user already
+// sees the error and can't act on identical repeats.
+//
+// Schedule (cap at 5 min):
+//   failures=1 → next attempt 60s  after the failed save  (skip 1 tick)
+//   failures=2 → next attempt 120s after the failed save  (skip 3 ticks)
+//   failures=3+ → next attempt 300s after the failed save (skip 9 ticks)
+//
+// Reset rules:
+//   - successful save → failure count back to 0, next attempt at base interval
+//   - dirty toggles false (user reverted) → reset so a fresh failure on the
+//     next dirty cycle fires immediately
+export function computeAutoSaveBackoffMs(consecutiveFailures: number): number {
+  if (consecutiveFailures <= 1) return 60_000;
+  if (consecutiveFailures === 2) return 120_000;
+  return 300_000;
+}
+
 export interface UseAutoSaveOptions {
   /** Tick interval in ms. Defaults to {@link DEFAULT_AUTOSAVE_INTERVAL_MS}. */
   intervalMs?: number;
@@ -59,6 +81,13 @@ export function useAutoSave(options: UseAutoSaveOptions = {}): void {
   onAutoSavedRef.current = onAutoSaved;
   onAutoSaveErrorRef.current = onAutoSaveError;
 
+  // F-project-review-2026-06-13-B-ui-M-5: consecutive-failure tracker
+  // backing the backoff window. Held as refs so they survive across
+  // ticks without invalidating the interval (which would reset the
+  // counters and defeat the very throttle we're installing).
+  const failureCountRef = useRef(0);
+  const nextAttemptAtRef = useRef<number | null>(null);
+
   useEffect(() => {
     // F-project-review-2026-06-13-A-HIGH-1: the interval closure lazily
     // reads `useEditorStore.getState().dirty` on every tick, so a stale
@@ -72,7 +101,21 @@ export function useAutoSave(options: UseAutoSaveOptions = {}): void {
     const id = window.setInterval(() => {
       if (!mounted) return;
       const state = useEditorStore.getState();
-      if (!state.dirty) return;
+      if (!state.dirty) {
+        // F-B-ui-M-5: reverting to a clean editor resets the backoff so
+        // the next dirty cycle's first failure fires immediately rather
+        // than inheriting the previous run's throttle window.
+        failureCountRef.current = 0;
+        nextAttemptAtRef.current = null;
+        return;
+      }
+      // F-B-ui-M-5: silent skip while inside the backoff window. Using
+      // strict less-than means the boundary tick (Date.now() ===
+      // nextAttemptAt) attempts the save, which keeps the schedule
+      // exactly aligned with multiples of the base interval.
+      if (nextAttemptAtRef.current !== null && Date.now() < nextAttemptAtRef.current) {
+        return;
+      }
       const result = state.saveLevel();
       if (!mounted) return;
       if (result.ok) {
@@ -80,8 +123,13 @@ export function useAutoSave(options: UseAutoSaveOptions = {}): void {
         // validation-only; the tick is responsible for handing the
         // validated level to the level store.
         useLevelStore.getState().saveCustom(result.level);
+        failureCountRef.current = 0;
+        nextAttemptAtRef.current = null;
         onAutoSavedRef.current?.(Date.now());
       } else {
+        failureCountRef.current += 1;
+        nextAttemptAtRef.current =
+          Date.now() + computeAutoSaveBackoffMs(failureCountRef.current);
         onAutoSaveErrorRef.current?.(result.error);
       }
     }, intervalMs);
