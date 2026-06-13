@@ -9,6 +9,10 @@ import { ImportError } from '../../maze/importExport';
 import type { EditorTool } from '../../maze/types';
 import { useAutoSave } from '../../hooks/useAutoSave';
 import { useConfirm } from '../useConfirm';
+// F-project-review-2026-06-13-A-HIGH-2: saveLevel is now a
+// validation-only action that returns the level on success; the caller
+// owns the actual persistence step (writing to the level store).
+import { useLevelStore } from '../../store/levelStore';
 
 // F-2026-06-12-H1: how long a `lastError` from the store stays visible
 // before the toolbar auto-clears it. Long enough to read, short enough
@@ -140,13 +144,19 @@ export function EditorToolbar({ onExit, onSaveAndExit }: EditorToolbarProps) {
     setStatus({ kind: 'ok', message: '已新建 15×15 空关卡' });
   };
 
+  // F-project-review-2026-06-13-A-HIGH-2: `saveLevel` no longer writes to
+  // the level store as a side effect. It validates and returns the
+  // level; this handler hands the returned level to `useLevelStore.saveCustom`
+  // so persistence stays under the caller's control. The toolbar owns
+  // the user-facing status string either way.
   const handleSave = (): void => {
     const result = saveLevel();
-    setStatus(
-      result.ok
-        ? { kind: 'ok', message: '已保存' }
-        : { kind: 'error', message: `保存失败：${result.error}` },
-    );
+    if (result.ok) {
+      useLevelStore.getState().saveCustom(result.level);
+      setStatus({ kind: 'ok', message: '已保存' });
+    } else {
+      setStatus({ kind: 'error', message: `保存失败：${result.error}` });
+    }
   };
 
   const handleSaveAndExit = (): void => {
@@ -155,6 +165,10 @@ export function EditorToolbar({ onExit, onSaveAndExit }: EditorToolbarProps) {
       setStatus({ kind: 'error', message: `保存失败：${result.error}` });
       return;
     }
+    // Persist the validated level before we navigate away — otherwise
+    // the user would see a "● 未保存" → "已保存" flicker, and a hard
+    // navigation (e.g. the back button) would lose the save.
+    useLevelStore.getState().saveCustom(result.level);
     onSaveAndExit?.() ?? onExit?.();
   };
 

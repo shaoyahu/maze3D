@@ -34,7 +34,6 @@ import {
 import { exportLevel, parseImport } from '../maze/importExport';
 import { validateMaze } from '../maze/JsonMazeProvider';
 import { generateId } from '../utils/id';
-import { useLevelStore } from './levelStore';
 import { safeSetItem, MAX_DRAFT_BYTES } from './persist';
 
 // Re-export the EditorSelection union from editorHistory so the rest of
@@ -55,14 +54,22 @@ export interface EditorCamera {
 
 /** Discriminated-union return type of `useEditorStore.saveLevel`.
  *
- *  `{ ok: true }` means the level passed `validateMaze` and was merged
- *  into the level store. `{ ok: false, error }` means validation
- *  rejected the in-memory level; `error` is the underlying
- *  `LevelLoadError.message` so the caller can surface it verbatim to
- *  the user (the toolbar pattern). Keeps the editor decoupled from the
- *  validator's error class while preserving the message detail that
- *  the previous `boolean` return type used to discard. */
-export type SaveResult = { ok: true } | { ok: false; error: string };
+ *  F-project-review-2026-06-13-A-HIGH-2: the editor and the level store
+ *  are now decoupled. `saveLevel` no longer mutates the level store as a
+ *  side effect — it only validates the in-memory level and returns it
+ *  for the caller to persist (EditorToolbar.handleSave, EditorPage.
+ *  handleExit, useAutoSave).
+ *
+ *  - `{ ok: true, level }` means the level passed `validateMaze` and is
+ *    safe to hand to `useLevelStore.saveCustom(level)`. We return the
+ *    same object so callers don't need to reach into the store state.
+ *  - `{ ok: false, error }` means validation rejected the in-memory
+ *    level; `error` is the underlying `LevelLoadError.message` so the
+ *    caller can surface it verbatim (the toolbar pattern). Keeps the
+ *    editor decoupled from the validator's error class while preserving
+ *    the message detail that the previous `boolean` return type used to
+ *    discard. */
+export type SaveResult = { ok: true; level: MazeData } | { ok: false; error: string };
 
 // Local alias: only the slice fields we replace on each commit. We pass
 // this to `set(...)` to keep the per-action code uniform.
@@ -116,15 +123,26 @@ export interface EditorStoreState {
   // session lifecycle
   newLevel: (width: number, depth: number) => void;
   loadLevel: (maze: MazeData) => void;
-  /** Persists the current level to the level store.
+  /** Validates the current level and (on success) advances the saved
+   *  baseline. The returned `level` is the same object the store holds,
+   *  pre-validated by `validateMaze` — callers (EditorToolbar,
+   *  EditorPage, useAutoSave) own the actual persistence step (typically
+   *  by handing the level to `useLevelStore.saveCustom`).
    *
-   *  - On a successful save, returns `{ ok: true }`, clears `dirty` and
-   *    sets `lastSavedAt` to the wall-clock ms.
+   *  - On a successful validation, returns `{ ok: true, level }`,
+   *    clears `dirty`, sets `lastSavedAt` to the wall-clock ms, and
+   *    records `lastSavedHash` so dirty-detection has a fresh oracle.
    *  - On a validation failure (validateMaze threw a `LevelLoadError`),
    *    returns `{ ok: false, error }` with the underlying validator
    *    message so callers can show *what* is structurally wrong, and
    *    leaves `dirty` true so the user knows the in-memory state still
-   *    diverges from the last persisted version. */
+   *    diverges from the last persisted version.
+   *
+   *  F-project-review-2026-06-13-A-HIGH-2: previously this action also
+   *  wrote the level to the level store as a side effect, which silently
+   *  coupled the two stores. The refactor makes persistence the caller's
+   *  responsibility so the editor store has no awareness of where levels
+   *  are persisted. */
   saveLevel: () => SaveResult;
 
   // tool / camera / selection (UI state, no history push)
@@ -380,31 +398,38 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
     },
 
     saveLevel: () => {
-      // Side effect: delegate persistence to the level store. We do NOT
-      // push history here — save is IO, not data mutation.
+      // F-project-review-2026-06-13-A-HIGH-2: this action no longer
+      // writes to the level store as a side effect. It validates the
+      // level locally and returns it; the caller decides where to
+      // persist. See the JSDoc on `saveLevel` for the full contract.
       //
-      // `saveCustom` calls `validateMaze`, which can throw `LevelLoadError`
-      // when the editor is in a state that doesn't satisfy the maze
-      // contract (e.g. start/exit out of bounds, walls dimension mismatch).
-      // We catch the throw and surface it as a `SaveResult` so the caller
-      // (EditorToolbar) can show the validator's actual message verbatim
-      // to the user (matching the import-error pattern at
+      // We do NOT push history here — save is IO, not data mutation.
+      //
+      // `validateMaze` can throw `LevelLoadError` when the editor is in
+      // a state that doesn't satisfy the maze contract (e.g. start/exit
+      // out of bounds, walls dimension mismatch). We catch the throw and
+      // surface it as a `SaveResult` so the caller (EditorToolbar) can
+      // show the validator's actual message verbatim to the user
+      // (matching the import-error pattern at
       // EditorToolbar.handleImportChange). We deliberately do NOT clear
-      // `dirty` on failure — the in-memory level still diverges from the
-      // last persisted version.
+      // `dirty` on failure — the in-memory level still diverges from
+      // the last persisted version.
       try {
         const level = get().level;
-        useLevelStore.getState().saveCustom(level);
+        validateMaze(level, level.id);
         // F-2026-06-12-B2: a successful save advances the baseline. The
-        // hash of what we just persisted becomes the new oracle — any
+        // hash of what we just validated becomes the new oracle — any
         // subsequent edit will be compared against *this* snapshot, not
         // the pre-save one. dirty=false is now derived from the hash, but
         // we set it explicitly so the toolbar's "● 未保存" disappears the
         // moment the user clicks Save (before the next render).
-        // F-project-review-2026-06-13-D-5/D-18: a successful saveCustom
-        // means the level store accepted the level (which means there's
-        // room on disk), so clear the storageFull / lastDraftError pair
-        // and let the red banner disappear.
+        // F-project-review-2026-06-13-D-5/D-18: a successful validation
+        // implies the level is well-formed and the caller will persist
+        // it; that persistence path is also the one that clears the
+        // storageFull / lastDraftError pair, but we reset the flags
+        // here too so the red banner disappears as soon as the user
+        // makes a structurally valid save (the draft autosave that
+        // triggered the banner will retry on the next tick).
         set({
           dirty: false,
           lastSavedAt: Date.now(),
@@ -412,7 +437,7 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
           storageFull: false,
           lastDraftError: null,
         });
-        return { ok: true } as const;
+        return { ok: true, level } as const;
       } catch (e) {
         // Defensive: validateMaze is the documented thrower, but we don't
         // import its error class to keep the store decoupled. Fall back to

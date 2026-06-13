@@ -1,5 +1,10 @@
 import { useEffect, useRef } from 'react';
 import { useEditorStore } from '../store/editorStore';
+// F-project-review-2026-06-13-A-HIGH-2: saveLevel no longer persists
+// to the level store as a side effect. The tick now hands the
+// validated level to useLevelStore.saveCustom so the level store
+// actually receives the auto-save.
+import { useLevelStore } from '../store/levelStore';
 
 /** F-2026-06-12-F1: default auto-save tick. 30s balances the user's
  *  wish for "periodic" with not flooding the level store on every
@@ -71,6 +76,10 @@ export function useAutoSave(options: UseAutoSaveOptions = {}): void {
       const result = state.saveLevel();
       if (!mounted) return;
       if (result.ok) {
+        // F-project-review-2026-06-13-A-HIGH-2: saveLevel is now
+        // validation-only; the tick is responsible for handing the
+        // validated level to the level store.
+        useLevelStore.getState().saveCustom(result.level);
         onAutoSavedRef.current?.(Date.now());
       } else {
         onAutoSaveErrorRef.current?.(result.error);

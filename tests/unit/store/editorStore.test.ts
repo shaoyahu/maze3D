@@ -189,7 +189,14 @@ describe('useEditorStore', () => {
   // 3. saveLevel
   // -----------------------------------------------------------------------
   describe('saveLevel', () => {
-    it('delegates to useLevelStore.saveCustom with the current level', () => {
+    // F-project-review-2026-06-13-A-HIGH-2: the prior contract had
+    // `saveLevel` call `useLevelStore.saveCustom(level)` as a side
+    // effect, which silently coupled the two stores. The new contract
+    // returns the validated `level` so the caller (EditorToolbar,
+    // EditorPage, useAutoSave) decides where to persist. This test
+    // pins the new shape and asserts that saveLevel does NOT touch
+    // the level store directly.
+    it('returns the validated level and does not write to level store', () => {
       // Arrange — start must be on a floor cell for validateMaze to accept it.
       const lvl = makeMaze({
         id: 'custom-save',
@@ -203,9 +210,16 @@ describe('useEditorStore', () => {
       useEditorStore.setState({ level: lvl });
       const spy = vi.spyOn(useLevelStore.getState(), 'saveCustom');
       // Act
-      useEditorStore.getState().saveLevel();
+      const result = useEditorStore.getState().saveLevel();
       // Assert
-      expect(spy).toHaveBeenCalledWith(lvl);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.level).toEqual(lvl);
+      }
+      // The decoupled saveLevel must NOT persist to level store — that
+      // is the caller's responsibility now. customLevels stays empty.
+      expect(spy).not.toHaveBeenCalled();
+      expect(useLevelStore.getState().customLevels).toEqual({});
     });
 
     it('sets dirty to false after a save', () => {
@@ -242,7 +256,7 @@ describe('useEditorStore', () => {
       // Act
       const result = useEditorStore.getState().saveLevel();
       // Assert
-      expect(result).toEqual({ ok: true });
+      expect(result).toEqual({ ok: true, level: lvl });
     });
 
     it('returns { ok: false, error } with the validator detail when the level is invalid', () => {
@@ -300,7 +314,7 @@ describe('useEditorStore', () => {
       // Act — no edits at all.
       const result = useEditorStore.getState().saveLevel();
       // Assert
-      expect(result).toEqual({ ok: true });
+      expect(result).toEqual({ ok: true, level: lvl });
       expect(useEditorStore.getState().dirty).toBe(false);
     });
   });

@@ -5,6 +5,10 @@ import { EditorViewport } from './EditorViewport';
 import { EditorPropertiesPanel } from './EditorPropertiesPanel';
 import { EditorStatusBar } from './EditorStatusBar';
 import { useConfirm } from '../useConfirm';
+// F-project-review-2026-06-13-A-HIGH-2: handleExit's "save" branch
+// hands the validated level to useLevelStore.saveCustom, since
+// editorStore.saveLevel no longer writes to the level store on its own.
+import { useLevelStore } from '../../store/levelStore';
 
 const DRAFT_KEY = 'maze3d.editorDraft.v1';
 const AUTOSAVE_DELAY_MS = 2000;
@@ -154,6 +158,10 @@ export function EditorPage({ onExit }: EditorPageProps) {
       if (choice === 'save') {
         const r = useEditorStore.getState().saveLevel();
         if (!r.ok) return; // stay in editor on save failure
+        // F-project-review-2026-06-13-A-HIGH-2: saveLevel is
+        // validation-only now; persist the validated level before we
+        // navigate away so the level is actually written to the store.
+        useLevelStore.getState().saveCustom(r.level);
       }
       // discard path falls through to clear-draft + onExit.
     }
