@@ -19,6 +19,35 @@ import type { MazeData, StartLevelOptions } from './maze/types';
 
 type UiScreen = 'menu' | 'levels' | 'settings' | 'game' | 'editor';
 
+// F-project-review-2026-06-13-D-10: build a human-readable toast message
+// from the init-time loss summary. Each part of the summary (per-row
+// drops + per-key migration errors) is rendered in its own clause so a
+// user who lost both personal bests AND custom levels in the same init
+// sees both, in order of severity. The id lists are trimmed to a
+// reasonable cap so a wholesale-storage-corruption case (e.g. 200
+// dropped customs) doesn't blow up the toast to the size of the screen.
+function buildLoadSummaryMessage(s: NonNullable<ReturnType<typeof useLevelStore.getState>['lastLoadSummary']>): string {
+  const MAX_IDS = 5;
+  const parts: string[] = [];
+  if (s.recordsMigrationError) {
+    parts.push(`最佳成绩加载失败：${s.recordsMigrationError}`);
+  }
+  if (s.customsMigrationError) {
+    parts.push(`自定义关卡加载失败：${s.customsMigrationError}`);
+  }
+  if (s.recordsDroppedKeys.length > 0) {
+    const ids = s.recordsDroppedKeys.slice(0, MAX_IDS).join('、');
+    const more = s.recordsDroppedKeys.length > MAX_IDS ? ` 等 ${s.recordsDroppedKeys.length} 项` : '';
+    parts.push(`${s.recordsDroppedKeys.length} 个最佳成绩因格式不兼容而跳过：${ids}${more}`);
+  }
+  if (s.customsDroppedKeys.length > 0) {
+    const ids = s.customsDroppedKeys.slice(0, MAX_IDS).join('、');
+    const more = s.customsDroppedKeys.length > MAX_IDS ? ` 等 ${s.customsDroppedKeys.length} 项` : '';
+    parts.push(`${s.customsDroppedKeys.length} 个自定义关卡因格式不兼容而跳过：${ids}${more}`);
+  }
+  return parts.join('；');
+}
+
 async function loadAllLevels(
   provider: EditorMazeProvider,
 ): Promise<{ id: string; name: string; data: MazeData }[]> {
@@ -47,6 +76,15 @@ export function App() {
   const gameScreen = useGameStore((s) => s.screen);
   const darkMode = useSettingsStore((s) => s.darkMode);
   const customLevels = useLevelStore((s) => s.customLevels);
+  // F-project-review-2026-06-13-D-10: the init layer surfaces dropped
+  // records / customs / migration errors as `lastLoadSummary` on the
+  // level store. The toast below consumes it on first mount so a user
+  // whose personal bests or hand-crafted custom levels were rejected
+  // for a schema-bump reason sees something other than a devtools
+  // console.warn. Subscribed here (not in LevelSelect) so the message
+  // appears regardless of which screen the user lands on after refresh.
+  const lastLoadSummary = useLevelStore((s) => s.lastLoadSummary);
+  const dismissLoadSummary = useLevelStore((s) => s.dismissLoadSummary);
 
   // P2-4b + F-project-review-2026-06-13-A-HIGH-4: wrap the module-level
   // BUILT_IN_JSON_PROVIDER singleton in an EditorMazeProvider so a custom
@@ -212,6 +250,58 @@ export function App() {
       )}
       {uiScreen === 'settings' && <Settings onBack={() => setUiScreen('menu')} />}
       {uiScreen === 'editor' && <EditorPage onExit={() => setUiScreen('menu')} />}
+      {lastLoadSummary && (
+        // F-project-review-2026-06-13-D-10: one-time toast surfacing the
+        // init-time loss summary. Renders inside the positioned wrapper
+        // so the absolute positioning is relative to the viewport-sized
+        // root (the same coordinate space the existing overlays use).
+        // Dismiss button clears the field; the next page load will
+        // re-evaluate localStorage and re-surface a fresh summary if
+        // the underlying data is still in the broken state.
+        <div
+          data-testid="load-summary-toast"
+          role="status"
+          aria-live="polite"
+          style={{
+            position: 'absolute',
+            left: '50%',
+            bottom: 24,
+            transform: 'translateX(-50%)',
+            maxWidth: 560,
+            padding: '12px 16px',
+            background: 'var(--panel)',
+            color: 'var(--fg)',
+            border: '1px solid var(--border)',
+            borderRadius: 8,
+            boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            zIndex: 1000,
+          }}
+        >
+          <span style={{ flex: 1, fontSize: 14, lineHeight: 1.4 }}>
+            {buildLoadSummaryMessage(lastLoadSummary)}
+          </span>
+          <button
+            data-testid="load-summary-toast-dismiss"
+            type="button"
+            onClick={dismissLoadSummary}
+            aria-label="关闭提示"
+            style={{
+              padding: '4px 10px',
+              fontSize: 13,
+              border: '1px solid var(--border)',
+              borderRadius: 4,
+              background: 'transparent',
+              color: 'var(--fg)',
+              cursor: 'pointer',
+            }}
+          >
+            关闭
+          </button>
+        </div>
+      )}
     </div>
     </ConfirmProvider>
   );

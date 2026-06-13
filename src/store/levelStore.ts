@@ -44,6 +44,44 @@ interface LevelStore {
   getCustom: (id: string) => MazeData | undefined;
   deleteCustom: (id: string) => void;
   listCustom: () => string[];
+  // F-project-review-2026-06-13-D-10: transient field set during init when
+  // localStorage entries were dropped (sanitization rejection) or a
+  // migration threw. The UI reads this once on mount to show a one-time
+  // toast like "3 custom levels were skipped because they're from a
+  // newer format." — same shape as `useConfirm` for surfacing errors.
+  // `null` means "nothing was dropped on this load"; the toast component
+  // treats `null` as "don't render."
+  lastLoadSummary: LoadSummary | null;
+  dismissLoadSummary: () => void;
+}
+
+/**
+ * F-project-review-2026-06-13-D-10: summary of what was lost during init.
+ * Each list is empty when nothing of that kind was dropped. The migration-
+ * error fields capture a wholesale-load failure (the entire key was
+ * rejected because a v_n → v_{n+1} chain blew up) — distinct from the
+ * per-entry `*DroppedKeys` arrays which capture per-row rejections.
+ */
+export interface LoadSummary {
+  recordsDroppedKeys: string[];
+  customsDroppedKeys: string[];
+  recordsMigrationError: string | null;
+  customsMigrationError: string | null;
+}
+
+function buildLoadSummary(
+  recordsDropped: string[],
+  customsDropped: string[],
+  recordsMigrationError: string | null,
+  customsMigrationError: string | null,
+): LoadSummary | null {
+  if (
+    recordsDropped.length === 0 &&
+    customsDropped.length === 0 &&
+    recordsMigrationError === null &&
+    customsMigrationError === null
+  ) return null;
+  return { recordsDroppedKeys: recordsDropped, customsDroppedKeys: customsDropped, recordsMigrationError, customsMigrationError };
 }
 
 const STORAGE_KEY = 'maze3d.levels.v1';
@@ -89,14 +127,23 @@ export function isBestRecord(raw: unknown): raw is BestRecord {
   return true;
 }
 
-export function sanitizeBestRecordMap(raw: unknown): Record<string, BestRecord> {
-  if (typeof raw !== 'object' || raw === null) return {};
+// F-project-review-2026-06-13-D-10: signature changed to return
+// `{ map, dropped }` so the caller can surface dropped keys as a toast.
+// The dropped list is the contract — the previous "no UI feedback" path
+// is what triggered this finding. console.warn is preserved as a
+// dev-time breadcrumb (the toast is the user-time breadcrumb).
+export function sanitizeBestRecordMap(raw: unknown): { map: Record<string, BestRecord>; dropped: string[] } {
+  if (typeof raw !== 'object' || raw === null) return { map: {}, dropped: [] };
   const out: Record<string, BestRecord> = {};
+  const dropped: string[] = [];
   for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
     if (isBestRecord(v)) out[k] = v;
-    else console.warn(`levelStore: dropped invalid record for level '${k}'`);
+    else {
+      dropped.push(k);
+      console.warn(`levelStore: dropped invalid record for level '${k}'`);
+    }
   }
-  return out;
+  return { map: out, dropped };
 }
 
 // P2-4b: best-effort load of custom levels on init. We can't rely on
@@ -105,23 +152,37 @@ export function sanitizeBestRecordMap(raw: unknown): Record<string, BestRecord> 
 // fails to parse (malformed JSON, missing walls, start on a wall, etc.)
 // is dropped with a console.warn so a bad hand-edit in localStorage
 // doesn't brick the editor on next page load.
-export function sanitizeCustomLevelsMap(raw: unknown): Record<string, MazeData> {
-  if (typeof raw !== 'object' || raw === null) return {};
+//
+// F-project-review-2026-06-13-D-10: signature changed (same shape as
+// sanitizeBestRecordMap) so the caller can collect dropped keys for the
+// init toast.
+export function sanitizeCustomLevelsMap(raw: unknown): { map: Record<string, MazeData>; dropped: string[] } {
+  if (typeof raw !== 'object' || raw === null) return { map: {}, dropped: [] };
   const out: Record<string, MazeData> = {};
+  const dropped: string[] = [];
   for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
     try {
       out[k] = validateMaze(v, k);
     } catch (e) {
+      dropped.push(k);
       console.warn(`levelStore: dropped invalid custom level '${k}':`, e instanceof Error ? e.message : e);
     }
   }
-  return out;
+  return { map: out, dropped };
 }
 
-export const useLevelStore = create<LevelStore>((set, get) => ({
-  bestByLevel: (() => {
+export const useLevelStore = create<LevelStore>((set, get) => {
+  // F-project-review-2026-06-13-D-10: switch from `create((set, get) => ({...}))`
+  // to a function-bodied form so we can compute the per-key init result
+  // (sanitized map + dropped keys + migration-error string) ONCE before
+  // building the returned state object. The arrow-returning-object form
+  // runs each IIFE in field-initializer order without a shared scope,
+  // which would force us to either re-parse localStorage twice or stash
+  // dropped keys in a module-level mutable (the latter is the anti-pattern
+  // this refactor replaces).
+  const recordsInit = (() => {
     const raw = loadJSON<unknown>(STORAGE_KEY, null);
-    if (raw === null) return {};
+    if (raw === null) return { map: {} as Record<string, BestRecord>, dropped: [] as string[], migrationError: null as string | null };
     // F-project-review-2026-06-13-D-21: route through the migration
     // chokepoint so a future v2 schema bump can transform v1 data on
     // load without changing this call site. Currently a no-op because
@@ -133,19 +194,52 @@ export const useLevelStore = create<LevelStore>((set, get) => ({
       // but if a hand-crafted key shows up without one we treat it as
       // v1 (the only schema that has ever existed) rather than refusing
       // to load — sanitizeBestRecordMap will drop any malformed entries.
-      return sanitizeBestRecordMap(raw);
+      return { ...sanitizeBestRecordMap(raw), migrationError: null as string | null };
     }
     try {
       const migrated = applyLevelMigrations(raw, fromVersion);
-      return sanitizeBestRecordMap(migrated);
+      return { ...sanitizeBestRecordMap(migrated), migrationError: null as string | null };
     } catch (e) {
       console.warn(
         `levelStore: migration failed for '${STORAGE_KEY}':`,
         e instanceof Error ? e.message : e,
       );
-      return {};
+      return { map: {} as Record<string, BestRecord>, dropped: [] as string[], migrationError: e instanceof Error ? e.message : String(e) };
     }
-  })(),
+  })();
+  const customsInit = (() => {
+    const raw = loadJSON<unknown>(CUSTOM_STORAGE_KEY, null);
+    if (raw === null) return { map: {} as Record<string, MazeData>, dropped: [] as string[], migrationError: null as string | null };
+    // F-project-review-2026-06-13-D-21: same migration chokepoint as
+    // bestByLevel — see the bestByLevel IIFE above for the rationale.
+    const fromVersion = parseStorageKeyVersion(CUSTOM_STORAGE_KEY);
+    if (fromVersion === null) {
+      return { ...sanitizeCustomLevelsMap(raw), migrationError: null as string | null };
+    }
+    try {
+      const migrated = applyLevelMigrations(raw, fromVersion);
+      return { ...sanitizeCustomLevelsMap(migrated), migrationError: null as string | null };
+    } catch (e) {
+      console.warn(
+        `levelStore: migration failed for '${CUSTOM_STORAGE_KEY}':`,
+        e instanceof Error ? e.message : e,
+      );
+      return { map: {} as Record<string, MazeData>, dropped: [] as string[], migrationError: e instanceof Error ? e.message : String(e) };
+    }
+  })();
+  // F-project-review-2026-06-13-D-10: surface dropped records / customs /
+  // migration errors as a one-time store field. The UI reads this once
+  // on mount and shows a toast like "3 custom levels were skipped because
+  // they're from a newer format." `null` means "nothing to surface" and
+  // is the common-case value (no drops).
+  const lastLoadSummary = buildLoadSummary(
+    recordsInit.dropped,
+    customsInit.dropped,
+    recordsInit.migrationError,
+    customsInit.migrationError,
+  );
+  return {
+  bestByLevel: recordsInit.map,
   peekIsBetter: (r) => {
     if (!isBestRecord(r)) return false;
     const cur = get().bestByLevel[r.levelId];
@@ -168,26 +262,7 @@ export const useLevelStore = create<LevelStore>((set, get) => ({
   getBest: (levelId) => get().bestByLevel[levelId],
 
   // ---- P2-4b: custom (editor-authored) levels ----
-  customLevels: (() => {
-    const raw = loadJSON<unknown>(CUSTOM_STORAGE_KEY, null);
-    if (raw === null) return {};
-    // F-project-review-2026-06-13-D-21: same migration chokepoint as
-    // bestByLevel — see the bestByLevel IIFE above for the rationale.
-    const fromVersion = parseStorageKeyVersion(CUSTOM_STORAGE_KEY);
-    if (fromVersion === null) {
-      return sanitizeCustomLevelsMap(raw);
-    }
-    try {
-      const migrated = applyLevelMigrations(raw, fromVersion);
-      return sanitizeCustomLevelsMap(migrated);
-    } catch (e) {
-      console.warn(
-        `levelStore: migration failed for '${CUSTOM_STORAGE_KEY}':`,
-        e instanceof Error ? e.message : e,
-      );
-      return {};
-    }
-  })(),
+  customLevels: customsInit.map,
   // Throws on structural failure (delegated to validateMaze) so the editor
   // can surface a user-facing error before any persistence happens. On
   // success the level is idempotently merged into both state and storage.
@@ -209,4 +284,10 @@ export const useLevelStore = create<LevelStore>((set, get) => ({
     set({ customLevels: next });
   },
   listCustom: () => Object.keys(get().customLevels),
-}));
+  // F-project-review-2026-06-13-D-10: see `lastLoadSummary` declaration
+  // and `buildLoadSummary` helper above for the contract. Captured at
+  // construction; cleared when the toast is dismissed.
+  lastLoadSummary,
+  dismissLoadSummary: () => set({ lastLoadSummary: null }),
+  };
+});

@@ -108,6 +108,44 @@ describe('levelStore.customLevels', () => {
       expect(levels['custom-bad']).toBeUndefined();
       expect(warnSpy).toHaveBeenCalled();
     });
+
+    // F-project-review-2026-06-13-D-10: when init drops invalid custom
+    // levels, the dropped keys must land in `lastLoadSummary.customsDroppedKeys`
+    // so the UI can show a one-time toast. Without this, a user whose
+    // hand-crafted custom levels were rejected for a schema-bump reason
+    // would only see `console.warn` and assume everything is fine.
+    it('D-10: init records customsDroppedKeys in lastLoadSummary when entries are dropped', async () => {
+      const good = makeMaze({ id: 'custom-good', name: 'good' });
+      const badShape = { id: 'custom-bad', name: 'bad' }; // missing size/walls/etc.
+      const seed = { [good.id]: good, [badShape.id]: badShape };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(seed));
+
+      vi.resetModules();
+      const { useLevelStore: freshStore } = await import('../../../src/store/levelStore');
+      const summary = freshStore.getState().lastLoadSummary;
+      expect(summary).not.toBeNull();
+      expect(summary!.customsDroppedKeys).toEqual(['custom-bad']);
+      expect(summary!.recordsDroppedKeys).toEqual([]);
+    });
+
+    it('D-10: init sets lastLoadSummary to null when every entry survives sanitization', async () => {
+      const good = makeMaze({ id: 'custom-good', name: 'good' });
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ [good.id]: good }));
+      vi.resetModules();
+      const { useLevelStore: freshStore } = await import('../../../src/store/levelStore');
+      expect(freshStore.getState().lastLoadSummary).toBeNull();
+    });
+
+    it('D-10: dismissLoadSummary clears the field', async () => {
+      const good = makeMaze({ id: 'custom-good', name: 'good' });
+      const badShape = { id: 'custom-bad', name: 'bad' };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ [good.id]: good, [badShape.id]: badShape }));
+      vi.resetModules();
+      const { useLevelStore: freshStore } = await import('../../../src/store/levelStore');
+      expect(freshStore.getState().lastLoadSummary).not.toBeNull();
+      freshStore.getState().dismissLoadSummary();
+      expect(freshStore.getState().lastLoadSummary).toBeNull();
+    });
   });
 
   describe('deleteCustom', () => {
