@@ -1,5 +1,9 @@
 import { create } from 'zustand';
 import { loadJSON, saveJSON } from './persist';
+// F-project-review-2026-06-13-D-21: route every localStorage load through
+// the migration chokepoint so a future v2 schema bump can transform v1
+// data on load without touching the call site here.
+import { applyLevelMigrations, parseStorageKeyVersion } from './migrations';
 import { validateMaze } from '../maze/JsonMazeProvider';
 import type { Algorithm, MazeData, MazeSize, Seed } from '../maze/types';
 
@@ -47,6 +51,11 @@ const STORAGE_KEY = 'maze3d.levels.v1';
 // a corrupted customLevels entry must never cascade into wiping the user's
 // best records. Versioned (v1) so a future schema change can migrate or
 // reset in isolation.
+//
+// F-project-review-2026-06-13-D-21: both keys carry their schema version
+// in the key name. When a future bump adds a v2, the init code below
+// routes the loaded value through `applyLevelMigrations` so v1 data on
+// disk is transformed on load instead of being orphaned.
 const CUSTOM_STORAGE_KEY = 'maze3d.customLevels.v1';
 
 function isValidSeed(raw: unknown): raw is Seed {
@@ -112,7 +121,30 @@ export function sanitizeCustomLevelsMap(raw: unknown): Record<string, MazeData> 
 export const useLevelStore = create<LevelStore>((set, get) => ({
   bestByLevel: (() => {
     const raw = loadJSON<unknown>(STORAGE_KEY, null);
-    return raw ? sanitizeBestRecordMap(raw) : {};
+    if (raw === null) return {};
+    // F-project-review-2026-06-13-D-21: route through the migration
+    // chokepoint so a future v2 schema bump can transform v1 data on
+    // load without changing this call site. Currently a no-op because
+    // LEVEL_MIGRATIONS is empty and CURRENT_LEVEL_SCHEMA_VERSION is 1,
+    // but the version-parse + apply call establishes the path.
+    const fromVersion = parseStorageKeyVersion(STORAGE_KEY);
+    if (fromVersion === null) {
+      // Defensive: every key we write here carries the `.v1` suffix,
+      // but if a hand-crafted key shows up without one we treat it as
+      // v1 (the only schema that has ever existed) rather than refusing
+      // to load — sanitizeBestRecordMap will drop any malformed entries.
+      return sanitizeBestRecordMap(raw);
+    }
+    try {
+      const migrated = applyLevelMigrations(raw, fromVersion);
+      return sanitizeBestRecordMap(migrated);
+    } catch (e) {
+      console.warn(
+        `levelStore: migration failed for '${STORAGE_KEY}':`,
+        e instanceof Error ? e.message : e,
+      );
+      return {};
+    }
   })(),
   peekIsBetter: (r) => {
     if (!isBestRecord(r)) return false;
@@ -138,7 +170,23 @@ export const useLevelStore = create<LevelStore>((set, get) => ({
   // ---- P2-4b: custom (editor-authored) levels ----
   customLevels: (() => {
     const raw = loadJSON<unknown>(CUSTOM_STORAGE_KEY, null);
-    return raw ? sanitizeCustomLevelsMap(raw) : {};
+    if (raw === null) return {};
+    // F-project-review-2026-06-13-D-21: same migration chokepoint as
+    // bestByLevel — see the bestByLevel IIFE above for the rationale.
+    const fromVersion = parseStorageKeyVersion(CUSTOM_STORAGE_KEY);
+    if (fromVersion === null) {
+      return sanitizeCustomLevelsMap(raw);
+    }
+    try {
+      const migrated = applyLevelMigrations(raw, fromVersion);
+      return sanitizeCustomLevelsMap(migrated);
+    } catch (e) {
+      console.warn(
+        `levelStore: migration failed for '${CUSTOM_STORAGE_KEY}':`,
+        e instanceof Error ? e.message : e,
+      );
+      return {};
+    }
   })(),
   // Throws on structural failure (delegated to validateMaze) so the editor
   // can surface a user-facing error before any persistence happens. On
