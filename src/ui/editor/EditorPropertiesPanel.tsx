@@ -426,6 +426,27 @@ function WallForm({ x, z }: { x: number; z: number }) {
   );
 }
 
+// P3-B-L26: extract the selection→form dispatch into a pure helper so
+// EditorPropertiesPanel's body is a single expression instead of a
+// `let body; if (a) {...} else if ...` chain. Same branches, fewer
+// mutable locals.
+type RenderBodyArgs = {
+  selection: ReturnType<typeof useEditorStore.getState>['selection'];
+  level: MazeData;
+};
+function renderBody({ selection, level }: RenderBodyArgs): React.ReactNode {
+  if (selection === null) return <LevelMetadataForm level={level} />;
+  if (selection.kind === 'pickup') {
+    const pickup = level.pickups.find((p) => p.id === selection.id);
+    return pickup ? <PickupForm pickup={pickup} /> : <SelectionMissing kind="pickup" />;
+  }
+  if (selection.kind === 'enemy') {
+    const enemy = level.enemies.find((e) => e.id === selection.id);
+    return enemy ? <EnemyForm enemy={enemy} /> : <SelectionMissing kind="enemy" />;
+  }
+  return <WallForm x={selection.x} z={selection.z} />;
+}
+
 // ---------------------------------------------------------------------------
 // Top-level panel: dispatches to the per-selection sub-form.
 // ---------------------------------------------------------------------------
@@ -433,22 +454,9 @@ export function EditorPropertiesPanel() {
   const level = useEditorStore((s) => s.level);
   const selection = useEditorStore((s) => s.selection);
 
-  let body: React.ReactNode;
-  if (selection === null) {
-    body = <LevelMetadataForm level={level} />;
-  } else if (selection.kind === 'pickup') {
-    const pickup = level.pickups.find((p) => p.id === selection.id);
-    body = pickup ? <PickupForm pickup={pickup} /> : <SelectionMissing kind="pickup" />;
-  } else if (selection.kind === 'enemy') {
-    const enemy = level.enemies.find((e) => e.id === selection.id);
-    body = enemy ? <EnemyForm enemy={enemy} /> : <SelectionMissing kind="enemy" />;
-  } else {
-    body = <WallForm x={selection.x} z={selection.z} />;
-  }
-
   return (
     <aside data-testid="editor-properties-panel" style={PANEL_STYLE}>
-      {body}
+      {renderBody({ selection, level })}
     </aside>
   );
 }

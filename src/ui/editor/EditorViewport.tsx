@@ -127,6 +127,14 @@ export function EditorViewport() {
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>): void => {
     if (e.button !== 2) return; // right button only
     panStateRef.current = { x: e.clientX, y: e.clientY };
+    // P3-B-L32: force a re-render so the cursor transitions from
+    // 'grab' to 'grabbing' immediately. Without this, panStateRef
+    // changes but no React state changes → no re-render → cursor
+    // stays 'grab' until the first mousemove updates the camera.
+    // setCamera({ ...camera }) is a no-op value-wise but emits a new
+    // reference, which trips the cursor style update on this same
+    // render commit.
+    setCamera({ ...camera });
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>): void => {

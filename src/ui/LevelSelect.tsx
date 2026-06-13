@@ -100,6 +100,10 @@ interface ValidationContext {
   enemyCount: number;
   progressive: boolean;
   seedInput: string;
+  // P3-B-L37: random source 的 seed 来自 caller 的 useState(rendered stable
+  // per mount),不再由 validateSelection 内部 randomHexSeed() 调,免得每次
+  // render 重生成 → start button id 翻动不可预测。
+  randomSeed: string;
 }
 
 function validateSelection(ctx: ValidationContext): Validation {
@@ -122,7 +126,7 @@ function validateSelection(ctx: ValidationContext): Validation {
     const seed: Seed = {
       algorithm: algorithmForMode(ctx.mode),
       size: ctx.selectedSize,
-      mazeSeed: randomHexSeed(),
+      mazeSeed: ctx.randomSeed,
     };
     return { valid: true, id: encodeSeed(seed), options: buildOptions(ctx, seed) };
   }
@@ -324,6 +328,13 @@ export function LevelSelect({
   // P2-6 FR-21: seed-input 在 onChange (而非 onBlur) 实时 strip + 限长 16。
   const [seedInput, setSeedInput] = useState('');
   const [selectedSize, setSelectedSize] = useState<MazeSize>(30);
+  // P3-B-L37: pin the random seed across renders. validateSelection runs
+  // on every render, so without this every parent re-render (hover,
+  // focus, any unrelated state) would mint a fresh seed and the start
+  // button's id would flip unpredictably. Lazy-init generates one seed
+  // for the first render; the effect below refreshes it when the user
+  // (re)enters the 'random' source.
+  const [randomSeed, setRandomSeed] = useState<string>(() => randomHexSeed());
 
   const customLevels = useLevelStore((s) => s.customLevels);
   const deleteCustom = useLevelStore((s) => s.deleteCustom);
@@ -369,6 +380,13 @@ export function LevelSelect({
 
   const effectiveSublevelId = sublevelId ?? sublevelOptions[0]?.id ?? null;
 
+  // P3-B-L37: when the user flips into 'random' from another source,
+  // mint a fresh seed once. The randomSeed state is otherwise held
+  // stable so the start button's id is deterministic across renders.
+  useEffect(() => {
+    if (levelSource === 'random') setRandomSeed(randomHexSeed());
+  }, [levelSource]);
+
   const validation = validateSelection({
     levelSource,
     sublevelId: effectiveSublevelId,
@@ -380,6 +398,7 @@ export function LevelSelect({
     enemyCount,
     progressive,
     seedInput,
+    randomSeed,
   });
   const startDisabled = !validation.valid;
 

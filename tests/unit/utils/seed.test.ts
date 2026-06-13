@@ -139,6 +139,37 @@ describe('encodeSeed / decodeSeed', () => {
   it('throws InvalidSeedError on unknown size', () => {
     expect(() => decodeSeed('algo-v1-recursive-backtracker-99-0000000000000001')).toThrow(InvalidSeedError);
   });
+
+  // F-A-architecture-LOW-3: boundary round-trip. The existing
+  // "roundtrips a seed" test only exercises size=30 + algorithm=rb +
+  // a single seed. encode/decode carry algorithm / size / mazeSeed
+  // through a regex, so the boundary values (size=15/50, the
+  // remaining 3 algorithms, and hex edge values 0000…0001 /
+  // ffff…ffff / 8000…0000) are exactly the cases most likely to
+  // regress in a future refactor. Cover all 4 algorithms × 3 sizes
+  // × 4 edge seeds = 48 combos × 2 (id-charset and decoded
+  // equality) assertions. Pure loop, no async, no fs.
+  it('round-trips every algorithm × size × boundary seed (A-L3)', () => {
+    const algos = ['recursive-backtracker', 'kruskal', 'prim', 'hunt-and-kill'] as const;
+    const sizes = [15, 30, 50] as const;
+    const edgeSeeds = [
+      '0000000000000000',
+      '0000000000000001',
+      '8000000000000000',
+      'ffffffffffffffff',
+    ];
+    for (const algorithm of algos) {
+      for (const size of sizes) {
+        for (const mazeSeed of edgeSeeds) {
+          const seed = { algorithm, size, mazeSeed };
+          const id = encodeSeed(seed);
+          // Pinned wire format: must be parseable by the SEED_RE.
+          expect(id).toMatch(/^algo-v1-[a-z-]+-(15|30|50)-[0-9a-f]{16}$/);
+          expect(decodeSeed(id)).toEqual(seed);
+        }
+      }
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
