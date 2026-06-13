@@ -2,6 +2,69 @@ export type CellType = 0 | 1;
 export type PickupType = 'time' | 'health' | 'key';
 export type VictoryType = 'reach-exit' | 'survive' | 'time-trial';
 
+// F-D-quality-D-16: the level-select source picker has its own literal
+// union. It used to live inline in LevelSelect.tsx, but lifting it here
+// gives it a single home alongside the runtime whitelist that drives
+// `isLevelSource`.
+export type LevelSource = 'teaching' | 'random' | 'custom' | 'seed';
+
+// F-D-quality-HIGH-2 + D-16: runtime whitelists backing the type guards.
+// The literal-typed arrays double as both compile-time documentation of
+// the union and the runtime values the guards check against. The shape
+// (readonly tuple of literals) lets `isFoo` narrow the input type without
+// an `as never` cast on the includes() call.
+export const PICKUP_TYPE_VALUES: readonly PickupType[] = ['time', 'health', 'key'];
+export const VICTORY_TYPE_VALUES: readonly VictoryType[] = [
+  'reach-exit',
+  'survive',
+  'time-trial',
+];
+export const LEVEL_SOURCE_VALUES: readonly LevelSource[] = [
+  'teaching',
+  'random',
+  'custom',
+  'seed',
+];
+export const MAZE_SIZE_VALUES: readonly MazeSize[] = [15, 30, 50];
+
+// F-D-quality-HIGH-2 + D-16: UI-boundary type guards. The old code reached
+// for `as PickupType` / `as VictoryType` / `as MazeSize` / `as LevelSource`
+// / `as 30 | 60 | 90 | 120` after reading a raw `<select>` value, trusting
+// the only writer was the same component. Each guard rejects:
+//   - non-string (or non-number, for numeric unions) inputs up-front, so
+//     `null` / `undefined` / objects can't reach the includes() call
+//   - NaN — `includes()` uses SameValueZero, so NaN never matches a
+//     literal, but the explicit `Number.isFinite` keeps the intent
+//     obvious to a reader
+//   - values outside the literal union via the readonly whitelist
+export function isPickupType(v: unknown): v is PickupType {
+  return typeof v === 'string' && (PICKUP_TYPE_VALUES as readonly string[]).includes(v);
+}
+
+export function isVictoryType(v: unknown): v is VictoryType {
+  return typeof v === 'string' && (VICTORY_TYPE_VALUES as readonly string[]).includes(v);
+}
+
+export function isLevelSource(v: unknown): v is LevelSource {
+  return typeof v === 'string' && (LEVEL_SOURCE_VALUES as readonly string[]).includes(v);
+}
+
+export function isMazeSize(v: unknown): v is MazeSize {
+  return (
+    typeof v === 'number' &&
+    Number.isFinite(v) &&
+    (MAZE_SIZE_VALUES as readonly number[]).includes(v)
+  );
+}
+
+export function isSurviveSeconds(v: unknown): v is SurviveSeconds {
+  return (
+    typeof v === 'number' &&
+    Number.isFinite(v) &&
+    (SURVIVE_SECONDS_VALUES as readonly number[]).includes(v)
+  );
+}
+
 // P2-2 F6+F7: single source of truth for inventory slot count and per-slot
 // type. Previously INVENTORY_SIZE lived in gameStore.ts and the `0 | 1`
 // union was hand-rolled in 6 signatures (Rules.ts, InputManager.ts x2,

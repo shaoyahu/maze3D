@@ -14,8 +14,17 @@ import {
   isValidSurviveSeconds,
   normalizeSurviveSeconds,
   isValidEnemyPath,
+  isPickupType,
+  isVictoryType,
+  isMazeSize,
+  isLevelSource,
+  isSurviveSeconds,
   type EnemySpawn,
   type EnemyState,
+  type LevelSource,
+  type MazeSize,
+  type PickupType,
+  type VictoryType,
 } from '../../../src/maze/types';
 
 describe('clampEnemyCount', () => {
@@ -143,5 +152,113 @@ describe('enemyChaseMultiplier (P2-4a)', () => {
     expect(ENEMY_CHASE_MULTIPLIER_EASY).toBe(1.2);
     expect(ENEMY_CHASE_MULTIPLIER_MEDIUM).toBe(1.5);
     expect(ENEMY_CHASE_MULTIPLIER_HARD).toBe(1.8);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// F-D-quality-HIGH-2 + D-16: UI-boundary type guards. The old code reached
+// for `as PickupType` / `as VictoryType` / `as MazeSize` / `as LevelSource`
+// / `as 30 | 60 | 90 | 120` after reading a raw `<select>` value, trusting
+// that the only writer was the same component. A guard makes the trust
+// explicit: an untrusted `string` from an event target has to pass a check
+// before it is treated as a literal-union member.
+// ---------------------------------------------------------------------------
+
+const PICKUP_TYPES: readonly PickupType[] = ['time', 'health', 'key'];
+const VICTORY_TYPES: readonly VictoryType[] = ['reach-exit', 'survive', 'time-trial'];
+const LEVEL_SOURCES: readonly LevelSource[] = ['teaching', 'random', 'custom', 'seed'];
+const MAZE_SIZES: readonly MazeSize[] = [15, 30, 50];
+
+describe('isPickupType (F-D-quality-HIGH-2)', () => {
+  it.each(PICKUP_TYPES)('accepts the documented %s literal', (t) => {
+    expect(isPickupType(t)).toBe(true);
+  });
+
+  it('rejects unknown strings', () => {
+    expect(isPickupType('ammo')).toBe(false);
+    expect(isPickupType('')).toBe(false);
+    expect(isPickupType('TIME')).toBe(false); // case-sensitive
+  });
+
+  it('rejects non-string values', () => {
+    expect(isPickupType(null)).toBe(false);
+    expect(isPickupType(undefined)).toBe(false);
+    expect(isPickupType(42)).toBe(false);
+    expect(isPickupType({})).toBe(false);
+    expect(isPickupType(['time'])).toBe(false);
+  });
+});
+
+describe('isVictoryType (F-D-quality-HIGH-2)', () => {
+  it.each(VICTORY_TYPES)('accepts the documented %s literal', (t) => {
+    expect(isVictoryType(t)).toBe(true);
+  });
+
+  it('rejects unknown strings', () => {
+    expect(isVictoryType('boss')).toBe(false);
+    expect(isVictoryType('')).toBe(false);
+  });
+
+  it('rejects non-string values', () => {
+    expect(isVictoryType(null)).toBe(false);
+    expect(isVictoryType(undefined)).toBe(false);
+    expect(isVictoryType(0)).toBe(false);
+  });
+});
+
+describe('isMazeSize (F-D-quality-D-16)', () => {
+  it.each(MAZE_SIZES)('accepts the documented size %d', (n) => {
+    expect(isMazeSize(n)).toBe(true);
+  });
+
+  it('rejects sizes outside the 15 / 30 / 50 enum', () => {
+    expect(isMazeSize(7)).toBe(false);
+    expect(isMazeSize(16)).toBe(false);
+    expect(isMazeSize(29)).toBe(false);
+    expect(isMazeSize(100)).toBe(false);
+  });
+
+  it('rejects non-number values', () => {
+    expect(isMazeSize('15')).toBe(false);
+    expect(isMazeSize(null)).toBe(false);
+    expect(isMazeSize(undefined)).toBe(false);
+    expect(isMazeSize(NaN)).toBe(false); // NaN is the canonical "garbage" case from Number()
+  });
+});
+
+describe('isLevelSource (F-D-quality-D-16)', () => {
+  it.each(LEVEL_SOURCES)('accepts the documented %s literal', (t) => {
+    expect(isLevelSource(t)).toBe(true);
+  });
+
+  it('rejects unknown strings', () => {
+    expect(isLevelSource('community')).toBe(false);
+    expect(isLevelSource('')).toBe(false);
+  });
+
+  it('rejects non-string values', () => {
+    expect(isLevelSource(null)).toBe(false);
+    expect(isLevelSource(undefined)).toBe(false);
+    expect(isLevelSource(0)).toBe(false);
+  });
+});
+
+describe('isSurviveSeconds (F-D-quality-D-16)', () => {
+  it.each(SURVIVE_SECONDS_VALUES)('accepts %d', (value) => {
+    expect(isSurviveSeconds(value)).toBe(true);
+  });
+
+  it('rejects values outside the 30 / 60 / 90 / 120 enum', () => {
+    expect(isSurviveSeconds(0)).toBe(false);
+    expect(isSurviveSeconds(45)).toBe(false);
+    expect(isSurviveSeconds(180)).toBe(false);
+    expect(isSurviveSeconds(60.5)).toBe(false);
+  });
+
+  it('rejects non-number values', () => {
+    expect(isSurviveSeconds('60')).toBe(false);
+    expect(isSurviveSeconds(null)).toBe(false);
+    expect(isSurviveSeconds(undefined)).toBe(false);
+    expect(isSurviveSeconds(NaN)).toBe(false);
   });
 });

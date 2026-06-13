@@ -9,6 +9,11 @@ import {
   SURVIVE_SECONDS_MAX,
   SURVIVE_SECONDS_MIN,
   SURVIVE_SECONDS_VALUES,
+  isLevelSource,
+  isMazeSize,
+  isSurviveSeconds,
+  isVictoryType,
+  type LevelSource,
   type MazeSize,
   type Seed,
   type SpawnSchedule,
@@ -25,8 +30,9 @@ export interface LevelDef { id: string; name: string; }
 
 // P2-6: 4 关卡来源(教学/随机/我的/指定种子)。每个 option 都带稳定
 // data-testid,方便 e2e 用 within(select) 精确选 option。
-type LevelSource = 'teaching' | 'random' | 'custom' | 'seed';
-
+// F-D-quality-D-16: the literal union itself is now in src/maze/types.ts
+// alongside the `isLevelSource` runtime whitelist; LevelSelect just imports
+// the type so its option array can stay typed.
 const LEVEL_SOURCE_OPTIONS: ReadonlyArray<{ value: LevelSource; label: string; testId: string }> = [
   { value: 'teaching', label: '教学关卡', testId: 'level-source-teaching' },
   { value: 'random', label: '随机关卡', testId: 'level-source-random' },
@@ -139,7 +145,14 @@ function buildOptions(ctx: ValidationContext, seed: Seed): StartLevelOptions {
     // 防御性 clamp,保证 options.surviveSeconds 不会越界。类型仍是字面量
     // union 是为了不破坏现有 engine 调用方;运行时就是 number。
     const clamped = Math.max(SURVIVE_SECONDS_MIN, Math.min(SURVIVE_SECONDS_MAX, ctx.surviveSeconds));
-    opts.surviveSeconds = clamped as 30 | 60 | 90 | 120;
+    // F-D-quality-D-16: the previous `as 30 | 60 | 90 | 120` cast was a
+    // type-system lie — any clamped number (e.g. 45) was quietly widened
+    // to the literal union without runtime verification. The downstream
+    // `normalizeSurviveSeconds` in gameStore / Game already falls back
+    // to SURVIVE_SECONDS_DEFAULT for non-enum values, so we make the
+    // fallback explicit at the boundary instead of hiding it in an
+    // unsafe cast.
+    opts.surviveSeconds = isSurviveSeconds(clamped) ? clamped : SURVIVE_SECONDS_DEFAULT;
   }
   return opts;
 }
@@ -393,7 +406,13 @@ export function LevelSelect({
             data-testid="level-source-select"
             className="level-select-select"
             value={levelSource}
-            onChange={(e) => setLevelSource(e.target.value as LevelSource)}
+            onChange={(e) => {
+              // F-D-quality-D-16: same pattern as EditorPropertiesPanel —
+              // raw <select> value is `string`; validate against the
+              // whitelist before narrowing to the literal union.
+              const v = e.target.value;
+              if (isLevelSource(v)) setLevelSource(v);
+            }}
             aria-label="关卡来源"
           >
             {LEVEL_SOURCE_OPTIONS.map((opt) => (
@@ -452,7 +471,13 @@ export function LevelSelect({
                 data-testid="mode-select"
                 className="level-select-select"
                 value={mode}
-                onChange={(e) => setMode(e.target.value as VictoryType)}
+                onChange={(e) => {
+                  // F-D-quality-HIGH-2: validate raw event value against
+                  // the VictoryType whitelist; silently ignore unknown
+                  // values rather than silently widening state.
+                  const v = e.target.value;
+                  if (isVictoryType(v)) setMode(v);
+                }}
                 aria-label="游戏模式"
               >
                 {MODE_OPTIONS.map((opt) => (
@@ -467,7 +492,14 @@ export function LevelSelect({
                 data-testid="size-select"
                 className="level-select-select"
                 value={selectedSize}
-                onChange={(e) => setSelectedSize(Number(e.target.value) as MazeSize)}
+                onChange={(e) => {
+                  // F-D-quality-D-16: numeric <select> value comes from
+                  // Number(string) which yields NaN for empty / non-numeric
+                  // input; isMazeSize rejects NaN and sizes outside the
+                  // 15 / 30 / 50 enum.
+                  const n = Number(e.target.value);
+                  if (isMazeSize(n)) setSelectedSize(n);
+                }}
                 aria-label="迷宫尺寸"
               >
                 {SIZE_OPTIONS.map((opt) => (

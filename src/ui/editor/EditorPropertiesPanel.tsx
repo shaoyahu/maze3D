@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useEditorStore } from '../../store/editorStore';
-import type { EnemySpawn, LevelRules, MazeData, Pickup, PickupType } from '../../maze/types';
+import type { EnemySpawn, MazeData, Pickup, PickupType } from '../../maze/types';
+import { isPickupType, isVictoryType } from '../../maze/types';
 import { Button } from '../components/Button';
 
 const PICKUP_TYPE_OPTIONS: readonly PickupType[] = ['time', 'health', 'key'];
@@ -104,7 +105,17 @@ function LevelMetadataForm({ level }: { level: MazeData }) {
   useDebouncedCommit(initialTime, (v) => updateRule({ initialTime: Math.max(0, Math.floor(v)) }), 300);
   useDebouncedCommit(maxHealth, (v) => updateRule({ maxHealth: Math.max(1, Math.floor(v)) }), 300);
   useDebouncedCommit(timeOnPickup, (v) => updateRule({ timeOnPickup: Math.max(0, Math.floor(v)) }), 300);
-  useDebouncedCommit(victory, (v) => updateRule({ victory: v as LevelRules['victory'] }), 300);
+  // F-D-quality-HIGH-2: `victory` state is already typed as VictoryType
+  // (useState<VictoryType>(level.rules.victory) above), so `v` is narrowed
+  // at the call site. The old `as LevelRules['victory']` was a redundant
+  // type assertion hiding the fact that this entire commit is type-safe
+  // by construction. The `isVictoryType` guard re-asserts the invariant
+  // explicitly so a future refactor that widens `victory`'s state (e.g.
+  // to `VictoryType | null`) trips a compile error here instead of
+  // silently shipping a malformed `rules.victory`.
+  useDebouncedCommit(victory, (v) => {
+    if (isVictoryType(v)) updateRule({ victory: v });
+  }, 300);
 
   return (
     <div data-testid="level-metadata-form" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -220,7 +231,13 @@ function PickupForm({ pickup }: { pickup: Pickup }) {
           style={INPUT}
           value={type}
           onChange={(e) => {
-            const t = e.target.value as PickupType;
+            // F-D-quality-HIGH-2: the <option> set is statically `PickupType`
+            // values, but the raw event target value is `string`. The old
+            // `as PickupType` cast trusted the DOM without verifying it;
+            // now we run `isPickupType` first. If a future option is
+            // misconfigured the call is a no-op instead of poisoning state.
+            const t = e.target.value;
+            if (!isPickupType(t)) return;
             setType(t);
             updatePickup(pickup.id, { type: t });
           }}
