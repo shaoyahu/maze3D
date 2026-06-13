@@ -27,11 +27,14 @@ export function Button({
   width,
   ...rest
 }: ButtonProps) {
-  // 旧 hoverLift 行为兼容:保留 .main-menu-button 类,等价 hoverStyle='lift'。
+  // P3-B-L6: resolvedStyle always wins (hoverLift resolves to 'lift'
+  // above), so the legacy `main-menu-button` fallback branch was
+  // unreachable dead code. Only emit the hover class when resolvedStyle
+  // is set.
   const resolvedStyle: 'lift' | 'glow' | 'fade' | undefined =
     hoverStyle ?? (hoverLift ? 'lift' : undefined);
   const className = `btn btn-${variant}${
-    resolvedStyle ? ` btn-hover-${resolvedStyle}` : hoverLift ? ' main-menu-button' : ''
+    resolvedStyle ? ` btn-hover-${resolvedStyle}` : ''
   }`;
   return (
     <button

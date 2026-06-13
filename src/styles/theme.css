@@ -88,15 +88,6 @@
   outline-offset: 1px;
 }
 
-/* FR-5: 主菜单按钮 hover 垂直上浮 2px + 背景变亮 + 150ms ease-out 过渡。 */
-.main-menu-button {
-  transition: transform 150ms ease-out, background 150ms ease-out;
-}
-.main-menu-button:hover {
-  transform: translateY(-2px);
-  filter: brightness(1.1);
-}
-
 /* P2-5+: 3 种可切换的按钮悬停效果,供并列按钮使用 (暂停页等)。
    每个类都自带 transition,避免 hoverStyle 切换时缺动画。 */
 .btn-hover-lift {
