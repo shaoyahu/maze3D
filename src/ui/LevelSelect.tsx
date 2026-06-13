@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from './components/Button';
 import {
   ENEMY_COUNT_DEFAULT,
@@ -334,9 +334,21 @@ export function LevelSelect({
     .sort((a, b) => a.name.localeCompare(b.name, 'zh'));
   const customLevelIds = customDefs.map((d) => d.id);
 
-  // P2-6 FR-2: 切换来源时清空 sublevelId,避免 stale id 跨源。
+  // F-B-ui-M-7: per-source sublevelId cache. Each levelSource remembers the
+  // last sublevelId the user picked in it, so switching teaching→custom→teaching
+  // restores their teaching selection (was: cleared to null, then effectiveSublevelId
+  // fell back to sublevelOptions[0]?.id, dropping the user's pick on every return
+  // visit).
+  //
+  // Write path: ONLY the dropdown onChange handler updates the cache — see the
+  // sublevel <select> below. Doing this in a useEffect on [levelSource, sublevelId]
+  // is tempting but wrong: when levelSource flips, React commits with the *stale*
+  // sublevelId (the prior source's pick), and the effect would clobber the new
+  // source's cache slot with that stale value before the restore effect fires.
+  // Read path: the restoration useEffect below runs only when levelSource changes.
+  const lastSublevelBySourceRef = useRef<Partial<Record<LevelSource, string | null>>>({});
   useEffect(() => {
-    setSublevelId(null);
+    setSublevelId(lastSublevelBySourceRef.current[levelSource] ?? null);
   }, [levelSource]);
 
   // P2-4a FR-20: mount 时读 localStorage 的 lastSeed,免去老用户重复输入。
@@ -439,7 +451,14 @@ export function LevelSelect({
               data-testid="sublevel-select"
               className="level-select-select"
               value={effectiveSublevelId ?? ''}
-              onChange={(e) => setSublevelId(e.target.value || null)}
+              onChange={(e) => {
+                // F-B-ui-M-7: cache the explicit user pick for the active
+                // source. See lastSublevelBySourceRef comment above for why
+                // this is the only legitimate write path.
+                const next = e.target.value || null;
+                lastSublevelBySourceRef.current[levelSource] = next;
+                setSublevelId(next);
+              }}
               disabled={sublevelOptions.length === 0}
               aria-label="子关卡"
             >
