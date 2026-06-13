@@ -20,7 +20,7 @@ import {
   type StartLevelOptions,
   type VictoryType,
 } from '../maze/types';
-import { encodeSeed } from '../utils/seed';
+import { encodeSeed, fallbackRandomHexSeed } from '../utils/seed';
 import { isStorageAvailable } from '../store/persist';
 import { useLevelStore } from '../store/levelStore';
 import { algorithmForMode } from '../maze/AlgorithmMazeProvider';
@@ -61,16 +61,24 @@ const ENEMY_COUNT_OPTIONS: ReadonlyArray<number> = (() => {
 const HEX_RE = /^[0-9a-f]{16}$/;
 const LAST_SEED_KEY = 'maze3d.lastSeed';
 
+// F-D-quality-D-3: prefer crypto.getRandomValues (cryptographically
+// strong, browser-consistent); only fall back to the deterministic
+// time-seeded generator when crypto is unavailable. Math.random() is
+// intentionally NOT used here — its implementation is browser/OS-
+// dependent, so two no-crypto users would never share an auto-generated
+// seed. `fallbackRandomHexSeed(Date.now())` is deterministic across
+// runtimes (pure-JS fnv1a + mulberry32), different per call (Date.now
+// advances between user clicks), and the seed string round-trips through
+// the existing parseHexSeed / mulberry32 path.
 function randomHexSeed(): string {
-  const bytes = new Uint8Array(8);
   if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    const bytes = new Uint8Array(8);
     crypto.getRandomValues(bytes);
-  } else {
-    for (let i = 0; i < 8; i++) bytes[i] = Math.floor(Math.random() * 256);
+    let out = '';
+    for (const b of bytes) out += b.toString(16).padStart(2, '0');
+    return out;
   }
-  let out = '';
-  for (const b of bytes) out += b.toString(16).padStart(2, '0');
-  return out;
+  return fallbackRandomHexSeed(Date.now());
 }
 
 // P2-6 FR-13: validateSelection() 是单一真实源,既决定 start-button 的

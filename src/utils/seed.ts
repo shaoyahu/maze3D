@@ -89,3 +89,31 @@ export function decodeSeed(id: string): Seed {
     mazeSeed,
   };
 }
+
+// ---------------------------------------------------------------------------
+// F-D-quality-D-3: deterministic fallback for `randomHexSeed` in
+// environments without crypto.getRandomValues. The caller passes
+// `Date.now()` so this function stays pure (no system clock inside);
+// LevelSelect does `crypto.getRandomValues ?? fallbackRandomHexSeed(Date.now())`.
+//
+// We avoid Math.random() because its implementation is browser/OS-dependent
+// — two no-crypto users would never share the same auto-generated seed.
+// The seed flows through fnv1a(timeMs) -> mulberry32 -> 8 bytes, which is:
+//   * Deterministic across browsers (pure-JS arithmetic)
+//   * Different per call (Date.now() advances between user clicks)
+//   * Pure enough to test (no Date.now() inside)
+//
+// `timeMs` is typed as `number`; a NaN / non-finite input collapses to 0
+// so the function never throws — a seed generator that throws is worse
+// than one that returns a constant, since the constant at least keeps
+// the app functional in environments where Date.now() is somehow broken.
+// ---------------------------------------------------------------------------
+export function fallbackRandomHexSeed(timeMs: number): string {
+  const safeTime = Number.isFinite(timeMs) ? Math.trunc(timeMs) : 0;
+  const rand = mulberry32(fnv1a(String(safeTime)));
+  let out = '';
+  for (let i = 0; i < 8; i++) {
+    out += Math.floor(rand() * 256).toString(16).padStart(2, '0');
+  }
+  return out;
+}

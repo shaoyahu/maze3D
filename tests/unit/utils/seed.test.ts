@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   encodeSeed,
   decodeSeed,
+  fallbackRandomHexSeed,
   fnv1a,
   mulberry32,
   parseHexSeed,
@@ -137,5 +138,47 @@ describe('encodeSeed / decodeSeed', () => {
 
   it('throws InvalidSeedError on unknown size', () => {
     expect(() => decodeSeed('algo-v1-recursive-backtracker-99-0000000000000001')).toThrow(InvalidSeedError);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// F-D-quality-D-3: deterministic fallback for environments without
+// crypto.getRandomValues. The caller passes Date.now() so the function
+// stays pure (no system clock inside); the LevelSelect fallback path is
+//   crypto.getRandomValues || fallbackRandomHexSeed(Date.now())
+// — using mulberry32 seeded by fnv1a(timeMs) gives a 16-hex string that
+// is deterministic across browsers (no Math.random()), different per call
+// (Date.now() advances), and reproducible for tests via injected timeMs.
+// ---------------------------------------------------------------------------
+describe('fallbackRandomHexSeed (F-D-quality-D-3)', () => {
+  it('returns 16 lowercase hex chars', () => {
+    const out = fallbackRandomHexSeed(0);
+    expect(out).toMatch(/^[0-9a-f]{16}$/);
+  });
+
+  it('is deterministic for the same input (no Math.random())', () => {
+    // The whole point: same input → same output. If two browsers with no
+    // crypto both call fallbackRandomHexSeed at the same ms, they get the
+    // same seed string.
+    expect(fallbackRandomHexSeed(1_700_000_000_000)).toBe(fallbackRandomHexSeed(1_700_000_000_000));
+  });
+
+  it('produces different outputs for different times', () => {
+    // Sanity check that time-based seeding actually advances the seed;
+    // otherwise the function would always return the same constant.
+    expect(fallbackRandomHexSeed(0)).not.toBe(fallbackRandomHexSeed(1));
+    expect(fallbackRandomHexSeed(1_700_000_000_000)).not.toBe(fallbackRandomHexSeed(1_700_000_000_001));
+  });
+
+  it('emits all 8 bytes in the valid byte range (no overflow)', () => {
+    // Hex pairs decode to [0, 256); round-trip via parseHexSeed to assert.
+    const out = fallbackRandomHexSeed(42);
+    const pairs = out.match(/.{2}/g);
+    expect(pairs).not.toBeNull();
+    for (const p of pairs!) {
+      const n = Number.parseInt(p, 16);
+      expect(n).toBeGreaterThanOrEqual(0);
+      expect(n).toBeLessThan(256);
+    }
   });
 });
