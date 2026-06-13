@@ -154,6 +154,61 @@ describe('EditorPage (P2-7 ConfirmProvider)', () => {
     });
   });
 
+  // B-M4 regression: when the user navigates away from the editor (or
+  // otherwise unmounts EditorPage) while the draft-recovery confirm
+  // dialog is still up, the post-await code must not run on the
+  // unmounted tree.
+  //
+  // Mechanism:
+  //   1. Mount with a draft in localStorage -> the confirm dialog appears.
+  //   2. EditorPage's effect cleanup (added in cf8c586f) flips
+  //      `cancelled = true`.
+  //   3. useConfirm's Provider unmount cleanup (src/ui/useConfirm.ts:141-150)
+  //      resolves the pending confirm promise with `null`.
+  //   4. The post-await code hits `if (cancelled) return;` at line 86
+  //      and skips `loadDraft()`, `localStorage.removeItem(DRAFT_KEY)`,
+  //      and `setShowDraftPrompt(false)`.
+  //
+  // Observable consequence if the guard is removed: the `else` branch
+  // (choice !== 'ok', and choice is null after Provider unmount) calls
+  // `localStorage.removeItem(DRAFT_KEY)`, wiping the draft.
+  it('unmounting while the draft-recovery confirm is pending preserves the draft (B-M4)', async () => {
+    localStorage.setItem(
+      DRAFT_KEY,
+      JSON.stringify({
+        level: {
+          id: 'draft-level',
+          name: 'Draft',
+          size: { width: 3, depth: 3 },
+          cellSize: 2,
+          start: { x: 0, z: 0 },
+          exit: { x: 2, z: 2 },
+          walls: [[0,0,0],[0,0,0],[0,0,0]],
+          pickups: [],
+          enemies: [],
+          rules: { initialTime: 60, maxHealth: 3, victory: 'reach-exit', timeOnPickup: 10 },
+        },
+      }),
+    );
+    const { unmount } = renderPage();
+    // Confirm the dialog is up so we know the async function is awaiting.
+    await screen.findByTestId('confirm-dialog');
+    expect(localStorage.getItem(DRAFT_KEY)).not.toBeNull();
+    // User navigates away (or the editor is otherwise torn down) while
+    // the confirm is still pending. EditorPage effect cleanup sets
+    // cancelled=true; Provider unmount cleanup resolves confirm with null.
+    unmount();
+    // Yield so any pending microtasks flush.
+    await act(async () => {
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    });
+    // The guard must have short-circuited the post-await code, so the
+    // draft is still in localStorage. If the guard were missing, the
+    // `else` branch (choice !== 'ok', with choice=null after Provider
+    // unmount) would have removed the key.
+    expect(localStorage.getItem(DRAFT_KEY)).not.toBeNull();
+  });
+
   it('Cmd/Ctrl+Z triggers undo when focus is not in an input', () => {
     const pastLevel = { ...useEditorStore.getState().level };
     useEditorStore.setState({ past: [{ level: pastLevel, selection: null }] });
