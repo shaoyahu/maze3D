@@ -15,6 +15,22 @@ describe('MainMenu P2-5 revamp', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
+  // P3-C-M7: pair install with mockRestore via vi.restoreAllMocks().
+  // Without this, the console.warn spy installed in beforeEach leaks
+  // into every subsequent test in the worker — silencing real warnings
+  // (including any Three.js / React warnings a later test depends on).
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // P3-C-M7: pair install with mockRestore via vi.restoreAllMocks().
+  // Without this, the console.warn spy installed in beforeEach leaks
+  // into every subsequent test in the worker — silencing real warnings
+  // (including any Three.js / React warnings a later test depends on).
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('renders a scene container and translucent panel', () => {
     render(<MainMenu onStart={() => {}} onSettings={() => {}} />);
     expect(screen.getByTestId('main-menu-scene')).toBeInTheDocument();
