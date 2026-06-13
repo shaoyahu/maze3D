@@ -145,4 +145,80 @@ describe('InputManager', () => {
     expect(im2.getMove().z).toBeLessThan(0);
     window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyW' }));
   });
+
+  // F-A-architecture-M8: InputManager's constructor adds 4 listeners
+  // (keydown, keyup on window; mousemove, pointerlockchange on document).
+  // dispose() must remove exactly those 4 — same event type, same target,
+  // and — critically — the SAME handler reference the constructor
+  // registered. If dispose() ever passes a fresh wrapper (e.g.
+  // `() => this.onKeyDown(...)`), the browser's identity-based
+  // removeEventListener silently keeps the listener, and React
+  // StrictMode's dev double-mount amplifies the leak on every remount.
+  describe('A-M8 — listener cleanup (StrictMode double-mount safety)', () => {
+    it('removes every listener its constructor added on dispose, with the same handler references', () => {
+      const winAdd = vi.spyOn(window, 'addEventListener');
+      const winRemove = vi.spyOn(window, 'removeEventListener');
+      const docAdd = vi.spyOn(document, 'addEventListener');
+      const docRemove = vi.spyOn(document, 'removeEventListener');
+
+      try {
+        const local = new InputManager();
+        local.dispose();
+
+        const countsByType = (spy: ReturnType<typeof vi.spyOn>) => {
+          const map = new Map<string, number>();
+          for (const call of spy.mock.calls) {
+            const type = String(call[0]);
+            map.set(type, (map.get(type) ?? 0) + 1);
+          }
+          return map;
+        };
+        const handlerFor = (spy: ReturnType<typeof vi.spyOn>, type: string) => {
+          for (const call of spy.mock.calls) {
+            if (String(call[0]) === type) return call[1];
+          }
+          return undefined;
+        };
+
+        const winAdds = countsByType(winAdd);
+        const winRemoves = countsByType(winRemove);
+        const docAdds = countsByType(docAdd);
+        const docRemoves = countsByType(docRemove);
+
+        // (1) Symmetric count per type: constructor registered 1,
+        // dispose removed 1, on each expected target.
+        expect(winAdds.get('keydown')).toBe(1);
+        expect(winAdds.get('keyup')).toBe(1);
+        expect(docAdds.get('mousemove')).toBe(1);
+        expect(docAdds.get('pointerlockchange')).toBe(1);
+        expect(winRemoves.get('keydown')).toBe(1);
+        expect(winRemoves.get('keyup')).toBe(1);
+        expect(docRemoves.get('mousemove')).toBe(1);
+        expect(docRemoves.get('pointerlockchange')).toBe(1);
+
+        // (2) Per-type net add/remove is zero — the StrictMode-safe
+        // contract that prevents listener accumulation on remount.
+        for (const type of ['keydown', 'keyup', 'mousemove', 'pointerlockchange']) {
+          const a = (winAdds.get(type) ?? 0) + (docAdds.get(type) ?? 0);
+          const r = (winRemoves.get(type) ?? 0) + (docRemoves.get(type) ?? 0);
+          expect(a).toBe(r);
+        }
+
+        // (3) Reference identity: dispose() must pass the SAME handler
+        // reference the constructor registered. The browser's
+        // removeEventListener is identity-based; a fresh wrapper would
+        // silently fail to remove the listener.
+        expect(winRemove.mock.calls.find((c) => String(c[0]) === 'keydown')?.[1])
+          .toBe(handlerFor(winAdd, 'keydown'));
+        expect(winRemove.mock.calls.find((c) => String(c[0]) === 'keyup')?.[1])
+          .toBe(handlerFor(winAdd, 'keyup'));
+        expect(docRemove.mock.calls.find((c) => String(c[0]) === 'mousemove')?.[1])
+          .toBe(handlerFor(docAdd, 'mousemove'));
+        expect(docRemove.mock.calls.find((c) => String(c[0]) === 'pointerlockchange')?.[1])
+          .toBe(handlerFor(docAdd, 'pointerlockchange'));
+      } finally {
+        vi.restoreAllMocks();
+      }
+    });
+  });
 });
