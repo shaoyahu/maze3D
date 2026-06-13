@@ -215,11 +215,13 @@ A user can pick a 500 MB JSON file; `FileReader.readAsText` will load it all int
 
 ---
 
-### D-27 | MEDIUM | `src/maze/importExport.ts` (via EditorToolbar) | Exported JSON does **not** include a `schemaVersion` field
+### ✅ D-27 | MEDIUM | `src/maze/importExport.ts` (via EditorToolbar) | Exported JSON does **not** include a `schemaVersion` field — **已修复 by P2-4b (commit 1e79f26, 2026-06-12)**
 
 The exported `.maze3d.json` is the level file. A user opens it in 6 months when the project has added new fields (e.g. `enemies[].patrolSpeed`): the runtime `validateMaze` will accept it (extra fields are ignored by spread), but a v2 with a *renamed* required field would silently lose the player's level. The fix is symmetric to D-21: stamp a `schemaVersion` in the export, refuse imports with a higher version, and migrate known-lower versions on import.
 
 **修复建议**: add `"schemaVersion": 1` to the exported JSON. In `importExport.parseImport` (or `JsonMazeProvider.validateMaze`), check `parsed.schemaVersion` against the current; if higher, `throw new ImportError(\`Level uses schema v${parsed.schemaVersion}, this build only supports v1. Update the editor.\`)`. A migration registry `(v1 → v2, v2 → v3, ...)` can be added later without changing the call site.
+
+**Resolution** (P2-4b `feat(P2-4b): add importExport module`, 2026-06-12): implemented as designed. `src/maze/importExport.ts:30-32` writes `{ schemaVersion: 1, level: MazeData }`; `parseImport` at lines 54-58 strictly rejects anything whose `schemaVersion !== 1` with `ImportError`; `EditorStatusBar` displays `SCHEMA_VERSION 1`. `tests/unit/maze/importExport.test.ts` covers roundtrip preservation (line 51), v2 rejection (line 82), missing-version rejection (line 90), missing-level rejection (line 98), and the validateMaze-wrap path (line 106). Migration registry intentionally deferred (YAGNI — only one schema exists).
 
 ---
 
