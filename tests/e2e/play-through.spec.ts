@@ -14,11 +14,15 @@ test('user can start a tiny level and reach the exit', async ({ page }) => {
   const canvas = page.locator('canvas');
   await expect(canvas).toBeVisible();
 
-  // level-tiny: start (0,1) -> exit (2,1), one step right reaches exit
-  // 4m traversal at speed 3 m/s = ~1.4s; use 1600ms to be safe
+  // level-tiny: start (0,1) -> exit (2,1), one step right reaches exit.
+  // F-project-review-2026-06-13-C-M2: the prior `waitForTimeout(1600)`
+  // was a magic-number flake risk — on a slow CI box 1.6s could be too
+  // short (and the next 5s default would then mask the real flake as a
+  // pass-by-accident timeout). Poll for the win overlay instead and
+  // release the held key as soon as the overlay is visible. The poll
+  // is bounded by the 5s expect timeout so the test still fails fast
+  // if the player never reaches the exit.
   await page.keyboard.down('KeyD');
-  await page.waitForTimeout(1600);
-  await page.keyboard.up('KeyD');
-
   await expect(page.getByText('通关')).toBeVisible({ timeout: 5_000 });
+  await page.keyboard.up('KeyD');
 });
