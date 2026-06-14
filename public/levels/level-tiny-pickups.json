@@ -1,6 +1,6 @@
 {
   "id": "level-tiny-pickups",
-  "name": "__test-pickup__",
+  "name": "补给线",
   "size": { "width": 5, "depth": 1 },
   "cellSize": 2,
   "start": { "x": 0, "z": 0 },

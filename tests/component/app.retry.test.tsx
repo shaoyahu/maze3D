@@ -75,6 +75,13 @@ describe('App onRetry (F9)', () => {
     });
     useLevelStore.setState({ customLevels: {} });
     useGameStore.getState().goToMenu();
+    // F-project-review-2026-06-14: happy-dom ships with window.location at
+    // 'about:blank' (pathname='blank'), so without this reset the
+    // BrowserRouter inside <App> falls through to the catch-all
+    // <Navigate to="/" replace /> and never lands on MenuPage. Reset to
+    // '/' and dispatch a popstate so the router re-evaluates the URL.
+    window.history.replaceState(null, '', '/');
+    window.dispatchEvent(new PopStateEvent('popstate'));
   });
 
   // 走完 menu 流程让 App 进 game 屏，把 options 注入 LevelSelect.onPick 让

@@ -199,12 +199,41 @@ export function snapshotsEqual(a: PlayerSnapshot, b: PlayerSnapshot): boolean {
 //   epsilon thresholds, setTick is skipped — a paused or idle player
 //   no longer churns the React tree at 10Hz.
 //
-// - F-D-quality-D-11 (pending guard): an unmount-only effect flips a
-//   cancelled flag; an in-flight setInterval callback checks the
-//   flag before calling setTick. Without this, a tick landing
-//   between clearInterval and unmount completion could call setTick
-//   on an unmounted component. Mirrors the pointerLockTimerRef
+// - F-D-quality-D-11 (pending guard): a cancelled flag is flipped to
+//   `true` in the polling effect's cleanup so an in-flight tick
+//   landing between clearInterval and unmount completion cannot call
+//   setTick on an unmounted component. Mirrors the pointerLockTimerRef
 //   pattern in GameCanvas.tsx:26-31.
+//
+// CRITICAL (F-minimap-strictmode-regression, fixed 2026-06-14): under
+// <React.StrictMode>, React intentionally mounts → unmounts → re-mounts
+// every effect in dev. The previous design used a SEPARATE empty-deps
+// effect to flip the cancelled flag on unmount, so StrictMode's
+// mount-unmount-mount cycle left `cancelledRef.current = true` after
+// the second mount. The polling effect's interval was then installed
+// with the cancelled flag stuck `true`; every tick short-circuited at
+// the `if (cancelledRef.current) return;` guard and the minimap never
+// re-rendered (the player arrow froze at the start cell and the view
+// cone never repainted). The fix is to (a) move the cancelled-flip
+// into the polling effect's own cleanup (so it's bound to the
+// interval's lifetime, not a separate effect), and (b) reset the flag
+// to `false` at the top of the polling effect on every (re-)run. With
+// the reset + flip in the same effect, StrictMode's
+// mount-unmount-mount cycle is symmetric: cleanup sets it to `true`,
+// the re-run sets it back to `false` before scheduling the new tick.
+//
+// CRITICAL (F-minimap-pos-reference, fixed 2026-06-14): the engine
+// mutates `this.player.position.{x,z}` in place every frame (see
+// Game.ts:363). If the snapshot stored the engine's `pos` object
+// directly, `prev.pos` and `next.pos` would be the SAME reference
+// with the SAME values after the mutation — `snapshotsEqual` would
+// return true forever, the A-M6 early-out would fire on every tick,
+// and the minimap would never re-render on movement. Only yaw / fov
+// (returned by value) would correctly trigger updates, so rotating
+// the camera would "snap" the arrow to the live position while
+// walking left it frozen. The fix is to copy `pos` on read so the
+// snapshot is a value snapshot of the values at the moment of
+// capture, decoupled from the engine's mutable state.
 function useTickRef(gameRef: MutableRefObject<Game | null>, intervalMs: number): void {
  const [, setTick] = useState(0);
  // F-L13: gate the polling interval on the game screen. Without this
@@ -214,27 +243,33 @@ function useTickRef(gameRef: MutableRefObject<Game | null>, intervalMs: number):
  // playing → start interval; otherwise → cleanup the running one.
  const screen = useGameStore((s) => s.screen);
  const lastSnapshotRef = useRef<PlayerSnapshot | null>(null);
+ // Single cancelledRef owned by THIS effect. The previous design used
+ // a second effect with empty deps to flip the flag on unmount, but
+ // under StrictMode that effect ran its cleanup between mounts and
+ // the flag was never reset. Owning the flag here keeps reset + flip
+ // paired across StrictMode's intentional mount-unmount-mount.
  const cancelledRef = useRef(false);
-
- // Unmount-only cleanup. The empty-deps effect runs once on mount
- // and the cleanup runs once on unmount, regardless of the
- // screen-gated polling state above.
- useEffect(() => {
- return () => {
- cancelledRef.current = true;
- };
- }, []);
 
  useEffect(() => {
  if (screen !== 'playing') return;
+ // Reset on every (re-)run so a fresh interval starts with a clean
+ // slate. StrictMode's first-mount → unmount → re-mount cycle will
+ // flip this to `true` in the cleanup below, then back to `false`
+ // here, leaving the re-mounted interval able to fire.
+ cancelledRef.current = false;
  const id = setInterval(() => {
  if (cancelledRef.current) return; // D-11 in-flight guard
  const game = gameRef.current;
  if (!game) return;
  const pos = game.getPlayerPosition();
  if (!pos) return;
+ // F-minimap-pos-reference: COPY pos into a fresh object so the
+ // snapshot is a value snapshot, not a live reference to the
+ // engine's mutable position. The engine mutates `pos.x` / `pos.z`
+ // in place every frame, so without this copy prev.pos === next.pos
+ // and snapshotsEqual returns true forever.
  const next: PlayerSnapshot = {
- pos,
+ pos: { x: pos.x, z: pos.z },
  yaw: game.getPlayerYaw(),
  fov: game.getCameraFov(),
  };
@@ -243,6 +278,9 @@ function useTickRef(gameRef: MutableRefObject<Game | null>, intervalMs: number):
  lastSnapshotRef.current = next;
  setTick((t) => t + 1);
  }, intervalMs);
- return () => clearInterval(id);
+ return () => {
+ clearInterval(id);
+ cancelledRef.current = true;
+ };
  }, [gameRef, intervalMs, screen]);
 }

@@ -14,9 +14,22 @@ export function ControlHints() {
       }}
     >
       {items.map((it) => (
-        <div key={it.k} style={{ display: 'flex', gap: 8 }}>
-          <kbd style={{ background: '#000', color: 'var(--fg)', padding: '1px 6px', borderRadius: 4, minWidth: 50, textAlign: 'center' }}>{it.k}</kbd>
-          <span>{it.l}</span>
+        <div key={it.k} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <kbd
+            style={{
+              background: 'var(--bg-inset)',
+              color: 'var(--fg)',
+              border: '1px solid var(--border-strong)',
+              padding: '1px 6px',
+              borderRadius: 4,
+              minWidth: 50,
+              textAlign: 'center',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 11,
+              lineHeight: 1.4,
+            }}
+          >{it.k}</kbd>
+          <span style={{ color: 'var(--fg)' }}>{it.l}</span>
         </div>
       ))}
     </div>

@@ -1,7 +1,8 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render } from '@testing-library/react';
-import { useRef } from 'react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, act } from '@testing-library/react';
+import React, { useRef } from 'react';
 import { Minimap, snapshotsEqual } from '../../src/ui/components/Minimap';
+import { useGameStore } from '../../src/store/gameStore';
 import type { Game } from '../../src/engine/Game';
 import type { MazeData } from '../../src/maze/types';
 
@@ -151,6 +152,149 @@ describe('Minimap', () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     expect(() => render(<Minimap maze={maze} gameRef={nullRef} />)).not.toThrow();
     consoleSpy.mockRestore();
+  });
+});
+
+// F-minimap-strictmode-regression (2026-06-14): the live game was
+// rendering a frozen player arrow and no view cone because React
+// <StrictMode> intentionally runs every effect twice in dev. The
+// previous design used a SEPARATE empty-deps effect to flip a
+// `cancelledRef` to `true` on unmount, so StrictMode's
+// mount-unmount-mount cycle left the flag stuck `true` after the
+// re-mount. The polling tick's `if (cancelledRef.current) return;`
+// guard then short-circuited every tick and the minimap never
+// re-rendered. These cases pin the fix:
+//
+// - the polling tick at 100ms DOES re-render the arrow + cone when
+//   the engine mutates the same ref's position in place
+//   (the engine's own behaviour — see Game.ts:363).
+// - cancelling-then-restarting the interval via the `screen` change
+//   (e.g. pause → resume) also leaves the next interval alive
+//   (the cleanup-and-restart path that StrictMode exercises).
+//
+// Both cases fail under the old design (cancelledRef stuck `true`).
+describe('Minimap polling tick under <StrictMode>', () => {
+  beforeEach(() => {
+    // The polling effect is gated on screen === 'playing'; seed the
+    // store before mounting so the first effect run installs the
+    // interval (instead of early-returning on a non-playing screen).
+    useGameStore.setState({ screen: 'playing' });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    useGameStore.setState({ screen: 'menu' });
+  });
+
+  it('re-renders the arrow when the engine mutates the position in place', async () => {
+    vi.useFakeTimers();
+    // Mirror the engine: a single position object the engine mutates
+    // in place (see Game.ts updatePlayerPosition). The polling tick
+    // reads from this same object via the ref every 100ms.
+    const livePos: { x: number; z: number } = { x: 1, z: 3 };
+    const ref = {
+      current: {
+        getPlayerPosition: () => livePos,
+        getPlayerYaw: () => 0,
+        getCameraFov: () => 60,
+      } as unknown as Game,
+    };
+    const { container } = render(
+      <React.StrictMode>
+        <Minimap maze={maze} gameRef={ref} />
+      </React.StrictMode>,
+    );
+    const arrow = () => container.querySelector('[data-testid="player-arrow"]');
+    const cone = () => container.querySelector('[data-testid="view-cone"]');
+    // Initial: world (1, 3) with cellSize 2 → grid (0.5, 1.5).
+    expect(arrow()?.getAttribute('transform')).toBe('translate(0.5 1.5) rotate(0)');
+    // Engine mutates the same object in place: world (3, 5) → grid (1.5, 2.5).
+    livePos.x = 3;
+    livePos.z = 5;
+    // Wait long enough for at least one polling tick (interval = 100ms)
+    // plus the early-out filter (pos delta of 1 full cell >> 1/8 cell).
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(150);
+    });
+    expect(arrow()?.getAttribute('transform')).toBe('translate(1.5 2.5) rotate(0)');
+    expect(cone()?.getAttribute('transform')).toBe('translate(1.5 2.5) rotate(0)');
+  });
+
+  it('keeps the polling tick alive after a pause → resume screen transition', async () => {
+    vi.useFakeTimers();
+    const livePos: { x: number; z: number } = { x: 1, z: 3 };
+    const ref = {
+      current: {
+        getPlayerPosition: () => livePos,
+        getPlayerYaw: () => 0,
+        getCameraFov: () => 60,
+      } as unknown as Game,
+    };
+    const { container } = render(
+      <React.StrictMode>
+        <Minimap maze={maze} gameRef={ref} />
+      </React.StrictMode>,
+    );
+    const arrow = () => container.querySelector('[data-testid="player-arrow"]');
+    // Pause: cleanup runs, interval cleared, cancelledRef flipped to true.
+    useGameStore.setState({ screen: 'paused' });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(150);
+    });
+    // Resume: a fresh effect runs, resets cancelledRef to false, installs
+    // a new interval. The arrow must follow subsequent position mutations.
+    useGameStore.setState({ screen: 'playing' });
+    livePos.x = 3;
+    livePos.z = 5;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(150);
+    });
+    expect(arrow()?.getAttribute('transform')).toBe('translate(1.5 2.5) rotate(0)');
+  });
+
+  // F-minimap-pos-reference (2026-06-14): the engine mutates the
+  // position OBJECT in place every frame (this.player.position.x =
+  // next.x in Game.ts:363). If the snapshot stored the engine's pos
+  // object directly, prev.pos === next.pos and snapshotsEqual would
+  // return true forever — the minimap would only re-render when
+  // yaw/fov changed, never on position. This case pins the fix:
+  // the snapshot must be a value copy, not a live reference, so
+  // each tick compares fresh values to the previous tick's values.
+  it('re-renders the arrow on pure position changes (no rotation)', async () => {
+    vi.useFakeTimers();
+    const livePos: { x: number; z: number } = { x: 1, z: 3 };
+    const ref = {
+      current: {
+        getPlayerPosition: () => livePos,
+        getPlayerYaw: () => 0, // yaw constant — must not be the trigger
+        getCameraFov: () => 60,
+      } as unknown as Game,
+    };
+    const { container } = render(
+      <React.StrictMode>
+        <Minimap maze={maze} gameRef={ref} />
+      </React.StrictMode>,
+    );
+    const arrow = () => container.querySelector('[data-testid="player-arrow"]');
+    // Initial: world (1, 3) → grid (0.5, 1.5).
+    expect(arrow()?.getAttribute('transform')).toBe('translate(0.5 1.5) rotate(0)');
+    // Player moves to (5, 5) with no rotation change. Under the old
+    // (reference-based) snapshot, prev.pos === next.pos, so the
+    // early-out would skip setTick and the arrow would NOT update.
+    livePos.x = 5;
+    livePos.z = 5;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(150);
+    });
+    expect(arrow()?.getAttribute('transform')).toBe('translate(2.5 2.5) rotate(0)');
+    // Move again, still no rotation. Each tick must compare the new
+    // position values to the snapshot's COPIED values, not to a
+    // reference that auto-tracks the engine's mutations.
+    livePos.x = 7;
+    livePos.z = 9;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(150);
+    });
+    expect(arrow()?.getAttribute('transform')).toBe('translate(3.5 4.5) rotate(0)');
   });
 });
 

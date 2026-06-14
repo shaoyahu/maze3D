@@ -1,6 +1,6 @@
 {
   "id": "level-small",
-  "name": "小试身手",
+  "name": "试炼场",
   "size": { "width": 10, "depth": 10 },
   "cellSize": 2,
   "start": { "x": 0, "z": 0 },

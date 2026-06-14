@@ -1,37 +1,74 @@
 :root {
-  /* ----- Background scale (deep → inset) ----- */
-  --bg:           #0c0d12;   /* canvas / app shell */
-  --bg-elevated:  #14161e;   /* toolbar / panel / drawer */
-  --bg-inset:     #090a0f;   /* recessed areas (inputs, cells) */
+  /* ----- Background scale (light → deep) -----
+     P-cartography-2026-06-14 (round 2): light theme pivots from
+     parchment to "Daylight Control Room" — pure cool whites, deep
+     charcoal text, vivid signal-orange accent. Reads as a modern
+     precision instrument (Linear / Vercel / Stripe dashboard feel)
+     while the cartographic voice (mono codenames, corner brackets,
+     status-bar chips) is preserved by the surrounding layout. The
+     orange reads as a "highlight marker" — the color a cartographer
+     uses to mark a route on a clean map. */
+  --bg:           #f6f8fb;   /* canvas - cool near-white */
+  --bg-elevated:  #ffffff;   /* cards / panels - pure white */
+  --bg-inset:     #e9edf2;   /* recessed - cool light gray */
 
-  /* ----- Foreground scale ----- */
-  --fg:           #e8eaf0;
-  --fg-muted:     #8a8f9c;   /* captions / coordinates */
-  --fg-dim:       #5b6070;   /* disabled / placeholder */
+  /* ----- Foreground scale (cool, high-contrast) ----- */
+  --fg:           #0c1117;   /* near-black, cool undertone */
+  --fg-muted:     #4a5563;   /* medium cool gray */
+  --fg-dim:       #7a8290;   /* lighter cool gray */
 
   /* ----- Borders ----- */
-  --border:        #232733;
-  --border-strong: #3a3f4d;
+  --border:        #d9dde2;   /* cool light border */
+  --border-strong: #98a0aa;   /* medium cool gray (SVG walls) */
 
-  /* ----- Accent (kept semantically as primary CTA / active tool) ----- */
-  --accent:        #ffb84d;
-  --accent-soft:   rgba(255, 184, 77, 0.14);
-  --accent-ink:    #0c0d12;   /* text color ON accent surfaces */
+  /* ----- Accent (vivid signal orange — pops on cool white) ----- */
+  --accent:        #f97316;   /* Tailwind orange-500, electric */
+  --accent-soft:   rgba(249, 115, 22, 0.10);
+  --accent-ink:    #ffffff;   /* white text on accent surfaces */
 
-  /* ----- Semantic ----- */
-  --danger:        #ff5252;
-  --danger-soft:   rgba(255, 82, 82, 0.14);
-  --ok:            #3ec46d;
-  --info:          #6c8eff;   /* grid lines / axis / cool signal */
+  /* ----- Semantic (modern flat-Tailwind palette) ----- */
+  --danger:        #dc2626;
+  --danger-soft:   rgba(220, 38, 38, 0.10);
+  --ok:            #16a34a;
+  --info:          #2563eb;
 
   /* ----- Tool palette (one finger-print color per tool) ----- */
-  --tool-select:  #c9c9d4;
-  --tool-wall:    #6a7080;
-  --tool-port:    #3ec46d;
-  --tool-exit:    #ff5252;
-  --tool-pickup:  #ffd84d;
-  --tool-enemy:   #ff8a3d;
-  --tool-pan:     #6c8eff;
+  --tool-select:  #4a5563;
+  --tool-wall:    #98a0aa;
+  --tool-port:    #16a34a;
+  --tool-exit:    #dc2626;
+  --tool-pickup:  #f59e0b;   /* amber-500, vibrant on white */
+  --tool-enemy:   #ea580c;   /* orange-600 */
+  --tool-pan:     #2563eb;
+
+  /* ----- Atmospheric washes (theme-specific bloom + scanlines) -----
+     Light: warm orange wash in the top-left + cool blue wash in
+     the bottom-right — subtle directional lighting that suggests
+     a 3D space without being decorative. */
+  --console-bloom-1: rgba(249, 115, 22, 0.07);  /* warm top-left wash */
+  --console-bloom-2: rgba(37, 99, 235, 0.05);   /* cool bottom-right wash */
+  --console-scanline: rgba(12, 17, 23, 0.035);   /* very subtle on white */
+
+  /* ----- Status bar / action row (frosted top + bottom strips) -----
+     P-cartography-2026-06-14 (round 3): the previous hard-coded
+     rgba(20,22,30,0.55) over light bg renders as mid-gray and the
+     --fg-dim (light gray) text disappears. Per-theme frosted colors
+     keep the strips visible with proper contrast in both modes. */
+  --statusbar-bg: rgba(255, 255, 255, 0.78);       /* frosted white */
+  --statusbar-color: var(--fg);                    /* near-black text */
+  --statusbar-chip-bg: rgba(12, 17, 23, 0.04);     /* subtle ink tint */
+  --statusbar-chip-color: var(--fg-muted);         /* cool gray */
+  --action-row-bg: var(--statusbar-bg);            /* share with statusbar */
+
+  /* ----- Side rails (prefs-nav + console-rail) -----
+     P-cartography-2026-06-14 (round 4): the previous hardcoded
+     rgba(20,22,30,0.4) over light bg rendered as mid-gray with
+     the same fg-muted text inside the items — same problem as the
+     status bar. Light theme gets a barely-visible ink wash (the
+     rail reads as "the panel just behind the page"), dark theme
+     keeps the frosted-dark treatment. */
+  --side-rail-bg: rgba(12, 17, 23, 0.035);          /* very subtle ink */
+  --side-rail-color: var(--fg-muted);              /* cool gray text */
 
   /* ----- Typography ----- */
   --font-display: 'Sora', 'Inter', system-ui, sans-serif;
@@ -43,23 +80,61 @@
   --r-md: 8px;
   --r-lg: 12px;
 
-  /* ----- Shadows ----- */
-  --shadow-1: 0 1px 0 rgba(0, 0, 0, 0.25), 0 4px 12px rgba(0, 0, 0, 0.35);
-  --shadow-2: 0 8px 32px rgba(0, 0, 0, 0.5);
+  /* ----- Shadows (very subtle dark blue-gray on white — modern flat) -----
+     The dark theme overrides these to a heavy black set; dark-on-dark
+     is invisible there, which is fine because the dark surfaces use
+     border + glow to convey elevation. */
+  --shadow-1: 0 1px 2px rgba(12, 17, 23, 0.04), 0 2px 8px rgba(12, 17, 23, 0.06);
+  --shadow-2: 0 4px 16px rgba(12, 17, 23, 0.08), 0 12px 32px rgba(12, 17, 23, 0.10);
 
   /* ----- Existing legacy tokens (kept so non-editor CSS still works) ----- */
   --panel: var(--bg-elevated);
 }
 
 :root[data-theme="dark"] {
-  --bg:           #07080c;
+  /* P-cartography-2026-06-14 (round 2): deepened to pure
+     night-mission-control for maximum contrast with the modern
+     "Daylight Control Room" light theme. Accent flips from the
+     light's warm signal orange to a cool periwinkle blue so the
+     two themes are unambiguously different in BOTH temperature
+     (warm vs cool) AND lightness (bright vs deep). The light
+     theme's tool palette is overridden back to the bright neon
+     set, since the editor canvas renders on whichever theme is
+     active. */
+  --bg:           #06070b;
   --bg-elevated:  #0f1117;
-  --bg-inset:     #05060a;
+  --bg-inset:     #04050a;
+  --fg:           #e8eaf0;
+  --fg-muted:     #8a8f9c;
+  --fg-dim:       #5b6070;
   --border:        #1c1f29;
   --border-strong: #2c303c;
-  --accent:        #a4b8ff;
-  --accent-soft:   rgba(164, 184, 255, 0.16);
-  --accent-ink:    #07080c;
+  --accent:        #a4b8ff;   /* cool periwinkle — opposite of light's amber */
+  --accent-soft:   rgba(164, 184, 255, 0.18);
+  --accent-ink:    #06070b;
+  --danger:        #ff5252;
+  --danger-soft:   rgba(255, 82, 82, 0.16);
+  --ok:            #3ec46d;
+  --info:          #6c8eff;
+  --tool-select:  #c9c9d4;
+  --tool-wall:    #6a7080;
+  --tool-port:    #3ec46d;
+  --tool-exit:    #ff5252;
+  --tool-pickup:  #ffd84d;
+  --tool-enemy:   #ff8a3d;
+  --tool-pan:     #6c8eff;
+  --console-bloom-1: rgba(255, 184, 77, 0.10);
+  --console-bloom-2: rgba(108, 142, 255, 0.06);
+  --console-scanline: rgba(35, 39, 51, 0.35);
+  --statusbar-bg: rgba(15, 17, 23, 0.55);         /* frosted dark */
+  --statusbar-color: var(--fg-dim);                /* light gray text */
+  --statusbar-chip-bg: rgba(9, 10, 15, 0.6);      /* dark translucent */
+  --statusbar-chip-color: var(--fg-muted);
+  --action-row-bg: var(--statusbar-bg);
+  --side-rail-bg: rgba(20, 22, 30, 0.4);          /* frosted dark (current) */
+  --side-rail-color: var(--fg-muted);              /* light gray text */
+  --shadow-1: 0 1px 0 rgba(0, 0, 0, 0.25), 0 4px 12px rgba(0, 0, 0, 0.35);
+  --shadow-2: 0 8px 32px rgba(0, 0, 0, 0.5);
   --panel: var(--bg-elevated);
 }
 
@@ -1020,6 +1095,162 @@
   line-height: 1;
 }
 
+/* ----- Clickable chip variant (used by the warning indicator) ----- */
+
+.editor-chip--button {
+  border: 1px solid var(--border);
+  cursor: pointer;
+  font-family: var(--font-body);
+  transition: color 140ms ease-out, border-color 140ms ease-out, background 140ms ease-out;
+}
+
+.editor-chip--button:hover {
+  color: var(--fg);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.editor-chip--button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.editor-chip--button.editor-chip--danger:hover {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+
+/* ----- Warnings popup (opened from the status bar warning chip) ----- */
+
+.warnings-popup__backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1100;
+  animation: warnings-popup-fade 140ms ease-out;
+}
+
+.warnings-popup__card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 18px 20px;
+  min-width: 360px;
+  max-width: 560px;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  color: var(--fg);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+  animation: warnings-popup-rise 180ms ease-out;
+}
+
+.warnings-popup__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.warnings-popup__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  font-family: var(--font-display);
+}
+
+.warnings-popup__close {
+  border: none;
+  background: transparent;
+  color: var(--fg-muted);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--r-sm);
+  transition: color 140ms ease-out, background 140ms ease-out;
+}
+
+.warnings-popup__close:hover {
+  color: var(--fg);
+  background: var(--bg-inset);
+}
+
+.warnings-popup__empty {
+  padding: 24px 0;
+  text-align: center;
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.warnings-popup__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  max-height: 50vh;
+}
+
+.warnings-popup__item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--bg-inset);
+  font-family: var(--font-body);
+  font-size: 12px;
+}
+
+.warnings-popup__item--error {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.warnings-popup__item--warning {
+  border-color: rgba(255, 196, 0, 0.45);
+}
+
+.warnings-popup__severity {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.warnings-popup__message {
+  color: var(--fg);
+}
+
+.warnings-popup__where {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fg-dim);
+  background: var(--bg-elevated);
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+@keyframes warnings-popup-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes warnings-popup-rise {
+  from { transform: translateY(8px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
 /* ----- Properties panel shell ----- */
 
 .editor-properties {
@@ -1033,6 +1264,43 @@
   flex-direction: column;
   gap: 10px;
   font-family: var(--font-body);
+}
+
+/* The entity forms (pickup / enemy / wall) wrap a "← 关卡属性" button +
+   the entity card. Without `gap` on the wrapper the button sits flush
+   against the card header — the panel's outer `gap: 10px` only applies
+   to the wrapper's direct siblings, not to the wrapper's own children. */
+.editor-properties__form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.editor-properties__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  color: var(--fg-muted);
+  font-family: var(--font-body);
+  font-size: 11px;
+  padding: 5px 10px;
+  cursor: pointer;
+  transition: color 140ms ease-out, border-color 140ms ease-out, background 140ms ease-out;
+}
+
+.editor-properties__back:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.editor-properties__back:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .editor-properties__empty {
@@ -1290,4 +1558,1482 @@
 .survive-chip:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
+}
+
+/* ============================================================
+   Player's Console — /levels + /settings surfaces
+   Extends the editor's "Cartographer's Console" voice into the
+   player's mission-planner view. Same palette, same monospace
+   technical readouts, same blueprint-grid atmosphere — but the
+   player surfaces lean on the *navigation* metaphor (sources,
+   cards, briefings) rather than the editor's *tool* metaphor.
+   ============================================================ */
+
+/* ----- Page shell ----- */
+
+.console-shell {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--fg);
+  overflow: hidden;
+  font-family: var(--font-body);
+  isolation: isolate;
+}
+
+.console-shell::before {
+  /* Faint blueprint grid that bleeds from the top-left corner.
+     Two layered gradients give the impression of distance: a
+     fine 24px grid near the user + a coarser 96px grid that
+     recedes into the haze. Masked so the grid fades out toward
+     the bottom-right rather than tiling edge-to-edge (which
+     reads as "graph paper" — too on-the-nose). */
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image:
+    linear-gradient(var(--border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border) 1px, transparent 1px),
+    linear-gradient(var(--border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border) 1px, transparent 1px);
+  background-size:
+    24px 24px,
+    24px 24px,
+    96px 96px,
+    96px 96px;
+  background-position: 0 0, 0 0, 0 0, 0 0;
+  opacity: 0.55;
+  -webkit-mask-image: radial-gradient(circle at 18% 12%, black 0%, rgba(0,0,0,0.65) 40%, transparent 78%);
+          mask-image: radial-gradient(circle at 18% 12%, black 0%, rgba(0,0,0,0.65) 40%, transparent 78%);
+}
+
+.console-shell::after {
+  /* P-cartography-2026-06-14: ambient color wash, sourced from
+     per-theme CSS vars so the cream light theme gets a warm amber
+     glow while the dark mission-control theme keeps its cool bloom
+     — both share the same gradient geometry, only the colors swap. */
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(circle at 12% 0%, var(--console-bloom-1), transparent 45%),
+    radial-gradient(circle at 88% 100%, var(--console-bloom-2), transparent 50%);
+}
+
+.console-shell > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* ----- Top status bar (shared between /levels + /settings) ----- */
+
+.console-statusbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 38px;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--border);
+  background: var(--statusbar-bg);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--statusbar-color);
+  flex-shrink: 0;
+}
+
+.console-statusbar__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--statusbar-chip-color);
+  background: var(--statusbar-chip-bg);
+  font-variant-numeric: tabular-nums;
+}
+
+.console-statusbar__chip--accent {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.console-statusbar__divider {
+  width: 1px;
+  height: 14px;
+  background: var(--border);
+}
+
+.console-statusbar__live {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.console-statusbar__live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ok);
+  box-shadow: 0 0 8px var(--ok);
+  animation: console-live-pulse 1.8s ease-out infinite;
+}
+
+@keyframes console-live-pulse {
+  0%   { opacity: 1;   transform: scale(1);    }
+  50%  { opacity: 0.5; transform: scale(0.78); }
+  100% { opacity: 1;   transform: scale(1);    }
+}
+
+/* ----- Title block ----- */
+
+.console-titleblock {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 28px 32px 18px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.console-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 28px;
+  letter-spacing: 0.04em;
+  color: var(--fg);
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.console-title__index {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  color: var(--accent);
+  text-transform: uppercase;
+  padding: 4px 8px;
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  background: var(--accent-soft);
+}
+
+.console-subtitle {
+  margin: 6px 0 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+}
+
+.console-title-meta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-bottom: 4px;
+}
+
+.console-title-meta__value {
+  color: var(--fg);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ----- Body region (everything between title + action row) ----- */
+
+.console-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+/* ----- Left source rail (vertical tabs) ----- */
+
+.console-rail {
+  width: 76px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 22px 0 22px 18px;
+  border-right: 1px solid var(--border);
+  background: var(--side-rail-bg);
+}
+
+.console-rail__label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  padding: 0 6px 4px;
+}
+
+.console-rail__tab {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 12px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--fg-muted);
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-align: left;
+  cursor: pointer;
+  position: relative;
+  transition: background-color 140ms ease-out, color 140ms ease-out, border-color 140ms ease-out;
+}
+
+.console-rail__tab:hover {
+  color: var(--fg);
+  background: var(--bg-inset);
+  border-color: var(--border);
+}
+
+.console-rail__tab--active {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.console-rail__tab--active::before {
+  /* Active indicator: thin accent bar on the left edge, the same
+     vocabulary the editor's tool drawer uses (see .editor-tool-btn--active::after
+     — but flipped to the left edge to match a left rail rather than
+     a left column of tool buttons). */
+  content: '';
+  position: absolute;
+  left: -18px;
+  top: 10px;
+  bottom: 10px;
+  width: 3px;
+  background: var(--accent);
+  border-radius: 0 2px 2px 0;
+  box-shadow: 0 0 8px var(--accent-soft);
+}
+
+.console-rail__tab-codename {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: var(--fg-dim);
+  text-transform: uppercase;
+}
+
+.console-rail__tab--active .console-rail__tab-codename {
+  color: var(--accent);
+}
+
+.console-rail__tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ----- Main content area (right of the rail) ----- */
+
+.console-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* ----- Level card grid ----- */
+
+.console-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+  padding: 24px 28px;
+  overflow-y: auto;
+  align-content: start;
+}
+
+.console-grid--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 24px;
+  text-align: center;
+  color: var(--fg-dim);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+/* ----- Level card ----- */
+
+.console-card {
+  --card-accent: var(--accent);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1),
+              border-color 200ms ease-out,
+              box-shadow 200ms ease-out;
+  animation: console-card-reveal 360ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+  font-family: var(--font-body);
+}
+
+.console-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-strong);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+}
+
+.console-card--selected {
+  border-color: var(--card-accent);
+  box-shadow: 0 0 0 1px var(--card-accent), 0 10px 28px rgba(0, 0, 0, 0.4);
+}
+
+.console-card--selected::before {
+  /* Corner brackets (top-left + bottom-right) — the unmistakable
+     "this is the active one" treatment from mission-brief UIs. */
+  content: '';
+  position: absolute;
+  inset: 4px;
+  pointer-events: none;
+  z-index: 2;
+  background:
+    linear-gradient(var(--card-accent), var(--card-accent)) top left / 10px 1px no-repeat,
+    linear-gradient(var(--card-accent), var(--card-accent)) top left / 1px 10px no-repeat,
+    linear-gradient(var(--card-accent), var(--card-accent)) bottom right / 10px 1px no-repeat,
+    linear-gradient(var(--card-accent), var(--card-accent)) bottom right / 1px 10px no-repeat;
+}
+
+@keyframes console-card-reveal {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+
+/* Stagger entry — each card reads its --card-i custom prop set
+   inline by the React component, so the delay is per-index
+   rather than computed in CSS. Caps at 10 so a list of 200
+   levels doesn't have a 4s reveal. */
+.console-card { animation-delay: calc(min(var(--card-i, 0), 10) * 40ms); }
+
+.console-card__no {
+  position: absolute;
+  top: 10px;
+  right: 14px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: var(--fg-dim);
+  z-index: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.console-card--selected .console-card__no {
+  color: var(--card-accent);
+}
+
+.console-card__thumb {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(108, 142, 255, 0.06), transparent 70%),
+    var(--bg-inset);
+  border-bottom: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.console-card__thumb-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.console-card__thumb-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--fg-dim);
+  text-transform: uppercase;
+}
+
+.console-card__corner {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border: 1px solid var(--border-strong);
+}
+.console-card__corner--tl { top: 6px;    left: 6px;    border-right: none; border-bottom: none; }
+.console-card__corner--tr { top: 6px;    right: 6px;   border-left: none;  border-bottom: none; }
+.console-card__corner--bl { bottom: 6px; left: 6px;    border-right: none; border-top: none;    }
+.console-card__corner--br { bottom: 6px; right: 6px;   border-left: none;  border-top: none;    }
+
+.console-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px 16px;
+}
+
+.console-card__id {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+}
+
+.console-card__name {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 16px;
+  letter-spacing: 0.01em;
+  color: var(--fg);
+  line-height: 1.2;
+  /* Clamp to 2 lines so a long custom name doesn't push the card
+     taller than its siblings in the grid. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.console-card__stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 12px;
+  margin-top: 8px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+
+.console-card__stat-label {
+  color: var(--fg-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 9px;
+  display: block;
+  margin-bottom: 1px;
+}
+
+.console-card__stat-value {
+  color: var(--fg);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+
+.console-card__stat-value--accent { color: var(--accent); }
+.console-card__stat-value--ok     { color: var(--ok);     }
+.console-card__stat-value--muted  { color: var(--fg-dim); }
+
+.console-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.console-card__difficulty {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.console-card__difficulty-bar {
+  width: 4px;
+  height: 10px;
+  background: var(--border-strong);
+  border-radius: 1px;
+  transition: background-color 200ms ease-out;
+}
+
+.console-card__difficulty-bar--on {
+  background: var(--accent);
+  box-shadow: 0 0 4px var(--accent-soft);
+}
+
+/* ----- Procedural (random/seed) section ----- */
+
+.console-proc {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  gap: 18px;
+  padding: 24px 28px;
+  overflow-y: auto;
+  align-content: start;
+}
+
+.console-proc__panel {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.console-proc__panel-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+  margin: 0 0 4px;
+}
+
+.console-proc__panel-title::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, var(--border), transparent);
+}
+
+.console-proc__seed-readout {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.console-proc__seed-label {
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  color: var(--fg-dim);
+  text-transform: uppercase;
+}
+
+.console-proc__seed-hint {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--fg-dim);
+  line-height: 1.5;
+}
+
+.console-proc__config-grid {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 10px 14px;
+  align-items: center;
+}
+
+.console-proc__config-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+}
+
+.console-proc__config-label--full {
+  grid-column: 1 / -1;
+  margin-top: 8px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.console-proc__config-label--full::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  background: var(--accent);
+  border-radius: 1px;
+  transform: rotate(45deg);
+}
+
+/* ----- Custom-level list rows (inside console-grid) ----- */
+
+.console-card--custom .console-card__no { color: var(--info); }
+.console-card--custom { --card-accent: var(--info); }
+
+.console-card__delete {
+  appearance: none;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: var(--fg-dim);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  cursor: pointer;
+  transition: color 140ms ease-out, border-color 140ms ease-out, background 140ms ease-out;
+}
+
+.console-card__delete:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.console-card__delete:focus-visible {
+  outline: 2px solid var(--danger);
+  outline-offset: 2px;
+}
+
+/* ----- Mode picker (segmented) ----- */
+
+.console-segmented {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 3px;
+  position: relative;
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.console-segmented__option {
+  border: none;
+  background: transparent;
+  color: var(--fg-muted);
+  padding: 7px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  font: inherit;
+  position: relative;
+  z-index: 1;
+  transition: color 140ms ease-out;
+  text-align: center;
+}
+
+.console-segmented__option:hover { color: var(--fg); }
+
+.console-segmented__option--active {
+  color: var(--accent-ink);
+}
+
+.console-segmented__indicator {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  background: var(--accent);
+  border-radius: 3px;
+  transition: left 220ms cubic-bezier(0.2, 0.8, 0.2, 1), width 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  z-index: 0;
+  box-shadow: 0 0 12px var(--accent-soft);
+}
+
+/* ----- Custom select (replacement for native dropdown chrome) ----- */
+
+.console-select {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  background: var(--bg-inset);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px 32px 8px 12px;
+  font-family: var(--font-body);
+  font-size: 13px;
+  cursor: pointer;
+  background-image: var(--select-chevron);
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 10px 6px;
+  transition: border-color 140ms ease-out;
+}
+
+.console-select:hover { border-color: var(--border-strong); }
+.console-select:focus { outline: none; border-color: var(--accent); }
+.console-select:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ----- Number stepper (size / enemy count / survive seconds) ----- */
+
+.console-stepper {
+  display: inline-flex;
+  align-items: stretch;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  width: 100%;
+}
+
+.console-stepper__btn {
+  width: 28px;
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: var(--fg-muted);
+  font-family: var(--font-body);
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 120ms ease-out, color 120ms ease-out;
+}
+
+.console-stepper__btn:hover:not([disabled]) {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.console-stepper__btn[disabled] {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.console-stepper__input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  text-align: center;
+  font: inherit;
+  padding: 0 4px;
+  outline: none;
+}
+
+.console-stepper__input:focus { background: var(--bg-elevated); }
+.console-stepper__input[aria-invalid="true"] { color: var(--danger); }
+
+.console-stepper__unit {
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  color: var(--fg-dim);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-family: var(--font-mono);
+  border-left: 1px solid var(--border);
+}
+
+/* ----- Preset chip row (used for survive seconds) ----- */
+
+.console-chip-row {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.console-chip {
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: background 140ms ease-out, color 140ms ease-out, border-color 140ms ease-out;
+}
+
+.console-chip:hover { border-color: var(--border-strong); color: var(--fg); }
+.console-chip--active, .console-chip--active:hover {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+}
+
+.console-chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ----- Action row (bottom) ----- */
+
+.console-action-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 28px;
+  border-top: 1px solid var(--border);
+  background: var(--action-row-bg);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  flex-shrink: 0;
+}
+
+.console-action-row__hint {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.console-action-row__hint kbd {
+  font-family: var(--font-mono);
+  background: var(--bg-inset);
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  padding: 1px 6px;
+  font-size: 10px;
+  color: var(--fg);
+  letter-spacing: 0;
+}
+
+.console-action-row__buttons {
+  display: flex;
+  gap: 10px;
+}
+
+.console-primary-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 24px;
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent-ink);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: transform 160ms cubic-bezier(0.2, 0.8, 0.2, 1), filter 160ms ease-out, box-shadow 160ms ease-out;
+  box-shadow: 0 0 0 0 var(--accent-soft);
+}
+
+.console-primary-btn::after {
+  /* Glow strip on the right edge — reinforces the "scanline" /
+     "active transmission" feel of the bar. */
+  content: '';
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  right: 6px;
+  width: 2px;
+  background: var(--accent-ink);
+  opacity: 0.35;
+}
+
+.console-primary-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.06);
+  box-shadow: 0 0 24px var(--accent-soft), 0 6px 16px rgba(0, 0, 0, 0.3);
+}
+
+.console-primary-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.console-primary-btn:disabled {
+  background: var(--bg-inset);
+  border-color: var(--border);
+  color: var(--fg-dim);
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.console-primary-btn__arrow {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  letter-spacing: 0;
+  font-weight: 400;
+  transition: transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.console-primary-btn:hover:not(:disabled) .console-primary-btn__arrow {
+  transform: translateX(4px);
+}
+
+.console-ghost-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 18px;
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: color 140ms ease-out, border-color 140ms ease-out, background 140ms ease-out;
+}
+
+.console-ghost-btn:hover {
+  color: var(--fg);
+  border-color: var(--border-strong);
+  background: var(--bg-inset);
+}
+
+.console-ghost-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ----- Checkbox row (used by progressive-spawn) ----- */
+
+.console-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  user-select: none;
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--fg);
+}
+
+.console-checkbox__box {
+  position: relative;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  background: var(--bg-inset);
+  flex-shrink: 0;
+  transition: background 140ms ease-out, border-color 140ms ease-out;
+}
+
+.console-checkbox__box::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  background: var(--accent);
+  border-radius: 1px;
+  transform: scale(0);
+  transition: transform 140ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.console-checkbox input { position: absolute; opacity: 0; pointer-events: none; }
+
+.console-checkbox input:checked + .console-checkbox__box {
+  border-color: var(--accent);
+}
+
+.console-checkbox input:checked + .console-checkbox__box::after {
+  transform: scale(1);
+}
+
+.console-checkbox input:focus-visible + .console-checkbox__box {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.console-checkbox__meta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--fg-dim);
+  text-transform: uppercase;
+}
+
+/* ============================================================
+   Settings — /prefs surfaces
+   Two-column layout: section nav + grouped controls.
+   ============================================================ */
+
+.prefs-shell {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--fg);
+  overflow: hidden;
+  font-family: var(--font-body);
+  isolation: isolate;
+}
+
+.prefs-shell::before {
+  /* P-cartography-2026-06-14: diagonal scanlines — a different
+     atmosphere from the /levels blueprint grid. Reads as
+     "calibration screen" vs. "mission planner". The line color
+     comes from --console-scanline so the cream light theme gets
+     a subtle amber tint and the dark theme gets the original
+     cool slate. */
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent 0,
+    transparent 14px,
+    var(--console-scanline) 14px,
+    var(--console-scanline) 15px
+  );
+  opacity: 0.5;
+  -webkit-mask-image: radial-gradient(circle at 80% 20%, black 0%, rgba(0,0,0,0.6) 50%, transparent 80%);
+          mask-image: radial-gradient(circle at 80% 20%, black 0%, rgba(0,0,0,0.6) 50%, transparent 80%);
+}
+
+.prefs-shell > * { position: relative; z-index: 1; }
+
+.prefs-body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  min-height: 0;
+}
+
+.prefs-nav {
+  border-right: 1px solid var(--border);
+  padding: 28px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--side-rail-bg);
+}
+
+.prefs-nav__label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  padding: 0 22px 12px;
+}
+
+.prefs-nav__item {
+  appearance: none;
+  background: transparent;
+  border: none;
+  text-align: left;
+  padding: 11px 22px;
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--fg-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  position: relative;
+  transition: color 140ms ease-out, background 140ms ease-out;
+}
+
+.prefs-nav__item:hover {
+  color: var(--fg);
+  background: var(--bg-inset);
+}
+
+.prefs-nav__item--active {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.prefs-nav__item--active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  background: var(--accent);
+  border-radius: 0 2px 2px 0;
+}
+
+.prefs-nav__codename {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.prefs-nav__item--active .prefs-nav__codename { color: var(--accent); }
+
+.prefs-nav__item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.prefs-content {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 28px 36px;
+  overflow-y: auto;
+}
+
+.prefs-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.prefs-section__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 8px;
+  margin-bottom: 4px;
+  border-bottom: 1px dashed var(--border);
+}
+
+.prefs-section__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--fg);
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.prefs-section__title::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  background: var(--accent);
+  border-radius: 1px;
+  transform: rotate(45deg);
+}
+
+.prefs-section__codename {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.prefs-section__body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 0;
+}
+
+.prefs-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.prefs-row:last-child { border-bottom: none; }
+
+.prefs-row__label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.prefs-row__name {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--fg);
+  letter-spacing: 0.01em;
+}
+
+.prefs-row__desc {
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--fg-muted);
+  line-height: 1.4;
+}
+
+.prefs-row__control {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 280px;
+  justify-content: flex-end;
+}
+
+.prefs-row__value {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  min-width: 64px;
+  text-align: right;
+  letter-spacing: 0.02em;
+}
+
+/* ----- Switch (used for dark mode) ----- */
+
+.console-switch {
+  position: relative;
+  display: inline-block;
+  width: 46px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.console-switch input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  cursor: pointer;
+}
+
+.console-switch__track {
+  position: absolute;
+  inset: 0;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  transition: background 180ms ease-out, border-color 180ms ease-out;
+}
+
+.console-switch__track::after {
+  /* Notch indicators on the right side — when off, they're visible
+     to suggest "on lives here"; when on, they fade out. */
+  content: '';
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  width: 3px;
+  height: 12px;
+  background: var(--border-strong);
+  border-radius: 1px;
+  -webkit-mask: linear-gradient(180deg, transparent 0 2px, black 2px 4px, transparent 4px 8px, black 8px 10px, transparent 10px 12px);
+          mask: linear-gradient(180deg, transparent 0 2px, black 2px 4px, transparent 4px 8px, black 8px 10px, transparent 10px 12px);
+  opacity: 0.6;
+  transition: opacity 180ms ease-out;
+}
+
+.console-switch__knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  background: var(--fg-muted);
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1), background 180ms ease-out;
+}
+
+.console-switch input:checked ~ .console-switch__track {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.console-switch input:checked ~ .console-switch__track::after {
+  opacity: 0;
+}
+
+.console-switch input:checked ~ .console-switch__knob {
+  transform: translateX(22px);
+  background: var(--accent);
+  box-shadow: 0 0 12px var(--accent), 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+.console-switch input:focus-visible ~ .console-switch__track {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ----- Slider (FOV / pointer sensitivity) ----- */
+
+.console-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 200px;
+  height: 4px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+  position: relative;
+}
+
+.console-slider::-webkit-slider-runnable-track {
+  height: 4px;
+  background: linear-gradient(
+    to right,
+    var(--accent) 0%,
+    var(--accent) var(--slider-fill, 50%),
+    var(--bg-inset) var(--slider-fill, 50%),
+    var(--bg-inset) 100%
+  );
+  border-radius: 2px;
+}
+
+.console-slider::-moz-range-track {
+  height: 4px;
+  background: var(--bg-inset);
+  border-radius: 2px;
+}
+
+.console-slider::-moz-range-progress {
+  height: 4px;
+  background: var(--accent);
+  border-radius: 2px;
+}
+
+.console-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  background: var(--accent);
+  border: 2px solid var(--bg-elevated);
+  border-radius: 50%;
+  cursor: pointer;
+  margin-top: -5px;
+  box-shadow: 0 0 8px var(--accent-soft);
+  transition: transform 140ms ease-out, box-shadow 140ms ease-out;
+}
+
+.console-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  background: var(--accent);
+  border: 2px solid var(--bg-elevated);
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 0 8px var(--accent-soft);
+  transition: transform 140ms ease-out, box-shadow 140ms ease-out;
+}
+
+.console-slider:hover::-webkit-slider-thumb { transform: scale(1.15); box-shadow: 0 0 14px var(--accent); }
+.console-slider:hover::-moz-range-thumb     { transform: scale(1.15); box-shadow: 0 0 14px var(--accent); }
+
+.console-slider:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+
+/* ----- Segmented control with descriptor (enemy aggression) ----- */
+
+.console-segmented--with-desc {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.console-segmented--with-desc .console-segmented__option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 9px 8px;
+}
+
+.console-segmented--with-desc .console-segmented__option-codename {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.console-segmented--with-desc .console-segmented__option-mult {
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+
+.console-segmented--with-desc .console-segmented__option--active .console-segmented__option-mult {
+  color: var(--accent-ink);
+  opacity: 0.8;
+}
+
+/* ----- Mini readout (used in FOV row to draw a tiny frustum) ----- */
+
+.console-mini-frustum {
+  width: 56px;
+  height: 36px;
+  display: block;
+}
+
+/* ----- Confirm dialog tones (used by the page-2 page) ----- */
+
+.console-confirm-meta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  margin-top: 6px;
 }

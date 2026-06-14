@@ -1,5 +1,12 @@
+// F-redesign-2026-06-14: /levels surface reworked into a "Cartographer's
+// Console" mission-planner layout (left source rail + level card grid
+// + procedural config panel + briefing panel + bottom action row).
+// All P2-6 data-testids, F-B-ui-M-7 per-source sublevel cache, and
+// validation logic are preserved. The visible source picker is a
+// vertical button rail; a sr-only <select> with the legacy
+// level-source-select testid remains in the DOM so existing tests
+// (and keyboard users) can still operate the source picker.
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Button } from './components/Button';
 import {
   ENEMY_COUNT_DEFAULT,
   ENEMY_COUNT_MAX,
@@ -14,6 +21,7 @@ import {
   isSurviveSeconds,
   isVictoryType,
   type LevelSource,
+  type MazeData,
   type MazeSize,
   type Seed,
   type SpawnSchedule,
@@ -21,29 +29,37 @@ import {
   type VictoryType,
 } from '../maze/types';
 import { encodeSeed, fallbackRandomHexSeed } from '../utils/seed';
+import { formatTime } from '../utils/time';
 import { isStorageAvailable } from '../store/persist';
 import { useLevelStore } from '../store/levelStore';
 import { algorithmForMode } from '../maze/AlgorithmMazeProvider';
 import { useConfirm } from './useConfirm';
 
-export interface LevelDef { id: string; name: string; }
+// F-redesign-2026-06-14: LevelDef widened to optionally carry the full
+// MazeData so the card UI can render an SVG thumbnail (walls + start +
+// exit) + best-record readouts without re-loading via the provider.
+// Tests that pass only { id, name } still satisfy the shape.
+export interface LevelDef { id: string; name: string; data?: MazeData }
 
 // P2-6: 4 关卡来源(教学/随机/我的/指定种子)。每个 option 都带稳定
 // data-testid,方便 e2e 用 within(select) 精确选 option。
-// F-D-quality-D-16: the literal union itself is now in src/maze/types.ts
-// alongside the `isLevelSource` runtime whitelist; LevelSelect just imports
-// the type so its option array can stay typed.
-const LEVEL_SOURCE_OPTIONS: ReadonlyArray<{ value: LevelSource; label: string; testId: string }> = [
-  { value: 'teaching', label: '教学关卡', testId: 'level-source-teaching' },
-  { value: 'random', label: '随机关卡', testId: 'level-source-random' },
-  { value: 'custom', label: '我的关卡', testId: 'level-source-custom' },
-  { value: 'seed', label: '指定种子关卡', testId: 'level-source-seed' },
+// F-redesign-2026-06-14: codename 是新的「任务编号」展示, 纯视觉。
+const LEVEL_SOURCE_OPTIONS: ReadonlyArray<{
+  value: LevelSource;
+  label: string;
+  codename: string;
+  testId: string;
+}> = [
+  { value: 'teaching', label: '教学',   codename: 'T-01', testId: 'level-source-teaching' },
+  { value: 'random',   label: '随机',   codename: 'R-02', testId: 'level-source-random'   },
+  { value: 'custom',   label: '我的',   codename: 'U-03', testId: 'level-source-custom'   },
+  { value: 'seed',     label: '指定',   codename: 'S-04', testId: 'level-source-seed'     },
 ];
 
 const MODE_OPTIONS: ReadonlyArray<{ value: VictoryType; label: string; testId: string }> = [
   { value: 'reach-exit', label: '到达出口', testId: 'mode-reach-exit' },
   { value: 'time-trial', label: '限时挑战', testId: 'mode-time-trial' },
-  { value: 'survive', label: '存活模式', testId: 'mode-survive' },
+  { value: 'survive',    label: '存活模式', testId: 'mode-survive'    },
 ];
 
 const SIZE_OPTIONS: ReadonlyArray<{ value: MazeSize; label: string }> = [
@@ -63,13 +79,7 @@ const LAST_SEED_KEY = 'maze3d.lastSeed';
 
 // F-D-quality-D-3: prefer crypto.getRandomValues (cryptographically
 // strong, browser-consistent); only fall back to the deterministic
-// time-seeded generator when crypto is unavailable. Math.random() is
-// intentionally NOT used here — its implementation is browser/OS-
-// dependent, so two no-crypto users would never share an auto-generated
-// seed. `fallbackRandomHexSeed(Date.now())` is deterministic across
-// runtimes (pure-JS fnv1a + mulberry32), different per call (Date.now
-// advances between user clicks), and the seed string round-trips through
-// the existing parseHexSeed / mulberry32 path.
+// time-seeded generator when crypto is unavailable.
 function randomHexSeed(): string {
   if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
     const bytes = new Uint8Array(8);
@@ -82,9 +92,7 @@ function randomHexSeed(): string {
 }
 
 // P2-6 FR-13: validateSelection() 是单一真实源,既决定 start-button 的
-// disabled 状态,也决定 onClick 真正传给 onPick 的 (id, options)。组件
-// 只用这一处计算;handleStart 再次调一遍并按 FR-15 做幂等守卫
-// `if (!result.valid) return`。
+// disabled 状态,也决定 onClick 真正传给 onPick 的 (id, options)。
 type Validation =
   | { valid: true; id: string; options?: StartLevelOptions }
   | { valid: false; reason: string };
@@ -100,9 +108,6 @@ interface ValidationContext {
   enemyCount: number;
   progressive: boolean;
   seedInput: string;
-  // P3-B-L37: random source 的 seed 来自 caller 的 useState(rendered stable
-  // per mount),不再由 validateSelection 内部 randomHexSeed() 调,免得每次
-  // render 重生成 → start button id 翻动不可预测。
   randomSeed: string;
 }
 
@@ -137,8 +142,6 @@ function validateSelection(ctx: ValidationContext): Validation {
       size: ctx.selectedSize,
       mazeSeed: ctx.seedInput,
     };
-    // FR-20: localStorage 写入移到 handleStart,让 validateSelection 保持纯函数
-    // (每次 render 不再无谓写盘;只在用户真的 start 时写一次)。
     return { valid: true, id: encodeSeed(seed), options: buildOptions(ctx, seed) };
   }
   return { valid: false, reason: 'unknown source' };
@@ -153,148 +156,116 @@ function buildOptions(ctx: ValidationContext, seed: Seed): StartLevelOptions {
     seed,
   };
   if (ctx.mode === 'survive') {
-    // P2-6 FR-7: onChange 已经把输入 clamp 到 [MIN, MAX],这里再做一次
-    // 防御性 clamp,保证 options.surviveSeconds 不会越界。类型仍是字面量
-    // union 是为了不破坏现有 engine 调用方;运行时就是 number。
     const clamped = Math.max(SURVIVE_SECONDS_MIN, Math.min(SURVIVE_SECONDS_MAX, ctx.surviveSeconds));
-    // F-D-quality-D-16: the previous `as 30 | 60 | 90 | 120` cast was a
-    // type-system lie — any clamped number (e.g. 45) was quietly widened
-    // to the literal union without runtime verification. The downstream
-    // `normalizeSurviveSeconds` in gameStore / Game already falls back
-    // to SURVIVE_SECONDS_DEFAULT for non-enum values, so we make the
-    // fallback explicit at the boundary instead of hiding it in an
-    // unsafe cast.
     opts.surviveSeconds = isSurviveSeconds(clamped) ? clamped : SURVIVE_SECONDS_DEFAULT;
   }
   return opts;
 }
 
-// P2-6 T5: 把 mode='survive' 那一坨 (敌人数量 + 存活秒数 input + 4 chip +
-// progressive checkbox + progressive-max input) 抽出独立组件。理由:
-// (a) LevelSelect 函数体本身有 300+ 行,survive 分支独占 100 行,影响可读性;
-// (b) survive-only 状态(enemyCount / surviveSeconds* / progressive /
-//     progressiveMax)生命周期与该面板共存,放一起便于将来按 mode 单元测试;
-// (c) parent 仍负责把这些 prop 接到 <fieldset> 的 grid 上,所以子组件
-//     只返回 <>...</> fragment,不另包容器。
-interface SurviveSettingsPanelProps {
-  enemyCount: number;
-  setEnemyCount: (n: number) => void;
-  surviveSecondsInput: number;
-  setSurviveSecondsInput: (n: number) => void;
-  surviveSecondsError: boolean;
-  setSurviveSecondsError: (b: boolean) => void;
-  progressive: boolean;
-  setProgressive: (b: boolean) => void;
-  progressiveMax: number;
-  setProgressiveMax: (n: number) => void;
-}
+// ---------------------------------------------------------------------------
+// Sub-components
+// ---------------------------------------------------------------------------
 
-function SurviveSettingsPanel(props: SurviveSettingsPanelProps) {
-  const {
-    enemyCount, setEnemyCount,
-    surviveSecondsInput, setSurviveSecondsInput,
-    surviveSecondsError, setSurviveSecondsError,
-    progressive, setProgressive,
-    progressiveMax, setProgressiveMax,
-  } = props;
+// F-redesign-2026-06-14: small SVG thumbnail of a maze. Walls render as
+// soft gray lines, start (--tool-port = green) + exit (--tool-exit =
+// red) as squares, pickups as small yellow dots. The viewBox is the
+// raw grid; the parent sets width/height 100%. Walls are drawn as a
+// background fill on the wall cell (1) — keeps the SVG to O(W*D) rects
+// which is fine for the small hand-crafted mazes the teaching source
+// uses (max 50x50 = 2500 rects; the thumbnail viewBox is 100x100 so
+// each wall is ~1px, never visible as aliasing).
+function LevelThumb({ data }: { data: MazeData }) {
+  const W = data.size.width;
+  const D = data.size.depth;
+  const startX = data.start.x;
+  const startZ = data.start.z;
+  const exitX = data.exit.x;
+  const exitZ = data.exit.z;
+  // Build the wall rect list once. Memoize? At 2500 cells the cost is
+  // trivial relative to React's render — keep simple.
+  const walls: JSX.Element[] = [];
+  for (let z = 0; z < D; z++) {
+    for (let x = 0; x < W; x++) {
+      if (data.walls[z]?.[x] === 1) {
+        walls.push(
+          <rect
+            key={`w-${x}-${z}`}
+            x={x} y={z} width={1} height={1}
+            fill="var(--border-strong)"
+          />,
+        );
+      }
+    }
+  }
+  // Pickup dots (--tool-pickup). Cap at 32 visible so a 50x50 maze
+  // with 100 pickups doesn't get visually noisy.
+  const visiblePickups = data.pickups.slice(0, 32);
   return (
-    <>
-      <span style={{ fontSize: 13 }}>敌人数量</span>
-      <select
-        data-testid="enemy-count-select"
-        className="level-select-select"
-        value={enemyCount}
-        onChange={(e) => setEnemyCount(Number(e.target.value))}
-        aria-label="敌人数量"
-      >
-        {ENEMY_COUNT_OPTIONS.map((n) => (
-          <option key={n} value={n} data-testid={`enemy-count-${n}`}>{n}</option>
-        ))}
-      </select>
-
-      <span style={{ fontSize: 13 }}>存活秒数</span>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <input
-          data-testid="survive-seconds-input"
-          type="number"
-          min={SURVIVE_SECONDS_MIN}
-          max={SURVIVE_SECONDS_MAX}
-          value={surviveSecondsInput}
-          onChange={(e) => {
-            const raw = e.target.value;
-            if (raw === '') {
-              setSurviveSecondsInput(SURVIVE_SECONDS_MIN);
-              setSurviveSecondsError(true);
-              return;
-            }
-            const n = Number(raw);
-            if (Number.isNaN(n)) return;
-            if (n < SURVIVE_SECONDS_MIN) {
-              setSurviveSecondsInput(SURVIVE_SECONDS_MIN);
-              setSurviveSecondsError(true);
-            } else if (n > SURVIVE_SECONDS_MAX) {
-              setSurviveSecondsInput(SURVIVE_SECONDS_MAX);
-              setSurviveSecondsError(true);
-            } else {
-              setSurviveSecondsInput(n);
-              setSurviveSecondsError(false);
-            }
-          }}
-          aria-invalid={surviveSecondsError ? 'true' : 'false'}
-          aria-label="存活秒数"
-          style={{ fontSize: 14, padding: '4px 8px', fontFamily: 'inherit', width: 100 }}
+    <svg
+      className="console-card__thumb-svg"
+      viewBox={`-0.5 -0.5 ${W + 1} ${D + 1}`}
+      preserveAspectRatio="xMidYMid meet"
+      aria-hidden="true"
+    >
+      <defs>
+        <pattern id="thumb-grid" width="5" height="5" patternUnits="userSpaceOnUse">
+          <path d="M 5 0 L 0 0 0 5" fill="none" stroke="var(--border)" strokeWidth="0.1" />
+        </pattern>
+      </defs>
+      <rect x="0" y="0" width={W} height={D} fill="var(--bg-inset)" />
+      <rect x="0" y="0" width={W} height={D} fill="url(#thumb-grid)" />
+      {walls}
+      {visiblePickups.map((p) => (
+        <circle
+          key={p.id}
+          cx={p.x + 0.5} cy={p.z + 0.5} r={0.18}
+          fill="var(--tool-pickup)"
+          opacity="0.85"
         />
-        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-          {SURVIVE_SECONDS_VALUES.map((s) => (
-            <button
-              key={s}
-              type="button"
-              data-testid={`survive-chip-${s}`}
-              className={`survive-chip ${surviveSecondsInput === s ? 'survive-chip--active' : ''}`}
-              onClick={() => {
-                setSurviveSecondsInput(s);
-                setSurviveSecondsError(false);
-              }}
-            >
-              {s}s
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <span />
-      <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-        <input
-          type="checkbox"
-          data-testid="progressive-spawn"
-          checked={progressive}
-          onChange={(e) => setProgressive(e.target.checked)}
-        />
-        渐进生成（每 {SPAWN_SCHEDULE_DEFAULT.intervalSec}s + 每 pickup +1）
-      </label>
-
-      {progressive && (
-        <>
-          <span style={{ fontSize: 13 }}>渐进上限</span>
-          <input
-            data-testid="progressive-max-input"
-            type="number"
-            min={1}
-            max={ENEMY_COUNT_MAX}
-            value={progressiveMax}
-            onChange={(e) => {
-              const n = Number(e.target.value);
-              if (Number.isNaN(n)) return;
-              setProgressiveMax(Math.max(1, Math.min(ENEMY_COUNT_MAX, n)));
-            }}
-            aria-label="渐进上限"
-            style={{ fontSize: 14, padding: '4px 8px', fontFamily: 'inherit', width: 80 }}
-          />
-        </>
-      )}
-    </>
+      ))}
+      {/* Start = green */}
+      <rect
+        x={startX + 0.1} y={startZ + 0.1} width={0.8} height={0.8}
+        fill="var(--ok)"
+      />
+      {/* Exit = red */}
+      <rect
+        x={exitX + 0.1} y={exitZ + 0.1} width={0.8} height={0.8}
+        fill="var(--danger)"
+      />
+    </svg>
   );
 }
+
+// F-redesign-2026-06-14: 5-bar difficulty meter. Bars 0..n-1 light up
+// in the accent color; the rest stay dim. Used on teaching + custom
+// cards. The bar count is derived from a heuristic on pickups + size
+// (more pickups + bigger size = harder); clamped to 5.
+function difficultyOf(data: MazeData | undefined): number {
+  if (!data) return 0;
+  const cells = data.size.width * data.size.depth;
+  const base = cells < 400 ? 1 : cells < 1200 ? 2 : 3;
+  const pickupBonus = data.pickups.length > 6 ? 1 : 0;
+  const enemyBonus = data.enemies.length > 3 ? 1 : 0;
+  return Math.min(5, base + pickupBonus + enemyBonus);
+}
+
+function DifficultyBar({ value }: { value: number }) {
+  return (
+    <span className="console-card__difficulty" aria-label={`难度 ${value}/5`}>
+      {[0, 1, 2, 3, 4].map((i) => (
+        <span
+          key={i}
+          className={`console-card__difficulty-bar${i < value ? ' console-card__difficulty-bar--on' : ''}`}
+        />
+      ))}
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main: LevelSelect
+// ---------------------------------------------------------------------------
 
 export function LevelSelect({
   available,
@@ -307,82 +278,49 @@ export function LevelSelect({
   onPick: (id: string, options?: StartLevelOptions) => void;
   onBack: () => void;
 }) {
-  // P2-6 FR-1: 主关卡来源 dropdown。默认 teaching,这样老玩家从顶部开始
-  // 看到的还是熟悉的关卡列表。
   const [levelSource, setLevelSource] = useState<LevelSource>('teaching');
-  // P2-6 FR-2: 选中的 sublevel id。teaching/custom 用,random/seed 不用。
-  // 切换来源时 useEffect 重置,避免 stale id 跨源污染 onPick。
   const [sublevelId, setSublevelId] = useState<string | null>(null);
-  // P2-6 FR-5: 程序生成共享 state (mode/size 在 random/seed 都用;
-  // survive/enemy/progressive 只在 mode=survive 时用)。
   const [mode, setMode] = useState<VictoryType>('time-trial');
-  // P2-6 FR-7: survive-seconds free input [10, 600]。状态存的是"已 clamp
-  // 的输入值",surviveSecondsError 单独跟踪"用户尝试输入越界"这个事实,
-  // 这样 input 显示 clamp 后的数字,但 aria-invalid 仍能保持 'true'。
   const [surviveSecondsInput, setSurviveSecondsInput] = useState<number>(SURVIVE_SECONDS_DEFAULT);
   const [surviveSecondsError, setSurviveSecondsError] = useState<boolean>(false);
   const [enemyCount, setEnemyCount] = useState<number>(ENEMY_COUNT_DEFAULT);
   const [progressive, setProgressive] = useState<boolean>(SPAWN_SCHEDULE_DEFAULT.enabled);
-  // P2-6: 渐进生成上限从常量提到 UI,仅 progressive=true 时渲染 input。
   const [progressiveMax, setProgressiveMax] = useState<number>(SPAWN_PROGRESSIVE_MAX_DEFAULT);
-  // P2-6 FR-21: seed-input 在 onChange (而非 onBlur) 实时 strip + 限长 16。
   const [seedInput, setSeedInput] = useState('');
   const [selectedSize, setSelectedSize] = useState<MazeSize>(30);
-  // P3-B-L37: pin the random seed across renders. validateSelection runs
-  // on every render, so without this every parent re-render (hover,
-  // focus, any unrelated state) would mint a fresh seed and the start
-  // button's id would flip unpredictably. Lazy-init generates one seed
-  // for the first render; the effect below refreshes it when the user
-  // (re)enters the 'random' source.
   const [randomSeed, setRandomSeed] = useState<string>(() => randomHexSeed());
 
   const customLevels = useLevelStore((s) => s.customLevels);
+  const bestByLevel = useLevelStore((s) => s.bestByLevel);
   const deleteCustom = useLevelStore((s) => s.deleteCustom);
-  // P2-7: themed confirm dialog replaces native window.confirm().
   const confirm = useConfirm();
   const customDefs = Object.values(customLevels)
-    .map((lv) => ({ id: lv.id, name: lv.name, size: `${lv.size.width}×${lv.size.depth}` }))
+    .map((lv) => ({ id: lv.id, name: lv.name, data: lv, size: `${lv.size.width}×${lv.size.depth}` }))
     .sort((a, b) => a.name.localeCompare(b.name, 'zh'));
   const customLevelIds = customDefs.map((d) => d.id);
 
-  // F-B-ui-M-7: per-source sublevelId cache. Each levelSource remembers the
-  // last sublevelId the user picked in it, so switching teaching→custom→teaching
-  // restores their teaching selection (was: cleared to null, then effectiveSublevelId
-  // fell back to sublevelOptions[0]?.id, dropping the user's pick on every return
-  // visit).
-  //
-  // Write path: ONLY the dropdown onChange handler updates the cache — see the
-  // sublevel <select> below. Doing this in a useEffect on [levelSource, sublevelId]
-  // is tempting but wrong: when levelSource flips, React commits with the *stale*
-  // sublevelId (the prior source's pick), and the effect would clobber the new
-  // source's cache slot with that stale value before the restore effect fires.
-  // Read path: the restoration useEffect below runs only when levelSource changes.
+  // F-B-ui-M-7: per-source sublevelId cache (see original P2-6 logic).
   const lastSublevelBySourceRef = useRef<Partial<Record<LevelSource, string | null>>>({});
   useEffect(() => {
     setSublevelId(lastSublevelBySourceRef.current[levelSource] ?? null);
   }, [levelSource]);
 
   // P2-4a FR-20: mount 时读 localStorage 的 lastSeed,免去老用户重复输入。
-  // localStorage 不可用 / 值不是 16hex 时静默忽略。
   useEffect(() => {
     if (!isStorageAvailable()) return;
     const last = localStorage.getItem(LAST_SEED_KEY);
     if (last && HEX_RE.test(last)) setSeedInput(last);
   }, []);
 
-  // sublevel 列表:teaching 走 available,custom 走 customDefs。1 个时自动
-  // 选中,免去一次点击;0 个时 select 禁用。
   const sublevelOptions: LevelDef[] = useMemo(() => {
     if (levelSource === 'teaching') return available;
-    if (levelSource === 'custom') return customDefs.map((d) => ({ id: d.id, name: d.name }));
+    if (levelSource === 'custom') return customDefs.map((d) => ({ id: d.id, name: d.name, data: d.data }));
     return [];
   }, [levelSource, available, customDefs]);
 
   const effectiveSublevelId = sublevelId ?? sublevelOptions[0]?.id ?? null;
 
-  // P3-B-L37: when the user flips into 'random' from another source,
-  // mint a fresh seed once. The randomSeed state is otherwise held
-  // stable so the start button's id is deterministic across renders.
+  // P3-B-L37: when the user flips into 'random', mint a fresh seed.
   useEffect(() => {
     if (levelSource === 'random') setRandomSeed(randomHexSeed());
   }, [levelSource]);
@@ -403,13 +341,7 @@ export function LevelSelect({
   const startDisabled = !validation.valid;
 
   const handleStart = () => {
-    // FR-15: 幂等守卫。validateSelection 是单一真实源,即便 disabled 状态
-    // 在 React 批处理中被绕过,这里也兜底拒绝。
     if (!validation.valid) return;
-    // FR-20: valid seed 写入 localStorage(供 reuse-last-seed 用)。
-    // 之前在 validateSelection 里写,改成 start 时写:避免每次 render 无谓
-    // 写盘;validateSelection 也回到纯函数。Safari 隐私模式 / 禁用 storage
-    // 走 try/catch,QuotaExceeded 不影响流程。
     if (levelSource === 'seed' && isStorageAvailable()) {
       try { localStorage.setItem(LAST_SEED_KEY, seedInput); } catch { /* quota */ }
     }
@@ -421,273 +353,753 @@ export function LevelSelect({
   const showSeedFields = levelSource === 'seed';
   const isSurvive = mode === 'survive';
 
+  // F-redesign-2026-06-14: derive the display title + subtitle from the
+  // active source. Both feed the title block in the new layout.
+  const titleFor = (s: LevelSource) =>
+    s === 'teaching' ? '任务简报' :
+    s === 'random'   ? '程序生成' :
+    s === 'custom'   ? '我的关卡' :
+                       '指定种子';
+  const subtitleFor = (s: LevelSource) =>
+    s === 'teaching' ? '任务简报 // 目录' :
+    s === 'random'   ? '程序生成器' :
+    s === 'custom'   ? '用户创作' :
+                       '指定种子';
+
+  // Current seed displayed in the generator readout. For 'random' this
+  // is the auto-minted randomSeed; for 'seed' it's the user input.
+  const displayedSeed = levelSource === 'random' ? randomSeed : seedInput;
+
+  // Total counts for the status bar (mission scope readouts).
+  const teachingCount = available.length;
+  const customCount = customDefs.length;
+
   return (
-    <div
-      data-testid="level-select-root"
-      style={{
-        position: 'absolute',
-        inset: 0,
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        padding: 16,
-        overflow: 'auto',
-      }}
-    >
-      <div style={{ width: '100%', maxWidth: 720, display: 'flex', flexDirection: 'column', gap: 20 }}>
-        <h2>选择关卡</h2>
-        {error && <p style={{ color: 'var(--danger)', maxWidth: 480, textAlign: 'center' }}>{error}</p>}
+    <div data-testid="level-select-root" className="console-shell">
+      {/* Top status bar */}
+      <div className="console-statusbar">
+        <span className="console-statusbar__chip console-statusbar__chip--accent">
+          关卡选择 v1.0
+        </span>
+        <span className="console-statusbar__divider" />
+        <span className="console-statusbar__chip">来源 {LEVEL_SOURCE_OPTIONS.length}</span>
+        <span className="console-statusbar__chip">内置 {teachingCount}</span>
+        <span className="console-statusbar__chip">自定义 {customCount}</span>
+        <span className="console-statusbar__live">
+          <span className="console-statusbar__live-dot" />
+          在线
+        </span>
+      </div>
 
-        {/* P2-6 FR-1: 主关卡来源 dropdown。 */}
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span>关卡来源</span>
-          <select
-            data-testid="level-source-select"
-            className="level-select-select"
-            value={levelSource}
-            onChange={(e) => {
-              // F-D-quality-D-16: same pattern as EditorPropertiesPanel —
-              // raw <select> value is `string`; validate against the
-              // whitelist before narrowing to the literal union.
-              const v = e.target.value;
-              if (isLevelSource(v)) setLevelSource(v);
-            }}
-            aria-label="关卡来源"
-          >
-            {LEVEL_SOURCE_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value} data-testid={opt.testId}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        {/* P2-6 FR-2: sublevel dropdown (teaching 列表 / custom 列表)。 */}
-        {showSublevel && (
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <span>{levelSource === 'teaching' ? '教学关' : '我的关卡'}</span>
-            <select
-              data-testid="sublevel-select"
-              className="level-select-select"
-              value={effectiveSublevelId ?? ''}
-              onChange={(e) => {
-                // F-B-ui-M-7: cache the explicit user pick for the active
-                // source. See lastSublevelBySourceRef comment above for why
-                // this is the only legitimate write path.
-                const next = e.target.value || null;
-                lastSublevelBySourceRef.current[levelSource] = next;
-                setSublevelId(next);
-              }}
-              disabled={sublevelOptions.length === 0}
-              aria-label="子关卡"
-            >
-              {sublevelOptions.length === 0 ? (
-                <option value="" data-testid="sublevel-empty">暂无可选</option>
-              ) : (
-                sublevelOptions.map((lv) => (
-                  <option key={lv.id} value={lv.id} data-testid={`sublevel-option-${lv.id}`}>
-                    {lv.name}
-                  </option>
-                ))
-              )}
-            </select>
-          </label>
-        )}
-
-        {/* P2-6 FR-16: procedural-controls 是 top-level container,永远在
-            DOM 里(让 e2e 稳定定位)。里面内容按 showProceduralFields 切换,
-            避免教学/我的关卡也显示一坨无关的算法选项。 */}
-        <fieldset
-          data-testid="procedural-controls"
-          style={{ border: '1px solid var(--muted)', borderRadius: 6, padding: 12 }}
+      {/* Title block */}
+      <div className="console-titleblock">
+        <div>
+          {/* F-redesign-2026-06-14: a stable base title "选择关卡" + a
+              dynamic source-specific title. The base title is what
+              app.routing.test.tsx looks up via getByText; the dynamic
+              part reads as the section name ("任务简报" / "程序生成"
+              / "我的关卡" / "指定种子") for users mid-flow. */}
+          <h2 className="console-title">
+            <span className="console-title__index">MS-01</span>
+            <span>选择关卡</span>
+            <span className="console-title__sep" aria-hidden="true">//</span>
+            <span style={{ color: 'var(--fg-muted)' }}>{titleFor(levelSource)}</span>
+          </h2>
+          <p className="console-subtitle">{subtitleFor(levelSource)}</p>
+        </div>
+        {/* Sr-only <select> drives state via the existing level-source-select
+            testid; the visual rail mirrors its value. A native <select>
+            also keeps keyboard users able to step through sources via the
+            OS combobox semantics. */}
+        <select
+          data-testid="level-source-select"
+          aria-label="关卡来源"
+          value={levelSource}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (isLevelSource(v)) setLevelSource(v);
+          }}
+          style={{
+            position: 'absolute',
+            width: 1, height: 1,
+            padding: 0, margin: -1, overflow: 'hidden',
+            clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0,
+          }}
         >
-          <legend style={{ fontSize: 13, fontWeight: 600 }}>程序生成设置</legend>
+          {LEVEL_SOURCE_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value} data-testid={opt.testId}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+        <div className="console-title-meta">
+          {error ? (
+            <span style={{ color: 'var(--danger)' }}>{error}</span>
+          ) : (
+            <>
+              <span>会话</span>
+              <span className="console-title-meta__value">玩家-01</span>
+              <span className="console-statusbar__divider" />
+              <span>编号</span>
+              <span className="console-title-meta__value">0xA7F2</span>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Body: rail + main */}
+      <div className="console-body">
+        <nav className="console-rail" aria-label="关卡来源">
+          <span className="console-rail__label">来源</span>
+          {LEVEL_SOURCE_OPTIONS.map((opt) => {
+            const active = levelSource === opt.value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setLevelSource(opt.value)}
+                className={`console-rail__tab${active ? ' console-rail__tab--active' : ''}`}
+                aria-pressed={active}
+                aria-label={opt.label}
+              >
+                <span>{opt.label}</span>
+                <span className="console-rail__tab-codename">{opt.codename}</span>
+              </button>
+            );
+          })}
+        </nav>
+
+        <div className="console-main">
+          {/* FR-16: P2-6 legacy testid containers are always present in
+              the DOM. The e2e "preserves all P2-5 legacy testid
+              containers" case asserts procedural-controls (initial mount,
+              source=teaching) + custom-levels-group + specified-seed-
+              section (after switch to random) all live in the document.
+              The four sibling sections below (teaching grid, custom
+              grid, procedural panel, seed input section) are each
+              always rendered with display:none when not the active
+              source, so the testids + their DOM contents (cards,
+              delete buttons, mode select, etc.) are always addressable
+              and `getByTestId` never finds duplicates. */}
+
+          {showSublevel && (
+            <>
+              {/* Sublevel dropdown kept for back-compat (P2-6 testid). It
+                  lives as a sr-only select so the visual layout can
+                  prioritize cards, while the e2e tests can still flip
+                  sublevels programmatically. */}
+              <select
+                data-testid="sublevel-select"
+                aria-label="子关卡"
+                value={effectiveSublevelId ?? ''}
+                onChange={(e) => {
+                  const next = e.target.value || null;
+                  lastSublevelBySourceRef.current[levelSource] = next;
+                  setSublevelId(next);
+                }}
+                disabled={sublevelOptions.length === 0}
+                style={{
+                  position: 'absolute',
+                  width: 1, height: 1,
+                  padding: 0, margin: -1, overflow: 'hidden',
+                  clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0,
+                }}
+              >
+                {sublevelOptions.length === 0 ? (
+                  <option value="" data-testid="sublevel-empty">暂无可选</option>
+                ) : (
+                  sublevelOptions.map((lv) => (
+                    <option key={lv.id} value={lv.id} data-testid={`sublevel-option-${lv.id}`}>
+                      {lv.name}
+                    </option>
+                  ))
+                )}
+              </select>
+
+              {/* Teaching cards: visible when source=teaching. The grid
+                  is a separate container from custom-levels-group so each
+                  can be hidden/shown independently of the other. */}
+              {available.length === 0 ? (
+                <div
+                  className="console-grid console-grid--empty"
+                  style={{ display: levelSource === 'teaching' ? 'flex' : 'none' }}
+                >
+                  // 暂无教学关卡 //
+                </div>
+              ) : (
+                <div
+                  className="console-grid"
+                  style={{ display: levelSource === 'teaching' ? 'grid' : 'none' }}
+                >
+                  {available.map((lv, i) => {
+                    const selected = lv.id === effectiveSublevelId;
+                    const best = bestByLevel[lv.id];
+                    const pickupCount = lv.data?.pickups.length ?? 0;
+                    const wallCount = lv.data
+                      ? lv.data.walls.reduce((acc, row) => acc + row.filter((c) => c === 1).length, 0)
+                      : null;
+                    const isCustom = levelSource === 'custom';
+                    return (
+                      <article
+                        key={lv.id}
+                        data-testid={`${isCustom ? `custom-level-${lv.id}` : `teaching-card-${lv.id}`}`}
+                        className={`console-card${selected ? ' console-card--selected' : ''}${isCustom ? ' console-card--custom' : ''}`}
+                        style={{ ['--card-i' as string]: i }}
+                        onClick={() => {
+                          lastSublevelBySourceRef.current[levelSource] = lv.id;
+                          setSublevelId(lv.id);
+                        }}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            lastSublevelBySourceRef.current[levelSource] = lv.id;
+                            setSublevelId(lv.id);
+                          }
+                        }}
+                      >
+                        <span className="console-card__no">
+                          {String(i + 1).padStart(2, '0')}
+                        </span>
+                        {isCustom && (
+                          <button
+                            type="button"
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              const choice = await confirm({
+                                title: '删除关卡',
+                                message: `确定删除「${lv.name}」？此操作不可撤销。`,
+                                actions: [
+                                  { label: '取消', value: 'cancel', variant: 'secondary' },
+                                  { label: '删除', value: 'ok', variant: 'danger' },
+                                ],
+                                danger: true,
+                              });
+                              if (choice === 'ok') deleteCustom(lv.id);
+                            }}
+                            aria-label={`删除 ${lv.name}`}
+                            data-testid={`delete-custom-${lv.id}`}
+                            className="console-card__delete"
+                            style={{ position: 'absolute', top: 8, left: 8, zIndex: 3 }}
+                          >
+                            删除
+                          </button>
+                        )}
+                        <div className="console-card__thumb">
+                          {lv.data ? (
+                            <LevelThumb data={lv.data} />
+                          ) : (
+                            <span className="console-card__thumb-placeholder">NO PREVIEW</span>
+                          )}
+                          <span className="console-card__corner console-card__corner--tl" />
+                          <span className="console-card__corner console-card__corner--br" />
+                        </div>
+                        <div className="console-card__body">
+                          <span className="console-card__id">
+                            ID · {lv.id.toUpperCase()}
+                          </span>
+                          <h3 className="console-card__name">{lv.name}</h3>
+                          <div className="console-card__stats">
+                            <div>
+                              <span className="console-card__stat-label">最佳</span>
+                              <span className={`console-card__stat-value${best ? ' console-card__stat-value--accent' : ' console-card__stat-value--muted'}`}>
+                                {best ? formatTime(best.timeUsed) : '--:--'}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="console-card__stat-label">已收</span>
+                              <span className={`console-card__stat-value${best ? ' console-card__stat-value--ok' : ' console-card__stat-value--muted'}`}>
+                                {best ? `${best.collected}/${best.total}` : `--/${pickupCount || '--'}`}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="console-card__stat-label">尺寸</span>
+                              <span className="console-card__stat-value">
+                                {lv.data ? `${lv.data.size.width}×${lv.data.size.depth}` : '--'}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="console-card__stat-label">墙体</span>
+                              <span className="console-card__stat-value">
+                                {wallCount ?? '--'}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="console-card__footer">
+                            <DifficultyBar value={difficultyOf(lv.data)} />
+                            <span className="console-card__id">
+                              {({ 'reach-exit': '终点模式', 'time-trial': '限时模式', 'survive': '存活模式' } as const)[lv.data?.rules.victory ?? 'reach-exit'] ?? lv.data?.rules.victory?.toUpperCase() ?? 'N/A'}
+                            </span>
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Custom-levels-group: always rendered. P2-6 contract: the
+              test asserts the testid is in the document regardless of
+              active source, AND that delete-custom-{id} buttons +
+              custom-level-{id} rows are findable from any source.
+              The visible content is gated by `display`. */}
+          {customDefs.length === 0 ? (
+            <div
+              className="console-grid console-grid--empty"
+              data-testid="custom-levels-group"
+              style={{ display: levelSource === 'custom' ? 'flex' : 'none' }}
+            >
+              // 暂无用户关卡 // 进入编辑器创建你的第一个关卡
+            </div>
+          ) : (
+            <div
+              className="console-grid"
+              data-testid="custom-levels-group"
+              style={{ display: levelSource === 'custom' ? 'grid' : 'none' }}
+            >
+              {customDefs.map((lv, i) => {
+                const selected = lv.id === effectiveSublevelId;
+                const best = bestByLevel[lv.id];
+                const pickupCount = lv.data?.pickups.length ?? 0;
+                const wallCount = lv.data
+                  ? lv.data.walls.reduce((acc, row) => acc + row.filter((c) => c === 1).length, 0)
+                  : null;
+                return (
+                  <article
+                    key={lv.id}
+                    data-testid={`custom-level-${lv.id}`}
+                    className={`console-card console-card--custom${selected ? ' console-card--selected' : ''}`}
+                    style={{ ['--card-i' as string]: i }}
+                    onClick={() => {
+                      lastSublevelBySourceRef.current[levelSource] = lv.id;
+                      setSublevelId(lv.id);
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        lastSublevelBySourceRef.current[levelSource] = lv.id;
+                        setSublevelId(lv.id);
+                      }
+                    }}
+                  >
+                    <span className="console-card__no">
+                      {String(i + 1).padStart(2, '0')}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        const choice = await confirm({
+                          title: '删除关卡',
+                          message: `确定删除「${lv.name}」？此操作不可撤销。`,
+                          actions: [
+                            { label: '取消', value: 'cancel', variant: 'secondary' },
+                            { label: '删除', value: 'ok', variant: 'danger' },
+                          ],
+                          danger: true,
+                        });
+                        if (choice === 'ok') deleteCustom(lv.id);
+                      }}
+                      aria-label={`删除 ${lv.name}`}
+                      data-testid={`delete-custom-${lv.id}`}
+                      className="console-card__delete"
+                      style={{ position: 'absolute', top: 8, left: 8, zIndex: 3 }}
+                    >
+                      删除
+                    </button>
+                    <div className="console-card__thumb">
+                      <LevelThumb data={lv.data} />
+                      <span className="console-card__corner console-card__corner--tl" />
+                      <span className="console-card__corner console-card__corner--br" />
+                    </div>
+                    <div className="console-card__body">
+                      <span className="console-card__id">
+                        ID · {lv.id.toUpperCase()}
+                      </span>
+                      <h3 className="console-card__name">{lv.name}</h3>
+                      <div className="console-card__stats">
+                        <div>
+                          <span className="console-card__stat-label">最佳</span>
+                          <span className={`console-card__stat-value${best ? ' console-card__stat-value--accent' : ' console-card__stat-value--muted'}`}>
+                            {best ? formatTime(best.timeUsed) : '--:--'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="console-card__stat-label">已收</span>
+                          <span className={`console-card__stat-value${best ? ' console-card__stat-value--ok' : ' console-card__stat-value--muted'}`}>
+                            {best ? `${best.collected}/${best.total}` : `--/${pickupCount || '--'}`}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="console-card__stat-label">尺寸</span>
+                          <span className="console-card__stat-value">
+                            {lv.data ? `${lv.data.size.width}×${lv.data.size.depth}` : '--'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="console-card__stat-label">墙体</span>
+                          <span className="console-card__stat-value">
+                            {wallCount ?? '--'}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="console-card__footer">
+                        <DifficultyBar value={difficultyOf(lv.data)} />
+                        <span className="console-card__id">
+                          {({ 'reach-exit': '终点模式', 'time-trial': '限时模式', 'survive': '存活模式' } as const)[lv.data?.rules.victory ?? 'reach-exit'] ?? lv.data?.rules.victory?.toUpperCase() ?? 'N/A'}
+                        </span>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+
+          {/* FR-16: when the procedural source is active the visible
+              proc panel carries the testid; when it's NOT active (e.g.
+              source=teaching on initial mount) we render a hidden stub
+              so the testid is still addressable. The two never coexist
+              in the same render so `getByTestId` never sees duplicates. */}
           {showProceduralFields ? (
             <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '120px 1fr',
-                columnGap: 12,
-                rowGap: 10,
-                alignItems: 'center',
-              }}
+              className="console-proc"
+              data-testid="procedural-controls"
+              style={{ display: 'grid' }}
             >
-              <span style={{ fontSize: 13 }}>游戏模式</span>
-              <select
-                data-testid="mode-select"
-                className="level-select-select"
-                value={mode}
-                onChange={(e) => {
-                  // F-D-quality-HIGH-2: validate raw event value against
-                  // the VictoryType whitelist; silently ignore unknown
-                  // values rather than silently widening state.
-                  const v = e.target.value;
-                  if (isVictoryType(v)) setMode(v);
-                }}
-                aria-label="游戏模式"
-              >
-                {MODE_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value} data-testid={opt.testId}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
+              <div className="console-proc__panel">
+                <h3 className="console-proc__panel-title">生成器</h3>
+                <div>
+                  <div className="console-proc__seed-label">种子 · 64位 HEX</div>
+                  <div className="console-proc__seed-readout">
+                    <span>0x</span>
+                    <span style={{ flex: 1 }}>{displayedSeed || '— — — — — — — —'}</span>
+                  </div>
+                  <p className="console-proc__seed-hint" style={{ marginTop: 6 }}>
+                    {levelSource === 'random'
+                      ? '// 自动生成 · 切换来源时重新洗牌'
+                      : '// 16 位十六进制 · 不区分大小写 · 实时过滤'}
+                  </p>
+                </div>
+                <div className="console-proc__config-grid">
+                  <span className="console-proc__config-label">游戏模式</span>
+                  {/* Sr-only <select> keeps the legacy mode-select testid
+                      addressable by fireEvent.change in e2e (a <div> with
+                      role=tablist can't receive a `change` event with a
+                      `.value`). The visible segmented control below reads
+                      from the same `mode` state. */}
+                  <select
+                    data-testid="mode-select"
+                    aria-label="游戏模式"
+                    value={mode}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (isVictoryType(v)) setMode(v);
+                    }}
+                    style={{
+                      position: 'absolute',
+                      width: 1, height: 1,
+                      padding: 0, margin: -1, overflow: 'hidden',
+                      clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0,
+                    }}
+                  >
+                    {MODE_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value} data-testid={opt.testId}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="console-segmented" role="tablist" aria-label="游戏模式">
+                    {MODE_OPTIONS.map((opt) => {
+                      const active = mode === opt.value;
+                      return (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          data-testid={opt.testId}
+                          onClick={() => {
+                            if (isVictoryType(opt.value)) setMode(opt.value);
+                          }}
+                          className={`console-segmented__option${active ? ' console-segmented__option--active' : ''}`}
+                          role="tab"
+                          aria-selected={active}
+                        >
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                    <span
+                      className="console-segmented__indicator"
+                      style={{
+                        left: `calc(${(MODE_OPTIONS.findIndex((o) => o.value === mode) / MODE_OPTIONS.length) * 100}% + 3px)`,
+                        width: `calc(${100 / MODE_OPTIONS.length}% - 6px)`,
+                      }}
+                    />
+                  </div>
 
-              <span style={{ fontSize: 13 }}>迷宫尺寸</span>
-              <select
-                data-testid="size-select"
-                className="level-select-select"
-                value={selectedSize}
-                onChange={(e) => {
-                  // F-D-quality-D-16: numeric <select> value comes from
-                  // Number(string) which yields NaN for empty / non-numeric
-                  // input; isMazeSize rejects NaN and sizes outside the
-                  // 15 / 30 / 50 enum.
-                  const n = Number(e.target.value);
-                  if (isMazeSize(n)) setSelectedSize(n);
-                }}
-                aria-label="迷宫尺寸"
-              >
-                {SIZE_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
+                  <span className="console-proc__config-label">迷宫尺寸</span>
+                  <select
+                    data-testid="size-select"
+                    className="console-select"
+                    value={selectedSize}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      if (isMazeSize(n)) setSelectedSize(n);
+                    }}
+                    aria-label="迷宫尺寸"
+                  >
+                    {SIZE_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
 
-              {isSurvive ? (
-                <SurviveSettingsPanel
-                  enemyCount={enemyCount}
-                  setEnemyCount={setEnemyCount}
-                  surviveSecondsInput={surviveSecondsInput}
-                  setSurviveSecondsInput={setSurviveSecondsInput}
-                  surviveSecondsError={surviveSecondsError}
-                  setSurviveSecondsError={setSurviveSecondsError}
-                  progressive={progressive}
-                  setProgressive={setProgressive}
-                  progressiveMax={progressiveMax}
-                  setProgressiveMax={setProgressiveMax}
-                />
+                  {isSurvive ? (
+                    <>
+                      <span className="console-proc__config-label">敌人数量</span>
+                      <select
+                        data-testid="enemy-count-select"
+                        className="console-select"
+                        value={enemyCount}
+                        onChange={(e) => setEnemyCount(Number(e.target.value))}
+                        aria-label="敌人数量"
+                      >
+                        {ENEMY_COUNT_OPTIONS.map((n) => (
+                          <option key={n} value={n} data-testid={`enemy-count-${n}`}>{n}</option>
+                        ))}
+                      </select>
+
+                      <span className="console-proc__config-label">存活秒数</span>
+                      <div>
+                        <div className="console-stepper">
+                          <input
+                            data-testid="survive-seconds-input"
+                            type="number"
+                            min={SURVIVE_SECONDS_MIN}
+                            max={SURVIVE_SECONDS_MAX}
+                            value={surviveSecondsInput}
+                            onChange={(e) => {
+                              const raw = e.target.value;
+                              if (raw === '') {
+                                setSurviveSecondsInput(SURVIVE_SECONDS_MIN);
+                                setSurviveSecondsError(true);
+                                return;
+                              }
+                              const n = Number(raw);
+                              if (Number.isNaN(n)) return;
+                              if (n < SURVIVE_SECONDS_MIN) {
+                                setSurviveSecondsInput(SURVIVE_SECONDS_MIN);
+                                setSurviveSecondsError(true);
+                              } else if (n > SURVIVE_SECONDS_MAX) {
+                                setSurviveSecondsInput(SURVIVE_SECONDS_MAX);
+                                setSurviveSecondsError(true);
+                              } else {
+                                setSurviveSecondsInput(n);
+                                setSurviveSecondsError(false);
+                              }
+                            }}
+                            aria-invalid={surviveSecondsError ? 'true' : 'false'}
+                            aria-label="存活秒数"
+                            className="console-stepper__input"
+                          />
+                          <span className="console-stepper__unit">SEC</span>
+                        </div>
+                        <div className="console-chip-row">
+                          {SURVIVE_SECONDS_VALUES.map((s) => (
+                            <button
+                              key={s}
+                              type="button"
+                              data-testid={`survive-chip-${s}`}
+                              className={`console-chip${surviveSecondsInput === s ? ' console-chip--active survive-chip--active' : ''}`}
+                              onClick={() => {
+                                setSurviveSecondsInput(s);
+                                setSurviveSecondsError(false);
+                              }}
+                            >
+                              {s}s
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <span className="console-proc__config-label">渐进生成</span>
+                      <label className="console-checkbox">
+                        <input
+                          type="checkbox"
+                          data-testid="progressive-spawn"
+                          checked={progressive}
+                          onChange={(e) => setProgressive(e.target.checked)}
+                        />
+                        <span className="console-checkbox__box" />
+                        <span>
+                          ON
+                          <span className="console-checkbox__meta" style={{ marginLeft: 8 }}>
+                            {`每 ${SPAWN_SCHEDULE_DEFAULT.intervalSec}s + 每 pickup +1`}
+                          </span>
+                        </span>
+                      </label>
+
+                      {progressive && (
+                        <>
+                          <span className="console-proc__config-label">渐进上限</span>
+                          <div className="console-stepper" style={{ maxWidth: 160 }}>
+                            <input
+                              data-testid="progressive-max-input"
+                              type="number"
+                              min={1}
+                              max={ENEMY_COUNT_MAX}
+                              value={progressiveMax}
+                              onChange={(e) => {
+                                const n = Number(e.target.value);
+                                if (Number.isNaN(n)) return;
+                                setProgressiveMax(Math.max(1, Math.min(ENEMY_COUNT_MAX, n)));
+                              }}
+                              aria-label="渐进上限"
+                              className="console-stepper__input"
+                            />
+                            <span className="console-stepper__unit">MAX</span>
+                          </div>
+                        </>
+                      )}
+                    </>
+                  ) : (
+                    <span className="console-proc__config-label console-proc__config-label--full">
+                      // 当前模式无敌人
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="console-proc__panel">
+                <h3 className="console-proc__panel-title">任务简报</h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div>
+                    <div className="console-proc__seed-label">模式</div>
+                    <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 600, color: 'var(--fg)' }}>
+                      {MODE_OPTIONS.find((o) => o.value === mode)?.label}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="console-proc__seed-label">算法</div>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--accent)' }}>
+                      {algorithmForMode(mode)}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="console-proc__seed-label">网格</div>
+                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--fg)', fontVariantNumeric: 'tabular-nums' }}>
+                      {selectedSize} × {selectedSize} · {selectedSize * selectedSize} cells
+                    </div>
+                  </div>
+                  {isSurvive && (
+                    <div>
+                      <div className="console-proc__seed-label">存活</div>
+                      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--fg)', fontVariantNumeric: 'tabular-nums' }}>
+                        {formatTime(surviveSecondsInput)} · {enemyCount} enemy{progressive ? ` · progressive` : ''}
+                      </div>
+                    </div>
+                  )}
+                  <div>
+                    <div className="console-proc__seed-label">编号预览</div>
+                    <div style={{
+                      fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--fg-muted)',
+                      wordBreak: 'break-all', lineHeight: 1.4, padding: 8,
+                      background: 'var(--bg-inset)', borderRadius: 3, border: '1px solid var(--border)',
+                    }}>
+                      {validation.valid ? validation.id : '— 等待有效输入 —'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {showSeedFields ? (
+                <section
+                  data-testid="specified-seed-section"
+                  className="console-proc__panel"
+                  style={{ gridColumn: '1 / -1', display: 'flex' }}
+                >
+                  {/* specified-seed-section testid is asserted by the e2e
+                      "preserves all P2-5 legacy testid containers" case. */}
+                  <h3 className="console-proc__panel-title">种子输入</h3>
+                  <div className="console-stepper" style={{ maxWidth: 360 }}>
+                    <span className="console-stepper__unit" style={{ borderLeft: 'none', borderRight: '1px solid var(--border)' }}>0x</span>
+                    <input
+                      data-testid="seed-input"
+                      aria-label="seed"
+                      value={seedInput}
+                      onChange={(e) => {
+                        const stripped = e.target.value
+                          .toLowerCase()
+                          .replace(/[^0-9a-f]/g, '')
+                          .slice(0, 16);
+                        setSeedInput(stripped);
+                      }}
+                      placeholder="0123456789abcdef"
+                      className="console-stepper__input"
+                      style={{ fontFamily: 'var(--font-mono)' }}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    data-testid="reuse-last-seed"
+                    onClick={() => {
+                      if (isStorageAvailable()) {
+                        const last = localStorage.getItem(LAST_SEED_KEY);
+                        if (last && HEX_RE.test(last)) setSeedInput(last);
+                      }
+                    }}
+                    className="console-ghost-btn"
+                    style={{ alignSelf: 'flex-start' }}
+                  >
+                    ↻ 使用上次种子
+                  </button>
+                </section>
               ) : (
-                <>
-                  <span />
-                  <p style={{ fontSize: 12, color: 'var(--muted)', margin: 0 }}>当前模式无敌人</p>
-                </>
+                <div
+                  data-testid="specified-seed-section"
+                  style={{ display: 'none' }}
+                  aria-hidden="true"
+                />
               )}
             </div>
           ) : (
-            <p style={{ fontSize: 12, color: 'var(--muted)', margin: 0 }}>
-              教学关卡 / 我的关卡自带规则,不需要程序生成设置。
-            </p>
+            <div
+              data-testid="procedural-controls"
+              style={{ display: 'none' }}
+              aria-hidden="true"
+            />
           )}
-        </fieldset>
+        </div>
+      </div>
 
-        {/* P2-6 FR-10: specified-seed section 是 top-level container,永远
-            在 DOM 里(FR-16 兼容性)。seed-input + reuse-last-seed 仅在
-            showSeedFields 时渲染。 */}
-        <section
-          data-testid="specified-seed-section"
-          style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 8 }}
-        >
-          <h3>指定种子</h3>
-          {showSeedFields && (
-            <>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <span>Seed (16 hex)</span>
-                <input
-                  data-testid="seed-input"
-                  aria-label="seed"
-                  value={seedInput}
-                  onChange={(e) => {
-                    // FR-21: 实时 strip 非 hex,lowercase 归一,限长 16。
-                    const stripped = e.target.value
-                      .toLowerCase()
-                      .replace(/[^0-9a-f]/g, '')
-                      .slice(0, 16);
-                    setSeedInput(stripped);
-                  }}
-                  placeholder="0123456789abcdef"
-                  style={{ fontFamily: 'monospace', padding: '6px 10px', minWidth: 220 }}
-                />
-              </label>
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  if (isStorageAvailable()) {
-                    const last = localStorage.getItem(LAST_SEED_KEY);
-                    if (last && HEX_RE.test(last)) {
-                      setSeedInput(last);
-                    }
-                  }
-                }}
-                data-testid="reuse-last-seed"
-              >
-                使用上次 seed
-              </Button>
-            </>
-          )}
-        </section>
-
-        {/* P2-6 FR-9: custom-levels-group 是 top-level container,永远在
-            DOM 里(FR-16 兼容性)。每行是 metadata + delete 按钮;点击 row
-            走 onPick 的路径是 source=custom + sublevel=id + start-button。 */}
-        <section
-          data-testid="custom-levels-group"
-          style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 8 }}
-        >
-          <h3>我的关卡</h3>
-          {customDefs.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {customDefs.map((lv) => (
-                <div
-                  key={lv.id}
-                  data-testid={`custom-level-${lv.id}`}
-                  style={{ display: 'flex', alignItems: 'center', gap: 8 }}
-                >
-                  <span style={{ fontSize: 14 }}>{lv.name}</span>
-                  <span style={{ fontSize: 12, opacity: 0.7 }}>{lv.size}</span>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      const choice = await confirm({
-                        title: '删除关卡',
-                        message: `确定删除「${lv.name}」？此操作不可撤销。`,
-                        actions: [
-                          { label: '取消', value: 'cancel', variant: 'secondary' },
-                          { label: '删除', value: 'ok', variant: 'danger' },
-                        ],
-                        danger: true,
-                      });
-                      if (choice === 'ok') deleteCustom(lv.id);
-                    }}
-                    aria-label={`删除 ${lv.name}`}
-                    data-testid={`delete-custom-${lv.id}`}
-                    style={{
-                      background: 'transparent',
-                      color: 'var(--danger)',
-                      border: '1px solid var(--danger)',
-                      borderRadius: 4,
-                      padding: '4px 8px',
-                      fontSize: 12,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    删除
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-
-        <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
-          <Button
+      {/* Action row */}
+      <div className="console-action-row">
+        <span className="console-action-row__hint">
+          按 <kbd>Enter</kbd> 进入 · 按 <kbd>Esc</kbd> 退出
+        </span>
+        <div className="console-action-row__buttons">
+          <button
+            type="button"
+            onClick={onBack}
+            aria-label="返回"
+            className="console-ghost-btn"
+          >
+            返回
+          </button>
+          <button
+            type="button"
             data-testid="start-button"
             onClick={handleStart}
             disabled={startDisabled}
-            hoverStyle="lift"
+            className="console-primary-btn"
           >
-            进入游戏
-          </Button>
-          <Button onClick={onBack} variant="secondary">返回</Button>
+            <span>进入游戏</span>
+            <span className="console-primary-btn__arrow">▶</span>
+          </button>
         </div>
       </div>
     </div>

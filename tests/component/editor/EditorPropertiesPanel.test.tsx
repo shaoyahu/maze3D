@@ -320,4 +320,55 @@ describe('EditorPropertiesPanel (P2-4b #12)', () => {
     fireEvent.click(screen.getByText('删除墙体'));
     expect(useEditorStore.getState().level.walls[2]![1]).toBe(1);
   });
+
+  // F-editor-back-to-level: when an object is selected, the user can
+  // click "← 关卡属性" to return to the level-metadata form. Previously
+  // the only way out was to deselect via the viewport, which the user
+  // might not realise exists.
+  describe('Back to level affordance', () => {
+    it('does NOT render the back button when nothing is selected', () => {
+      render(<EditorPropertiesPanel />);
+      expect(screen.queryByTestId('back-to-level')).toBeNull();
+    });
+
+    it('renders the back button on the pickup form and clicking it clears the selection', () => {
+      const pickup: Pickup = { id: 'p1', x: 1, z: 1, type: 'health', value: 5 };
+      resetEditor(makeMaze({ pickups: [pickup] }));
+      useEditorStore.setState({ selection: { kind: 'pickup', id: 'p1' } });
+      render(<EditorPropertiesPanel />);
+      expect(screen.getByTestId('pickup-form')).toBeInTheDocument();
+      const back = screen.getByTestId('back-to-level');
+      expect(back).toBeInTheDocument();
+      expect(back.textContent).toContain('关卡属性');
+      fireEvent.click(back);
+      expect(useEditorStore.getState().selection).toBeNull();
+      // After clearSelection, the panel re-renders LevelMetadataForm.
+      expect(screen.getByTestId('level-metadata-form')).toBeInTheDocument();
+    });
+
+    it('renders the back button on the enemy form and clicking it clears the selection', () => {
+      const enemy: EnemySpawn = {
+        id: 'e1',
+        x: 2,
+        z: 2,
+        path: [{ x: 2, z: 2 }, { x: 3, z: 2 }],
+      };
+      resetEditor(makeMaze({ enemies: [enemy] }));
+      useEditorStore.setState({ selection: { kind: 'enemy', id: 'e1' } });
+      render(<EditorPropertiesPanel />);
+      expect(screen.getByTestId('enemy-form')).toBeInTheDocument();
+      fireEvent.click(screen.getByTestId('back-to-level'));
+      expect(useEditorStore.getState().selection).toBeNull();
+      expect(screen.getByTestId('level-metadata-form')).toBeInTheDocument();
+    });
+
+    it('renders the back button on the wall form and clicking it clears the selection', () => {
+      useEditorStore.setState({ selection: { kind: 'wall', x: 1, z: 2 } });
+      render(<EditorPropertiesPanel />);
+      expect(screen.getByTestId('wall-form')).toBeInTheDocument();
+      fireEvent.click(screen.getByTestId('back-to-level'));
+      expect(useEditorStore.getState().selection).toBeNull();
+      expect(screen.getByTestId('level-metadata-form')).toBeInTheDocument();
+    });
+  });
 });

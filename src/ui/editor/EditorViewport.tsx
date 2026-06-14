@@ -216,6 +216,44 @@ export function EditorViewport(): React.ReactElement {
     }
   };
 
+  // Click on the dark canvas area around the grid (not on a cell) →
+  // drop the current selection so the right panel jumps back to the
+  // level-metadata form. Cell clicks are routed by handleCellClick and
+  // will have set/changed the selection already; this handler only
+  // fires for "empty space" clicks. We compare mousedown vs mouseup
+  // coordinates so a pan drag (which is also a click on this same
+  // element) doesn't accidentally clear the selection at drag-end.
+  const canvasClickRef = useRef<{ x: number; y: number } | null>(null);
+  const handleCanvasMouseDown = (e: React.MouseEvent<HTMLDivElement>): void => {
+    // Track the press position; we only want to treat <5px movement as
+    // a click. Anything larger is a drag (pan / rubber-band).
+    if (e.button !== 0) {
+      canvasClickRef.current = null;
+      return;
+    }
+    canvasClickRef.current = { x: e.clientX, y: e.clientY };
+  };
+  const handleCanvasMouseUp = (e: React.MouseEvent<HTMLDivElement>): void => {
+    const start = canvasClickRef.current;
+    canvasClickRef.current = null;
+    if (start === null) return;
+    if (e.button !== 0) return;
+    const dx = e.clientX - start.x;
+    const dy = e.clientY - start.y;
+    if (dx * dx + dy * dy > 25) return; // dragged > 5px — not a click
+    // Click target must be the viewport bg, not a grid cell. Cells set
+    // data-x / data-z; the bg does not.
+    const target = e.target as HTMLElement | null;
+    if (target?.dataset?.x && target.dataset.z) return;
+    // Also skip if the user just panned (panStateRef is set during a
+    // pan gesture and cleared on mouseup). The viewport's own
+    // handleMouseDown/Up track that — this guard is a belt-and-suspenders
+    // against a touch / trackpad click that doesn't move enough pixels
+    // but was actually a pan.
+    if (panStateRef.current !== null) return;
+    if (selection !== null) clearSelection();
+  };
+
   const handleFirstPan = (): void => {
     if (!hasPanned) setHasPanned(true);
   };
@@ -238,9 +276,15 @@ export function EditorViewport(): React.ReactElement {
         data-testid="editor-viewport"
         id="editor-viewport"
         ref={viewportRef}
-        onMouseDown={handleMouseDown}
+        onMouseDown={(e) => {
+          handleMouseDown(e);
+          handleCanvasMouseDown(e);
+        }}
         onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
+        onMouseUp={(e) => {
+          handleMouseUp(e);
+          handleCanvasMouseUp(e);
+        }}
         onMouseLeave={handleMouseLeave}
         onContextMenu={handleContextMenu}
         style={{

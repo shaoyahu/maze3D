@@ -1,4 +1,5 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useGameStore } from './store/gameStore';
 import { useLevelStore } from './store/levelStore';
 import { useSettingsStore } from './store/settingsStore';
@@ -15,9 +16,9 @@ import { EditorMazeProvider } from './maze/EditorMazeProvider';
 import { AlgorithmMazeProvider } from './maze/AlgorithmMazeProvider';
 import { EditorPage } from './ui/editor/EditorPage';
 import { ConfirmProvider } from './ui/useConfirm';
+import { LevelLoadError, clampErrorValue } from './utils/errors';
 import type { MazeData, StartLevelOptions } from './maze/types';
-
-type UiScreen = 'menu' | 'levels' | 'settings' | 'game' | 'editor';
+import { buildGameSearchParams, parseGameSearchParams } from './utils/gameUrl';
 
 // F-project-review-2026-06-13-D-10: build a human-readable toast message
 // from the init-time loss summary. Each part of the summary (per-row
@@ -67,36 +68,13 @@ async function loadAllLevels(
   return out;
 }
 
-export function App() {
-  const [uiScreen, setUiScreen] = useState<UiScreen>('menu');
-  const [levels, setLevels] = useState<{ id: string; name: string; data: MazeData }[]>([]);
-  const [activeMaze, setActiveMaze] = useState<MazeData | null>(null);
-  const [activeOptions, setActiveOptions] = useState<StartLevelOptions | undefined>(undefined);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const gameScreen = useGameStore((s) => s.screen);
+// Shell that wires the dark-mode side-effect + level-list loader + toast
+// once at the router root. Children render the routed page.
+function AppShell({ children }: { children: React.ReactNode }) {
   const darkMode = useSettingsStore((s) => s.darkMode);
   const customLevels = useLevelStore((s) => s.customLevels);
-  // F-project-review-2026-06-13-D-10: the init layer surfaces dropped
-  // records / customs / migration errors as `lastLoadSummary` on the
-  // level store. The toast below consumes it on first mount so a user
-  // whose personal bests or hand-crafted custom levels were rejected
-  // for a schema-bump reason sees something other than a devtools
-  // console.warn. Subscribed here (not in LevelSelect) so the message
-  // appears regardless of which screen the user lands on after refresh.
   const lastLoadSummary = useLevelStore((s) => s.lastLoadSummary);
   const dismissLoadSummary = useLevelStore((s) => s.dismissLoadSummary);
-
-  // P2-4b + F-project-review-2026-06-13-A-HIGH-4: wrap the module-level
-  // BUILT_IN_JSON_PROVIDER singleton in an EditorMazeProvider so a custom
-  // level and a built-in level with the same id both resolve, and so the
-  // same lookup path is used for `startLevel` and the level list. The
-  // built-in provider is constructed once at module load (see
-  // `builtInLevels.ts`); only the editor overlay needs to rebuild when
-  // `customLevels` changes.
-  const provider = useMemo(
-    () => new EditorMazeProvider(customLevels, BUILT_IN_JSON_PROVIDER),
-    [customLevels],
-  );
 
   useLayoutEffect(() => {
     const root = document.documentElement;
@@ -104,152 +82,9 @@ export function App() {
     else delete root.dataset.theme;
   }, [darkMode]);
 
-  useEffect(() => {
-    let cancelled = false;
-    setLoadError(null);
-    loadAllLevels(provider)
-      .then((lv) => {
-        if (cancelled) return;
-        setLevels(lv);
-      })
-      .catch((e) => {
-        if (cancelled) return;
-        const msg = e instanceof Error ? e.message : String(e);
-        console.error('Failed to load levels', e);
-        setLoadError(`关卡加载失败：${msg}`);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [provider]);
-
-  // F-M2: monotonic token bumped on every startLevel / quitToMenu. Async
-  // .then / .catch callbacks capture the token at call time and bail if
-  // a newer action has superseded them; without this, navigating away
-  // mid-load would still call setUiScreen('game') and force the user
-  // back into the level they tried to leave. The non-procedural branch
-  // gets the same guard for consistency (the in-memory provider is
-  // microsecond-fast, but the race window is still real).
-  const loadTokenRef = useRef(0);
-
-  const startLevel = (id: string, options?: StartLevelOptions) => {
-    const myToken = ++loadTokenRef.current;
-    // P2-3: ids starting with 'algo-v1-' are procedural seeds — we generate
-    // the MazeData on demand via AlgorithmMazeProvider instead of looking
-    // it up in the hand-crafted `levels` list. Anything else goes through
-    // the EditorMazeProvider (custom + built-in).
-    const isProcedural = id.startsWith('algo-v1-');
-    if (isProcedural) {
-      // F-N2: drop the dynamic import — AlgorithmMazeProvider is already
-      // statically imported by LevelSelect.tsx / MainMenuScene.ts, so
-      // Vite emitted a build warning ("dynamic import will not move
-      // module into another chunk"). Static import here keeps the
-      // generators in the main bundle (acknowledged — they're also
-      // pulled in by LevelSelect on first render anyway).
-      const algoProvider = new AlgorithmMazeProvider();
-      algoProvider
-        .load(id)
-        .then((maze) => {
-          if (loadTokenRef.current !== myToken) return;
-          useGameStore.getState().startLevel(maze, options);
-          setActiveMaze(maze);
-          setActiveOptions(options);
-          setUiScreen('game');
-        })
-        .catch((e) => {
-          if (loadTokenRef.current !== myToken) return;
-          const msg = e instanceof Error ? e.message : String(e);
-          console.error('Failed to load procedural level', e);
-          setLoadError(`关卡生成失败：${msg}`);
-        });
-      return;
-    }
-    provider
-      .load(id)
-      .then((maze) => {
-        if (loadTokenRef.current !== myToken) return;
-        useGameStore.getState().startLevel(maze, options);
-        setActiveMaze(maze);
-        setActiveOptions(options);
-        setUiScreen('game');
-      })
-      .catch((e) => {
-        if (loadTokenRef.current !== myToken) return;
-        // Fall back to the in-memory list so a stale closure (e.g. a level
-        // was deleted after the level list rendered) surfaces a useful
-        // message instead of a raw provider error.
-        const lv = levels.find((l) => l.id === id);
-        if (lv) {
-          useGameStore.getState().startLevel(lv.data, options);
-          setActiveMaze(lv.data);
-          setActiveOptions(options);
-          setUiScreen('game');
-          return;
-        }
-        const msg = e instanceof Error ? e.message : String(e);
-        console.error('Failed to load level', e);
-        setLoadError(`关卡加载失败：${msg}`);
-      });
-  };
-
-  const quitToMenu = () => {
-    // F-M2: cancel any in-flight procedural load before flipping the UI
-    // back to the menu, so its .then can't setUiScreen('game') after us.
-    loadTokenRef.current++;
-    useGameStore.getState().goToMenu();
-    setActiveMaze(null);
-    setActiveOptions(undefined);
-    setUiScreen('menu');
-  };
-
   return (
-    <ConfirmProvider>
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-      {uiScreen === 'game' && activeMaze && (
-        <GameCanvas key={activeMaze.id} maze={activeMaze} options={activeOptions} />
-      )}
-      {uiScreen === 'game' && gameScreen === 'playing' && <HUD />}
-      {uiScreen === 'game' && gameScreen === 'paused' && (
-        <>
-          <HUD />
-          <PauseOverlay onResume={() => useGameStore.getState().resume()} onQuit={quitToMenu} />
-        </>
-      )}
-      {uiScreen === 'game' && gameScreen === 'game-over' && (
-        // F9: pass activeOptions so retry preserves the player's chosen
-        // mode / surviveSeconds / enemyCount / spawnSchedule. Without
-        // this, startLevel() falls back to maze.rules.victory = 'reach-exit'
-        // and the default 3-enemy count, making every retry silently
-        // revert the player's setup.
-        <GameOverOverlay onRetry={() => activeMaze && startLevel(activeMaze.id, activeOptions)} onQuit={quitToMenu} />
-      )}
-      {uiScreen === 'game' && gameScreen === 'win' && (
-        // F9: same fix for WinOverlay — both overlays share the bug.
-        <WinOverlay onRetry={() => activeMaze && startLevel(activeMaze.id, activeOptions)} onQuit={quitToMenu} />
-      )}
-      {uiScreen === 'menu' && (
-        <MainMenu
-          onStart={() => setUiScreen('levels')}
-          onSettings={() => setUiScreen('settings')}
-          onEditor={() => setUiScreen('editor')}
-        />
-      )}
-      {uiScreen === 'levels' && (
-        <LevelSelect
-          // P2-4b: the EditorMazeProvider merges custom + builtin into a
-          // single id list. Custom levels already have their own group
-          // ("我的关卡") rendered by LevelSelect, so we strip them from
-          // the built-in list to avoid rendering the same level twice.
-          available={levels
-            .filter(({ id }) => !id.startsWith('custom-'))
-            .map(({ id, name }) => ({ id, name }))}
-          error={loadError}
-          onPick={startLevel}
-          onBack={() => setUiScreen('menu')}
-        />
-      )}
-      {uiScreen === 'settings' && <Settings onBack={() => setUiScreen('menu')} />}
-      {uiScreen === 'editor' && <EditorPage onExit={() => setUiScreen('menu')} />}
+      {children}
       {lastLoadSummary && (
         // F-project-review-2026-06-13-D-10: one-time toast surfacing the
         // init-time loss summary. Renders inside the positioned wrapper
@@ -302,7 +137,324 @@ export function App() {
           </button>
         </div>
       )}
+      {/* keep customLevels referenced so a store change re-renders the shell
+          and any consumer that needs the provider refreshes. Provider is
+          built inside LevelsPage / GamePage via the loader hook below. */}
+      <input type="hidden" data-testid="custom-levels-rev" value={Object.keys(customLevels).length} />
     </div>
+  );
+}
+
+// Custom hook: build the editor-aware provider and async-load all levels.
+// Shared between LevelsPage (to render the dropdown) and GamePage (so the
+// id passed in the URL can be resolved through the same path).
+function useLevelList(): {
+  levels: { id: string; name: string; data: MazeData }[];
+  provider: EditorMazeProvider;
+  error: string | null;
+} {
+  const customLevels = useLevelStore((s) => s.customLevels);
+  const provider = useMemo(
+    () => new EditorMazeProvider(customLevels, BUILT_IN_JSON_PROVIDER),
+    [customLevels],
+  );
+  const [levels, setLevels] = useState<{ id: string; name: string; data: MazeData }[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setError(null);
+    loadAllLevels(provider)
+      .then((lv) => {
+        if (cancelled) return;
+        setLevels(lv);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error('Failed to load levels', e);
+        setError(`关卡加载失败：${msg}`);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [provider]);
+  return { levels, provider, error };
+}
+
+function MenuPage() {
+  const navigate = useNavigate();
+  return (
+    <MainMenu
+      onStart={() => navigate('/levels')}
+      onSettings={() => navigate('/settings')}
+      onEditor={() => navigate('/editor')}
+    />
+  );
+}
+
+function LevelsPage() {
+  const navigate = useNavigate();
+  const { levels, error } = useLevelList();
+  return (
+    <LevelSelect
+      // P2-4b: the EditorMazeProvider merges custom + builtin into a
+      // single id list. Custom levels already have their own group
+      // ("我的关卡") rendered by LevelSelect, so we strip them from
+      // the built-in list to avoid rendering the same level twice.
+      // F-redesign-2026-06-14: also pass the full MazeData so the new
+      // card UI can render an SVG thumbnail + best-record summary
+      // without re-loading via the provider.
+      available={levels
+        .filter(({ id }) => !id.startsWith('custom-'))
+        .map(({ id, name, data }) => ({ id, name, data }))}
+      error={error}
+      onPick={(id, options) => {
+        // F-project-review-2026-06-14: build the /game URL from the id +
+        // options. push (not replace) so browser back returns to /levels.
+        const search = buildGameSearchParams(id, options);
+        navigate({ pathname: '/game', search: `?${search.toString()}` });
+      }}
+      onBack={() => navigate(-1)}
+    />
+  );
+}
+
+function SettingsPage() {
+  const navigate = useNavigate();
+  return (
+    <Settings
+      // F-redesign-2026-06-14: ESC must leave /settings in ONE press.
+      // The previous navigate(-1) popped only one history entry, so a
+      // user who had clicked the section nav (which appends
+      // #section-display / #section-input / #section-gameplay entries
+      // to history) had to press ESC 2-4 times to reach the real
+      // previous page. Replacing the current /settings entry with /
+      // (replace: true) collapses all accumulated hash entries and
+      // lands the user directly on the main menu. Browser-back from /
+      // then skips the settings surface entirely.
+      onBack={() => navigate('/', { replace: true })}
+    />
+  );
+}
+
+function EditorRoutePage() {
+  const navigate = useNavigate();
+  return <EditorPage onExit={() => navigate('/', { replace: true })} />;
+}
+
+// GamePage owns the maze lifecycle for /game. The id + options live in the
+// URL query string, so re-mounting the route (e.g. via browser back into
+// /game?…) re-runs the load with the same inputs the user originally picked.
+function GamePage() {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const gameScreen = useGameStore((s) => s.screen);
+  const { provider, error: loadError } = useLevelList();
+
+  // F-project-review-2026-06-14: parse the query string into (id, options)
+  // or surface a structured error. `loadError` from useLevelList already
+  // covers provider load failures; bad-URL is its own bucket because the
+  // provider was never asked for anything yet.
+  const parsed = useMemo(() => parseGameSearchParams(searchParams), [searchParams]);
+
+  const [activeMaze, setActiveMaze] = useState<MazeData | null>(null);
+  const [activeOptions, setActiveOptions] = useState<StartLevelOptions | undefined>(undefined);
+  const [urlError, setUrlError] = useState<string | null>(null);
+
+  // F-M2: monotonic token bumped on every startLevel / quitToMenu. Async
+  // .then / .catch callbacks capture the token at call time and bail if
+  // a newer action has superseded them; without this, navigating away
+  // mid-load would still setActiveMaze the new maze even though the user
+  // already left /game.
+  const loadTokenRef = useRef(0);
+
+  const startLevel = useCallback(
+    (id: string, options?: StartLevelOptions) => {
+      const myToken = ++loadTokenRef.current;
+      // P2-3: ids starting with 'algo-v1-' are procedural seeds — we generate
+      // the MazeData on demand via AlgorithmMazeProvider instead of looking
+      // it up in the hand-crafted `levels` list. Anything else goes through
+      // the EditorMazeProvider (custom + built-in).
+      const isProcedural = id.startsWith('algo-v1-');
+      const handleLoaded = (maze: MazeData) => {
+        if (loadTokenRef.current !== myToken) return;
+        useGameStore.getState().startLevel(maze, options);
+        setActiveMaze(maze);
+        setActiveOptions(options);
+        setUrlError(null);
+      };
+      if (isProcedural) {
+        // F-N2: AlgorithmMazeProvider is already statically imported.
+        const algoProvider = new AlgorithmMazeProvider();
+        algoProvider
+          .load(id)
+          .then(handleLoaded)
+          .catch((e) => {
+            if (loadTokenRef.current !== myToken) return;
+            const msg = e instanceof Error ? e.message : String(e);
+            console.error('Failed to load procedural level', e);
+            setUrlError(`关卡生成失败：${msg}`);
+          });
+        return;
+      }
+      provider
+        .load(id)
+        .then(handleLoaded)
+        .catch((e) => {
+          if (loadTokenRef.current !== myToken) return;
+          // F-project-review-2026-06-14: surface a structured LevelLoadError
+          // so the LevelSelect error UI / a future toast can render it. The
+          // id is clamped so a hand-crafted level with a 10 MB name field
+          // doesn't blow up the overlay.
+          const detail = e instanceof Error ? e.message : String(e);
+          console.error('Failed to load level', e);
+          setUrlError(`关卡加载失败：${clampErrorValue(detail)}（id=${clampErrorValue(id)}）`);
+        });
+    },
+    [provider],
+  );
+
+  // Kick off the load whenever the parsed URL changes. The dependency
+  // includes parsed.id (so a different level re-loads) and parsed.options
+  // (so changing mode/survive/etc. re-loads). For the non-procedural path
+  // options is always {} so a back/forward between identical ?id= URLs
+  // would re-run startLevel — that matches today's behavior where
+  // navigating into the same level re-initializes the game state.
+  useEffect(() => {
+    if (!parsed.ok) {
+      setUrlError(`关卡 URL 不合法：${parsed.error}`);
+      setActiveMaze(null);
+      setActiveOptions(undefined);
+      return;
+    }
+    startLevel(parsed.parsed.id, parsed.parsed.options);
+    // Reset on unmount too: any in-flight load is invalidated by the
+    // loadTokenRef bump in quitToMenu, but bumping here also covers the
+    // case where GamePage unmounts without going through quitToMenu
+    // (e.g. user typed a new URL into the address bar).
+    return () => {
+      loadTokenRef.current++;
+    };
+  }, [parsed, startLevel]);
+
+  const quitToMenu = () => {
+    // F-M2: cancel any in-flight procedural load before flipping the UI
+    // back to the menu, so its .then can't setActiveMaze the new maze
+    // after we've left.
+    loadTokenRef.current++;
+    useGameStore.getState().goToMenu();
+    setActiveMaze(null);
+    setActiveOptions(undefined);
+    // F-project-review-2026-06-14: replace (not push) so the user's
+    // history entry for /game is collapsed and back returns to whatever
+    // was before the game (e.g. /levels).
+    navigate('/', { replace: true });
+  };
+
+  // Surface the structured error as a typed exception so the existing
+  // LevelSelect-style error UI can render it; here we just hand it to
+  // a small inline panel because GamePage has no LevelSelect layout.
+  if (urlError || (loadError && !activeMaze)) {
+    return (
+      <div
+        data-testid="game-load-error"
+        style={{
+          position: 'absolute',
+          inset: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 12,
+          padding: 24,
+          color: 'var(--fg)',
+          background: 'var(--bg)',
+        }}
+      >
+        <p style={{ color: 'var(--danger)', maxWidth: 480, textAlign: 'center' }}>
+          {urlError ?? loadError}
+        </p>
+        <button
+          type="button"
+          data-testid="game-load-error-back"
+          onClick={() => navigate('/', { replace: true })}
+          style={{
+            padding: '8px 16px',
+            border: '1px solid var(--border)',
+            borderRadius: 4,
+            background: 'transparent',
+            color: 'var(--fg)',
+            cursor: 'pointer',
+          }}
+        >
+          返回主菜单
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {activeMaze && <GameCanvas key={activeMaze.id} maze={activeMaze} options={activeOptions} />}
+      {activeMaze && gameScreen === 'playing' && <HUD />}
+      {activeMaze && gameScreen === 'paused' && (
+        <>
+          <HUD />
+          <PauseOverlay onResume={() => useGameStore.getState().resume()} onQuit={quitToMenu} />
+        </>
+      )}
+      {activeMaze && gameScreen === 'game-over' && (
+        // F9: pass activeOptions so retry preserves the player's chosen
+        // mode / surviveSeconds / enemyCount / spawnSchedule. Without
+        // this, startLevel() falls back to maze.rules.victory = 'reach-exit'
+        // and the default 3-enemy count, making every retry silently
+        // revert the player's setup.
+        <GameOverOverlay
+          onRetry={() => activeMaze && startLevel(activeMaze.id, activeOptions)}
+          onQuit={quitToMenu}
+        />
+      )}
+      {activeMaze && gameScreen === 'win' && (
+        // F9: same fix for WinOverlay — both overlays share the bug.
+        <WinOverlay
+          onRetry={() => activeMaze && startLevel(activeMaze.id, activeOptions)}
+          onQuit={quitToMenu}
+        />
+      )}
+    </>
+  );
+}
+
+// F-project-review-2026-06-14: AppRoutes is the routed UI without the
+// router provider. main.tsx wraps it in BrowserRouter for production;
+// tests wrap it in MemoryRouter for deterministic initial-path control.
+// Splitting these out avoids the "rendered <Router> inside another
+// <Router>" invariant when a test wants to drive back/forward manually.
+export function AppRoutes() {
+  return (
+    <ConfirmProvider>
+      <AppShell>
+        <Routes>
+          <Route path="/" element={<MenuPage />} />
+          <Route path="/levels" element={<LevelsPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/editor" element={<EditorRoutePage />} />
+          <Route path="/game" element={<GamePage />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </AppShell>
     </ConfirmProvider>
   );
 }
+
+export function App() {
+  return (
+    <BrowserRouter>
+      <AppRoutes />
+    </BrowserRouter>
+  );
+}
+
+// F-project-review-2026-06-14: re-export LevelLoadError so the error panel
+// above can throw it through hooks (e.g. future suspense integration).
+export { LevelLoadError };

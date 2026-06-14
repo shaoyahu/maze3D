@@ -254,4 +254,81 @@ describe('EditorViewport (P2-4b #11)', () => {
     fireEvent.mouseUp(vp, { button: 0, clientX: 150, clientY: 80 });
     expect(useEditorStore.getState().camera).toEqual({ x: 0, y: 0, zoom: 1 });
   });
+
+  // F-editor-empty-click-clear: clicking the dark canvas area around the
+  // grid (i.e. NOT on a cell) clears the current selection so the right
+  // panel jumps back to the level-metadata form. Cell clicks are routed
+  // by handleCellClick and continue to behave per-tool.
+  describe('clicking empty canvas area clears the selection', () => {
+    it('a click on the viewport background (target = the viewport div) clears the selection', () => {
+      useEditorStore.setState({ selection: { kind: 'wall', x: 1, z: 1 } });
+      render(<EditorViewport />);
+      const vp = screen.getByTestId('editor-viewport');
+      // Pretend the user pressed and released on the dark padding. The
+      // target is the viewport element itself (no data-x / data-z).
+      fireEvent.mouseDown(vp, { button: 0, clientX: 5, clientY: 5 });
+      fireEvent.mouseUp(vp, { button: 0, clientX: 5, clientY: 5 });
+      expect(useEditorStore.getState().selection).toBeNull();
+    });
+
+    it('a click on the viewport background works in the wall tool (clears, does NOT place a wall)', () => {
+      // User is in wall tool with a wall selected. Clicking the dark
+      // area should drop the selection — NOT place a wall at (0,0).
+      useEditorStore.setState({
+        tool: 'wall',
+        selection: { kind: 'wall', x: 1, z: 1 },
+      });
+      render(<EditorViewport />);
+      const before = useEditorStore.getState().level.walls.map((r) => r.slice());
+      const vp = screen.getByTestId('editor-viewport');
+      fireEvent.mouseDown(vp, { button: 0, clientX: 5, clientY: 5 });
+      fireEvent.mouseUp(vp, { button: 0, clientX: 5, clientY: 5 });
+      expect(useEditorStore.getState().selection).toBeNull();
+      const after = useEditorStore.getState().level.walls;
+      expect(after).toEqual(before);
+    });
+
+    it('a click on a cell does NOT clear the selection (cell handler is the one that runs)', () => {
+      // With select tool, clicking a wall cell should select the wall,
+      // not clear the prior selection. The viewport-level handler
+      // correctly skips clicks whose target is a cell.
+      useEditorStore.setState({
+        tool: 'select',
+        selection: { kind: 'wall', x: 1, z: 1 },
+      });
+      render(<EditorViewport />);
+      fireEvent.click(screen.getByTestId('cell-3-2')); // a different wall
+      expect(useEditorStore.getState().selection).toEqual({ kind: 'wall', x: 3, z: 2 });
+    });
+
+    it('a drag (mousedown then move > 5px then mouseup) does NOT clear the selection', () => {
+      useEditorStore.setState({ selection: { kind: 'wall', x: 1, z: 1 } });
+      render(<EditorViewport />);
+      const vp = screen.getByTestId('editor-viewport');
+      fireEvent.mouseDown(vp, { button: 0, clientX: 5, clientY: 5 });
+      fireEvent.mouseMove(vp, { button: 0, clientX: 50, clientY: 50 });
+      fireEvent.mouseUp(vp, { button: 0, clientX: 50, clientY: 50 });
+      expect(useEditorStore.getState().selection).toEqual({ kind: 'wall', x: 1, z: 1 });
+    });
+
+    it('clicking on the minimap does NOT clear the selection (minimap is outside the viewport click area)', () => {
+      useEditorStore.setState({ selection: { kind: 'wall', x: 1, z: 1 } });
+      render(<EditorViewport />);
+      // The minimap is rendered as a sibling of the viewport div, so
+      // clicks on it never reach the viewport's mouseup handler.
+      const minimap = screen.getByTestId('editor-viewport-minimap');
+      fireEvent.mouseDown(minimap, { button: 0, clientX: 5, clientY: 5 });
+      fireEvent.mouseUp(minimap, { button: 0, clientX: 5, clientY: 5 });
+      expect(useEditorStore.getState().selection).toEqual({ kind: 'wall', x: 1, z: 1 });
+    });
+
+    it('right-button click on the viewport does NOT clear the selection (only left button counts)', () => {
+      useEditorStore.setState({ selection: { kind: 'wall', x: 1, z: 1 } });
+      render(<EditorViewport />);
+      const vp = screen.getByTestId('editor-viewport');
+      fireEvent.mouseDown(vp, { button: 2, clientX: 5, clientY: 5 });
+      fireEvent.mouseUp(vp, { button: 2, clientX: 5, clientY: 5 });
+      expect(useEditorStore.getState().selection).toEqual({ kind: 'wall', x: 1, z: 1 });
+    });
+  });
 });

@@ -119,6 +119,74 @@ describe('EditorStatusBar (P2-4b #14)', () => {
     expect(screen.getByTestId('status-schema').textContent).toBe('schema v1');
   });
 
+  // F-editor-warnings-popup: the status-bar warning chip is now a button.
+  // Clicking it opens a portal-rendered dialog listing every issue
+  // validateDesign emits for the current level, each tagged with its
+  // severity and `where`. Closing the dialog hides the list.
+  describe('warnings popup', () => {
+    it('does not render the popup by default', () => {
+      render(<EditorStatusBar />);
+      expect(screen.queryByTestId('warnings-popup')).toBeNull();
+    });
+
+    it('opens the popup when the warning chip is clicked', () => {
+      render(<EditorStatusBar />);
+      act(() => {
+        screen.getByTestId('status-warnings').click();
+      });
+      const popup = screen.getByTestId('warnings-popup');
+      expect(popup).toBeInTheDocument();
+      // The fixture has 1 warning ("no pickups") and 0 errors.
+      expect(screen.getByTestId('warnings-popup-list').children).toHaveLength(1);
+      expect(screen.getByTestId('warnings-popup-item-0').textContent).toContain('Level has no pickups');
+    });
+
+    it('renders one list item per issue across warnings and errors', () => {
+      // Force an error by placing the exit on a wall, and keep the
+      // existing "no pickups" warning. Two issues total.
+      resetEditor({
+        walls: [
+          [0, 0, 0, 0, 1], // exit (4,0) sits on a wall
+          [0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0],
+        ],
+        exit: { x: 4, z: 0 },
+      });
+      render(<EditorStatusBar />);
+      act(() => {
+        screen.getByTestId('status-warnings').click();
+      });
+      const items = screen.getByTestId('warnings-popup-list').children;
+      expect(items).toHaveLength(2);
+      expect(screen.getByTestId('warnings-popup-item-0').dataset.severity).toBe('warning');
+      expect(screen.getByTestId('warnings-popup-item-1').dataset.severity).toBe('error');
+    });
+
+    it('closes the popup when the close button is clicked', () => {
+      render(<EditorStatusBar />);
+      act(() => {
+        screen.getByTestId('status-warnings').click();
+      });
+      expect(screen.getByTestId('warnings-popup')).toBeInTheDocument();
+      act(() => {
+        screen.getByTestId('warnings-popup-close').click();
+      });
+      expect(screen.queryByTestId('warnings-popup')).toBeNull();
+    });
+
+    it('closes the popup when the backdrop is clicked', () => {
+      render(<EditorStatusBar />);
+      act(() => {
+        screen.getByTestId('status-warnings').click();
+      });
+      act(() => {
+        screen.getByTestId('warnings-popup-backdrop').click();
+      });
+      expect(screen.queryByTestId('warnings-popup')).toBeNull();
+    });
+  });
+
   it('saveLevel updates lastSavedAt and the status reflects the new timestamp', () => {
     render(<EditorStatusBar />);
     act(() => {

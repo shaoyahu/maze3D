@@ -354,6 +354,30 @@ function LevelMetadataForm({ level }: { level: MazeData }): React.ReactElement {
 }
 
 // ---------------------------------------------------------------------------
+// "Back to level" affordance.
+//
+// Renders above the entity-specific card so the user can always reach the
+// level-metadata form (name / size / rules) without first having to click
+// the empty viewport. Without this, once any wall/pickup/enemy is selected
+// the right panel is locked into the per-object form and the user has no
+// way to change game-wide settings until they deselect via the viewport.
+// ---------------------------------------------------------------------------
+function BackToLevel(): React.ReactElement {
+  const clearSelection = useEditorStore((s) => s.clearSelection);
+  return (
+    <button
+      type="button"
+      data-testid="back-to-level"
+      onClick={clearSelection}
+      className="editor-properties__back"
+    >
+      <span aria-hidden>←</span>
+      <span>关卡属性</span>
+    </button>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Pickup form (selection.kind === 'pickup')
 // ---------------------------------------------------------------------------
 function PickupForm({ pickup }: { pickup: Pickup }): React.ReactElement {
@@ -368,7 +392,8 @@ function PickupForm({ pickup }: { pickup: Pickup }): React.ReactElement {
   }, [pickup.id, pickup.type, pickup.value]);
 
   return (
-    <div data-testid="pickup-form">
+    <div data-testid="pickup-form" className="editor-properties__form">
+      <BackToLevel />
       <Card variant="pickup" selected title="拾取物" chip={pickup.id.slice(0, 8)}>
         <label className="editor-properties__field">
           <span className="editor-properties__field-label">类型</span>
@@ -436,7 +461,8 @@ function EnemyForm({ enemy }: { enemy: EnemySpawn }): React.ReactElement {
   useDebouncedCommit(fovAngleDeg, (v) => updateEnemy(enemy.id, { fovAngleDeg: Math.max(0, v) }), 300);
 
   return (
-    <div data-testid="enemy-form">
+    <div data-testid="enemy-form" className="editor-properties__form">
+    <BackToLevel />
     <Card variant="enemy" selected title="敌人" chip={enemy.id.slice(0, 8)}>
       <div className="editor-properties__field">
         <span className="editor-properties__field-label">出生点</span>
@@ -536,7 +562,8 @@ function EnemyForm({ enemy }: { enemy: EnemySpawn }): React.ReactElement {
 function WallForm({ x, z }: { x: number; z: number }): React.ReactElement {
   const deleteSelected = useEditorStore((s) => s.deleteSelected);
   return (
-    <div data-testid="wall-form">
+    <div data-testid="wall-form" className="editor-properties__form">
+      <BackToLevel />
       <Card variant="wall" selected title="墙体" chip={`${x},${z}`}>
         <div className="editor-properties__field">
           <span className="editor-properties__field-label">坐标</span>

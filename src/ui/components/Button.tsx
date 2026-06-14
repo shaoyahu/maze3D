@@ -17,6 +17,10 @@ export interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement
   // mid-async-work (e.g. file import awaiting readJsonFile). Only
   // emitted when explicitly true; resting buttons stay quiet.
   'aria-busy'?: boolean;
+  // Pass-through for React Testing Library's data-testid so callers can
+  // target buttons from tests without TS7053 on `rest[...]` indexing.
+  // Rendered verbatim onto the underlying <button>.
+  'data-testid'?: string;
 }
 
 export function Button({
