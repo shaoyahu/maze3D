@@ -166,6 +166,9 @@ export interface EditorStoreState {
   placeExit: (x: number, z: number) => void;
   placePickup: (x: number, z: number) => void;
   placeEnemy: (x: number, z: number, width: number) => void;
+  // Append a new patrol waypoint to the given enemy. Used by the
+  // "click a cell to extend the patrol path" viewport interaction.
+  appendEnemyPathNode: (enemyId: string, x: number, z: number) => void;
 
   // patch actions (mark dirty; history is debounced/blurred separately)
   updatePickup: (id: string, patch: Partial<Pickup>) => void;
@@ -496,16 +499,39 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
 
     placeStart: (x, z) => {
       const { level } = get();
-      if (!isFloor(level, x, z)) return;
-      const nextLevel: MazeData = { ...level, start: { x, z } };
-      set(commitLevel(get(), nextLevel));
+      if (!inBounds(x, z, level.size.width, level.size.depth)) {
+        set({ lastError: '起点位置超出网格范围' });
+        return;
+      }
+      // Auto-carve the cell if it's currently a wall — UX win so the user
+      // can drop a start on top of an existing wall rather than getting a
+      // silent reject. Mirrors the carve-on-resize behaviour.
+      let nextWalls = level.walls;
+      if (level.walls[z]![x] === 1) {
+        nextWalls = level.walls.map((r, zi) =>
+          zi === z ? r.map((c, xi) => (xi === x ? 0 : c)) : r,
+        );
+      }
+      const nextLevel: MazeData = { ...level, start: { x, z }, walls: nextWalls };
+      set({ ...commitLevel(get(), nextLevel), lastError: null });
     },
 
     placeExit: (x, z) => {
       const { level } = get();
-      if (!isFloor(level, x, z)) return;
-      const nextLevel: MazeData = { ...level, exit: { x, z } };
-      set(commitLevel(get(), nextLevel));
+      if (!inBounds(x, z, level.size.width, level.size.depth)) {
+        set({ lastError: '终点位置超出网格范围' });
+        return;
+      }
+      // Auto-carve the cell if it's currently a wall so the user can drop
+      // an exit on top of a wall instead of getting a silent reject.
+      let nextWalls = level.walls;
+      if (level.walls[z]![x] === 1) {
+        nextWalls = level.walls.map((r, zi) =>
+          zi === z ? r.map((c, xi) => (xi === x ? 0 : c)) : r,
+        );
+      }
+      const nextLevel: MazeData = { ...level, exit: { x, z }, walls: nextWalls };
+      set({ ...commitLevel(get(), nextLevel), lastError: null });
     },
 
     placePickup: (x, z) => {
@@ -527,8 +553,30 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
 
     placeEnemy: (x, z, width) => {
       const { level } = get();
-      // Spec: path = [(x,z), (min(x+1, width-1), z)].
-      const secondX = clamp(x + 1, 0, width - 1);
+      if (!inBounds(x, z, level.size.width, level.size.depth)) return;
+      // Spec: path = [(x,z), (x±1, z)]. We pick x+1 by default, but at the
+      // right edge (x === width-1) we fall back to x-1 so the two seed
+      // nodes are NEVER identical — a zero-length path segment renders
+      // an undefined SVG marker-end orientation and confuses enemy AI
+      // patrol code that assumes adjacent path nodes differ.
+      const secondX = x === width - 1 ? Math.max(0, x - 1) : x + 1;
+      // Auto-carve both path cells — validateMaze rejects path nodes
+      // that sit on walls (JsonMazeProvider line ~285), so a fresh
+      // enemy on an all-walls level would otherwise fail auto-save
+      // silently. Carving keeps the UX consistent with placeStart /
+      // placeExit (which also auto-carve).
+      const carveSet: ReadonlyArray<{ x: number; z: number }> = [
+        { x, z },
+        { x: secondX, z },
+      ];
+      let nextWalls = level.walls;
+      for (const { x: cx, z: cz } of carveSet) {
+        if (nextWalls[cz]![cx] === 1) {
+          nextWalls = nextWalls.map((r, zi) =>
+            zi === cz ? r.map((c, xi) => (xi === cx ? 0 : c)) : r,
+          );
+        }
+      }
       const newEnemy: EnemySpawn = {
         id: generateId(),
         x,
@@ -538,8 +586,42 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
           { x: secondX, z },
         ],
       };
-      const nextLevel: MazeData = { ...level, enemies: [...level.enemies, newEnemy] };
-      set(commitLevel(get(), nextLevel));
+      const nextLevel: MazeData = { ...level, walls: nextWalls, enemies: [...level.enemies, newEnemy] };
+      // Auto-select the freshly placed enemy so the user lands in the
+      // path-planning UX (panel opens, subsequent clicks add path nodes).
+      set(commitLevel(get(), nextLevel, { kind: 'enemy', id: newEnemy.id }));
+    },
+
+    // Append a node to an enemy's patrol path. The first click after
+    // selecting an enemy (in enemy tool mode) lands here — used by the
+    // viewport's "click to add path waypoint" interaction.
+    appendEnemyPathNode: (enemyId, nx, nz) => {
+      const { level } = get();
+      if (!inBounds(nx, nz, level.size.width, level.size.depth)) {
+        set({ lastError: '路径节点超出网格范围' });
+        return;
+      }
+      // Reject a no-op append: clicking the same cell twice would otherwise
+      // produce a zero-length path segment, breaking SVG marker-end
+      // orientation and producing undefined behaviour in the AI patrol
+      // state machine that assumes adjacent path nodes differ.
+      const target = level.enemies.find((e) => e.id === enemyId);
+      if (!target) return;
+      const last = target.path[target.path.length - 1];
+      if (last && last.x === nx && last.z === nz) return;
+      // Carve the new path node — same reason as placeEnemy: a
+      // path node on a wall fails validateMaze and breaks auto-save.
+      let nextWalls = level.walls;
+      if (nextWalls[nz]![nx] === 1) {
+        nextWalls = nextWalls.map((r, zi) =>
+          zi === nz ? r.map((c, xi) => (xi === nx ? 0 : c)) : r,
+        );
+      }
+      const nextEnemies = level.enemies.map((e) =>
+        e.id === enemyId ? { ...e, path: [...e.path, { x: nx, z: nz }] } : e,
+      );
+      const nextLevel: MazeData = { ...level, walls: nextWalls, enemies: nextEnemies };
+      set({ ...commitLevel(get(), nextLevel, { kind: 'enemy', id: enemyId }), lastError: null });
     },
 
     // ---- patch actions (mark dirty; no immediate history push) ----

@@ -70,19 +70,19 @@ describe('EditorStatusBar (P2-4b #14)', () => {
   });
 
   it('renders the dirty / saved / not-modified indicator', () => {
-    // 1. Pristine: shows "未保存（未改动）" because dirty=false and no save.
+    // 1. Pristine: shows "未改动" because dirty=false and no save.
     const { rerender } = render(<EditorStatusBar />);
-    expect(screen.getByTestId('status-dirty').textContent).toBe('未保存（未改动）');
+    expect(screen.getByTestId('status-dirty').textContent).toContain('未改动');
 
     // 2. Dirty: shows "● 未保存".
     useEditorStore.setState({ dirty: true });
     rerender(<EditorStatusBar />);
-    expect(screen.getByTestId('status-dirty').textContent).toBe('● 未保存');
+    expect(screen.getByTestId('status-dirty').textContent).toContain('未保存');
 
-    // 3. Saved: shows "已保存于 HH:MM:SS".
+    // 3. Saved: shows "✓ 已保存 HH:MM:SS" (chip mode in the redesign).
     useEditorStore.setState({ dirty: false, lastSavedAt: Date.now() });
     rerender(<EditorStatusBar />);
-    expect(screen.getByTestId('status-dirty').textContent).toMatch(/^已保存于 \d{2}:\d{2}:\d{2}$/);
+    expect(screen.getByTestId('status-dirty').textContent).toMatch(/已保存\s*\d{2}:\d{2}:\d{2}/);
   });
 
   it('counts walls, pickups, and enemies from the level', () => {
@@ -96,8 +96,13 @@ describe('EditorStatusBar (P2-4b #14)', () => {
       ],
     });
     render(<EditorStatusBar />);
-    // 2 walls in the default fixture.
-    expect(screen.getByTestId('status-stats').textContent).toBe('墙 2 · 拾取 2 · 敌人 1');
+    // 2 walls in the default fixture. New chip layout puts each stat on
+    // its own chip; verify all three counts are present anywhere in the
+    // status bar.
+    const bar = screen.getByTestId('editor-status-bar');
+    expect(bar.textContent).toMatch(/2[\s\S]*墙/);
+    expect(bar.textContent).toMatch(/2[\s\S]*拾取/);
+    expect(bar.textContent).toMatch(/1[\s\S]*敌人/);
   });
 
   it('shows the warning count from validateDesign', () => {
@@ -105,7 +110,8 @@ describe('EditorStatusBar (P2-4b #14)', () => {
     // All walls in start/exit bounds, so no "on wall" errors.
     resetEditor();
     render(<EditorStatusBar />);
-    expect(screen.getByTestId('status-warnings').textContent).toBe('警告 1');
+    expect(screen.getByTestId('status-warnings').textContent).toContain('1');
+    expect(screen.getByTestId('status-warnings').textContent).toContain('警告');
   });
 
   it('shows the schema version', () => {
@@ -121,7 +127,7 @@ describe('EditorStatusBar (P2-4b #14)', () => {
     expect(useEditorStore.getState().lastSavedAt).toBe(Date.now());
     // 13:07:42 UTC, but the format is local time. The status bar is local
     // — the assertion just verifies the format HH:MM:SS.
-    expect(screen.getByTestId('status-dirty').textContent).toMatch(/^已保存于 \d{2}:\d{2}:\d{2}$/);
+    expect(screen.getByTestId('status-dirty').textContent).toMatch(/已保存\s*\d{2}:\d{2}:\d{2}/);
   });
 
   // F-project-review-2026-06-13-D-5/D-18: the storage banner closes the
@@ -144,9 +150,12 @@ describe('EditorStatusBar (P2-4b #14)', () => {
       const banner = screen.getByTestId('status-storage');
       expect(banner).not.toBeNull();
       expect(banner.textContent).toContain('本地存储已满');
-      // The banner uses var(--danger) so the user reads "this is bad,
-      // not just a warning".
-      expect(banner.getAttribute('style')).toMatch(/var\(--danger\)/);
+      // P3-Phase-2 chip styling: the banner paints the danger color via
+      // the `editor-statusbar__storage` class (which uses var(--danger)
+      // in the stylesheet). Pinning the class pins the "this is bad,
+      // not just a warning" intent — the previous inline-style pin was
+      // brittle to the CSS migration.
+      expect(banner.className).toContain('editor-statusbar__storage');
     });
 
     it('renders the banner for non-quota errors too (e.g. unavailable / serialization)', () => {

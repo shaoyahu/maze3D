@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useEditorStore } from '../../store/editorStore';
 import type { EnemySpawn, Pickup, PickupType } from '../../maze/types';
 
@@ -10,7 +10,7 @@ const PICKUP_CSS_COLOR: Record<PickupType, string> = {
   key: '#5fa8ff',
 };
 const ENEMY_COLOR = '#ff8a3d';
-const WALL_COLOR = '#2a2a32';
+const WALL_COLOR = '#1d1f27';
 const FLOOR_COLOR = '#e0e0ea';
 const CELL_SIZE = 24;
 const ZOOM_MIN = 0.5;
@@ -40,7 +40,16 @@ function pathPointsAttr(path: Array<{ x: number; z: number }>): string {
     .join(' ');
 }
 
-export function EditorViewport() {
+function minimapCellStyle(x: number, z: number, width: number, depth: number): React.CSSProperties {
+  return {
+    left: `calc(${(x / width) * 100}%)`,
+    top: `calc(${(z / depth) * 100}%)`,
+    width: `calc(${100 / width}% - 1px)`,
+    height: `calc(${100 / depth}% - 1px)`,
+  };
+}
+
+export function EditorViewport(): React.ReactElement {
   const level = useEditorStore((s) => s.level);
   const tool = useEditorStore((s) => s.tool);
   const selection = useEditorStore((s) => s.selection);
@@ -51,16 +60,26 @@ export function EditorViewport() {
   const placeExit = useEditorStore((s) => s.placeExit);
   const placePickup = useEditorStore((s) => s.placePickup);
   const placeEnemy = useEditorStore((s) => s.placeEnemy);
+  const appendEnemyPathNode = useEditorStore((s) => s.appendEnemyPathNode);
   const select = useEditorStore((s) => s.select);
   const clearSelection = useEditorStore((s) => s.clearSelection);
 
-  // P3-B-L30: memoize the cell lookups. pick/enemy lookup happens on
-  // every mouse hover and every click in the viewport, so re-walking
-  // pickups + enemies on each render wastes O(n+m) work. level is
-  // stable while the user is moving the cursor around.
+  // hoverCell lives in a child <HoverReadout> rather than here so each
+  // mousemove only re-renders the small readout, not the entire grid.
+  // The grid body uses an imperative ref + DOM dataset read on
+  // mousemove — see `hoverCellRef` and the `handleMouseMove` below.
+  const hoverCellRef = useRef<{ x: number; z: number } | null>(null);
+  const [hoverCellTick, setHoverCellTick] = useState(0);
+  // Tracks whether the user has actually panned in the current pan-tool
+  // session — used to auto-hide the "DRAG TO PAN" hint after the first
+  // pan gesture so it doesn't linger.
+  const [hasPanned, setHasPanned] = useState(false);
+  // Reset the "first-pan" flag whenever the user switches away from pan.
+  useEffect(() => {
+    if (tool !== 'pan') setHasPanned(false);
+  }, [tool]);
+
   const { pickupByCell, enemyByCell } = useMemo(() => buildLookups(level), [level]);
-  // Right-button drag pan. Stored in a ref so the move handler reads the
-  // latest pointer position without re-binding on every state change.
   const panStateRef = useRef<{ x: number; y: number } | null>(null);
 
   const isCellSelected = (x: number, z: number): boolean => {
@@ -101,23 +120,31 @@ export function EditorViewport() {
     else if (tool === 'start') placeStart(x, z);
     else if (tool === 'exit') placeExit(x, z);
     else if (tool === 'pickup') placePickup(x, z);
-    else if (tool === 'enemy') placeEnemy(x, z, level.size.width);
+    else if (tool === 'enemy') {
+      // If an enemy is already selected, treat the click as "append a
+      // patrol waypoint to that enemy" instead of placing a new one.
+      // Empty cells still place; existing-enemy clicks extend the path.
+      if (selection?.kind === 'enemy') {
+        appendEnemyPathNode(selection.id, x, z);
+        return;
+      }
+      placeEnemy(x, z, level.size.width);
+    }
   };
 
-  // F-L5: native wheel listener with { passive: false } so preventDefault
-  // can stop the body from scrolling. React 17+ registers onWheel as
-  // passive by default, so e.preventDefault() in the React handler is
-  // a no-op. cameraZoomRef keeps the listener stable across zoom changes.
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const cameraZoomRef = useRef(camera.zoom);
   cameraZoomRef.current = camera.zoom;
   useEffect(() => {
     const el = viewportRef.current;
     if (!el) return;
-    const handler = (e: WheelEvent) => {
+    const handler = (e: WheelEvent): void => {
       e.preventDefault();
       const direction = e.deltaY < 0 ? 1 : -1;
-      const next = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, cameraZoomRef.current + direction * ZOOM_STEP));
+      const next = Math.max(
+        ZOOM_MIN,
+        Math.min(ZOOM_MAX, cameraZoomRef.current + direction * ZOOM_STEP),
+      );
       if (next !== cameraZoomRef.current) setCamera({ zoom: next });
     };
     el.addEventListener('wheel', handler, { passive: false });
@@ -125,247 +152,476 @@ export function EditorViewport() {
   }, [setCamera]);
 
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>): void => {
-    if (e.button !== 2) return; // right button only
+    // Pan works with either button when the pan tool is selected (left
+    // drag is the natural expectation; right drag still works in any
+    // tool for trackpad users). Outside pan mode only right-drag pans.
+    if (tool === 'pan') {
+      if (e.button !== 0 && e.button !== 2) return;
+    } else if (e.button !== 2) {
+      return;
+    }
     panStateRef.current = { x: e.clientX, y: e.clientY };
-    // P3-B-L32: force a re-render so the cursor transitions from
-    // 'grab' to 'grabbing' immediately. Without this, panStateRef
-    // changes but no React state changes → no re-render → cursor
-    // stays 'grab' until the first mousemove updates the camera.
-    // setCamera({ ...camera }) is a no-op value-wise but emits a new
-    // reference, which trips the cursor style update on this same
-    // render commit.
     setCamera({ ...camera });
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>): void => {
     const start = panStateRef.current;
-    if (start === null) return;
-    const dx = e.clientX - start.x;
-    const dy = e.clientY - start.y;
-    // F-L4: scale pan deltas by 1/zoom so the world point under the
-    // mouse stays put. Without this, zoom=2 makes the grid slide at
-    // 2x screen-pixel speed — mouse appears to move "faster" than grid.
-    setCamera({ x: camera.x + dx / camera.zoom, y: camera.y + dy / camera.zoom });
-    panStateRef.current = { x: e.clientX, y: e.clientY };
+    if (start !== null) {
+      const dx = e.clientX - start.x;
+      const dy = e.clientY - start.y;
+      setCamera({ x: camera.x + dx / camera.zoom, y: camera.y + dy / camera.zoom });
+      panStateRef.current = { x: e.clientX, y: e.clientY };
+      handleFirstPan();
+      return;
+    }
+    // Update the ref imperatively so the readout (a separate child)
+    // can read it without forcing the whole grid to re-render.
+    // Use truthy check rather than `!== undefined` — Number('') is 0,
+    // not NaN, so an empty data-x would silently snap hover to (0,0).
+    const target = e.target as HTMLElement | null;
+    if (target?.dataset?.x && target.dataset.z) {
+      const x = Number(target.dataset.x);
+      const z = Number(target.dataset.z);
+      if (!Number.isNaN(x) && !Number.isNaN(z)) {
+        const prev = hoverCellRef.current;
+        if (!prev || prev.x !== x || prev.z !== z) {
+          hoverCellRef.current = { x, z };
+          setHoverCellTick((t) => t + 1);
+        }
+        return;
+      }
+    }
+    if (hoverCellRef.current !== null) {
+      hoverCellRef.current = null;
+      setHoverCellTick((t) => t + 1);
+    }
   };
 
   const handleMouseUp = (e: React.MouseEvent<HTMLDivElement>): void => {
-    if (e.button === 2) panStateRef.current = null;
+    if (tool === 'pan') {
+      if (e.button === 0 || e.button === 2) panStateRef.current = null;
+    } else if (e.button === 2) {
+      panStateRef.current = null;
+    }
   };
 
   const handleContextMenu = (e: React.MouseEvent<HTMLDivElement>): void => {
-    // Suppress the browser's right-click menu so the pan gesture is clean.
     e.preventDefault();
+  };
+
+  const handleMouseLeave = (): void => {
+    if (hoverCellRef.current !== null) {
+      hoverCellRef.current = null;
+      setHoverCellTick((t) => t + 1);
+    }
+  };
+
+  const handleFirstPan = (): void => {
+    if (!hasPanned) setHasPanned(true);
   };
 
   const { width, depth } = level.size;
   const gridWidth = width * CELL_SIZE;
   const gridHeight = depth * CELL_SIZE;
-  const transform =
-    `translate(calc(-50% + ${camera.x}px), calc(-50% + ${camera.y}px)) scale(${camera.zoom})`;
+  const transform = `translate(calc(-50% + ${camera.x}px), calc(-50% + ${camera.y}px)) scale(${camera.zoom})`;
+
+  const isEmpty =
+    level.walls.every((row) => row.every((c) => c === 0)) &&
+    level.pickups.length === 0 &&
+    level.enemies.length === 0;
 
   return (
-    <div
-      data-testid="editor-viewport"
-      id="editor-viewport"
-      ref={viewportRef}
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      onContextMenu={handleContextMenu}
-      style={{
-        position: 'relative',
-        overflow: 'hidden',
-        width: '100%',
-        height: '100%',
-        background: 'var(--bg)',
-        cursor: tool === 'pan' ? (panStateRef.current ? 'grabbing' : 'grab') : 'default',
-        userSelect: 'none',
-      }}
-    >
+    <div className="editor-viewport-shell" data-testid="editor-viewport-shell">
+      <div className="editor-viewport-bg" aria-hidden />
+
       <div
-        data-testid="editor-grid"
+        data-testid="editor-viewport"
+        id="editor-viewport"
+        ref={viewportRef}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseLeave}
+        onContextMenu={handleContextMenu}
         style={{
           position: 'absolute',
-          top: '50%',
-          left: '50%',
-          width: gridWidth,
-          height: gridHeight,
-          transform,
-          transformOrigin: 'center center',
-          display: 'grid',
-          gridTemplateColumns: `repeat(${width}, ${CELL_SIZE}px)`,
-          gridTemplateRows: `repeat(${depth}, ${CELL_SIZE}px)`,
+          inset: 0,
+          overflow: 'hidden',
+          cursor: tool === 'pan' ? (panStateRef.current ? 'grabbing' : 'grab') : 'default',
+          userSelect: 'none',
         }}
       >
-        {Array.from({ length: depth }, (_, z) =>
-          Array.from({ length: width }, (_, x) => {
-            const isWall = level.walls[z]?.[x] === 1;
-            const isStart = level.start.x === x && level.start.z === z;
-            const isExit = level.exit.x === x && level.exit.z === z;
-            const selected = isCellSelected(x, z);
-            return (
-              <div
-                key={cellKey(x, z)}
-                data-x={x}
-                data-z={z}
-                data-testid={`cell-${x}-${z}`}
-                data-wall={isWall ? 1 : 0}
-                data-start={isStart ? 1 : 0}
-                data-exit={isExit ? 1 : 0}
-                onClick={() => handleCellClick(x, z)}
-                style={{
-                  position: 'relative',
-                  width: CELL_SIZE,
-                  height: CELL_SIZE,
-                  background: isWall ? WALL_COLOR : FLOOR_COLOR,
-                  outline: selected ? '2px solid var(--accent)' : 'none',
-                  outlineOffset: '-2px',
-                  cursor: tool === 'pan' ? 'inherit' : 'pointer',
-                  zIndex: 1,
-                }}
-              >
-                {isStart && (
-                  <span
-                    data-testid={`start-${x}-${z}`}
-                    style={{
-                      position: 'absolute',
-                      top: 0,
-                      left: '50%',
-                      transform: 'translateX(-50%)',
-                      color: '#3ec46d',
-                      fontSize: 16,
-                      lineHeight: 1,
-                      pointerEvents: 'none',
-                    }}
-                  >
-                    ▲
-                  </span>
-                )}
-                {isExit && (
-                  <span
-                    data-testid={`exit-${x}-${z}`}
-                    style={{
-                      position: 'absolute',
-                      top: 0,
-                      left: '50%',
-                      transform: 'translateX(-50%)',
-                      color: 'var(--danger)',
-                      fontSize: 16,
-                      lineHeight: 1,
-                      pointerEvents: 'none',
-                    }}
-                  >
-                    ▼
-                  </span>
-                )}
-              </div>
-            );
-          }),
-        )}
-
-        {level.pickups.map((p) => {
-          const selected = selection?.kind === 'pickup' && selection.id === p.id;
-          return (
-            <div
-              key={p.id}
-              data-testid={`pickup-${p.id}`}
-              data-pickup-type={p.type}
-              style={{
-                position: 'absolute',
-                left: p.x * CELL_SIZE,
-                top: p.z * CELL_SIZE,
-                width: CELL_SIZE,
-                height: CELL_SIZE,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: PICKUP_CSS_COLOR[p.type],
-                fontSize: 11,
-                fontWeight: 700,
-                pointerEvents: 'none',
-                outline: selected ? '2px solid var(--accent)' : 'none',
-                outlineOffset: '-2px',
-                zIndex: 2,
-              }}
-            >
-              {p.type[0]!.toUpperCase()}
-            </div>
-          );
-        })}
-
-        <svg
-          data-testid="enemy-paths"
-          width={gridWidth}
-          height={gridHeight}
+        <div
+          data-testid="editor-grid"
           style={{
             position: 'absolute',
-            inset: 0,
-            pointerEvents: 'none',
-            zIndex: 2,
+            top: '50%',
+            left: '50%',
+            width: gridWidth,
+            height: gridHeight,
+            transform,
+            transformOrigin: 'center center',
+            display: 'grid',
+            gridTemplateColumns: `repeat(${width}, ${CELL_SIZE}px)`,
+            gridTemplateRows: `repeat(${depth}, ${CELL_SIZE}px)`,
           }}
         >
-          {level.enemies.map((e) => (
-            <polyline
-              key={`path-${e.id}`}
-              data-testid={`path-${e.id}`}
-              points={pathPointsAttr(e.path)}
-              fill="none"
-              stroke={ENEMY_COLOR}
-              strokeWidth={1.5}
-              strokeDasharray="3 2"
-            />
-          ))}
-          {level.enemies.flatMap((e) =>
-            e.path.map((n, i) => (
-              <circle
-                key={`node-${e.id}-${i}`}
-                data-testid={`path-node-${e.id}-${i}`}
-                cx={n.x * CELL_SIZE + CELL_SIZE / 2}
-                cy={n.z * CELL_SIZE + CELL_SIZE / 2}
-                r={3}
-                fill={ENEMY_COLOR}
-              />
-            )),
+          {Array.from({ length: depth }, (_, z) =>
+            Array.from({ length: width }, (_, x) => {
+              const isWall = level.walls[z]?.[x] === 1;
+              const isStart = level.start.x === x && level.start.z === z;
+              const isExit = level.exit.x === x && level.exit.z === z;
+              const selected = isCellSelected(x, z);
+              return (
+                <div
+                  key={cellKey(x, z)}
+                  data-x={x}
+                  data-z={z}
+                  data-testid={`cell-${x}-${z}`}
+                  data-wall={isWall ? 1 : 0}
+                  data-start={isStart ? 1 : 0}
+                  data-exit={isExit ? 1 : 0}
+                  onClick={() => handleCellClick(x, z)}
+                  style={{
+                    position: 'relative',
+                    width: CELL_SIZE,
+                    height: CELL_SIZE,
+                    background: isWall ? WALL_COLOR : FLOOR_COLOR,
+                    borderRadius: 2,
+                    outline: selected ? '2px solid var(--accent)' : 'none',
+                    outlineOffset: '-2px',
+                    cursor: tool === 'pan' ? 'inherit' : 'pointer',
+                    zIndex: 1,
+                    boxShadow: isWall ? 'inset 0 1px 0 rgba(255,255,255,0.06)' : 'none',
+                  }}
+                >
+                  {isStart && <StartMarker x={x} z={z} />}
+                  {isExit && <ExitMarker x={x} z={z} />}
+                </div>
+              );
+            }),
           )}
-        </svg>
 
-        {level.enemies.map((e) => {
-          const selected = selection?.kind === 'enemy' && selection.id === e.id;
-          return (
-            <div
-              key={e.id}
-              data-testid={`enemy-${e.id}`}
-              style={{
-                position: 'absolute',
-                left: e.x * CELL_SIZE,
-                top: e.z * CELL_SIZE,
-                width: CELL_SIZE,
-                height: CELL_SIZE,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                pointerEvents: 'none',
-                outline: selected ? '2px solid var(--accent)' : 'none',
-                outlineOffset: '-2px',
-                zIndex: 3,
-              }}
-            >
-              <span
-                aria-hidden
+          {level.pickups.map((p) => {
+            const selected = selection?.kind === 'pickup' && selection.id === p.id;
+            return (
+              <div
+                key={p.id}
+                data-testid={`pickup-${p.id}`}
+                data-pickup-type={p.type}
                 style={{
-                  display: 'inline-block',
-                  width: 16,
-                  height: 16,
-                  borderRadius: '50%',
-                  background: ENEMY_COLOR,
-                  border: '2px solid #1a1a1a',
+                  position: 'absolute',
+                  left: p.x * CELL_SIZE,
+                  top: p.z * CELL_SIZE,
+                  width: CELL_SIZE,
+                  height: CELL_SIZE,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: PICKUP_CSS_COLOR[p.type],
+                  fontSize: 12,
+                  fontWeight: 700,
+                  fontFamily: 'var(--font-display)',
+                  pointerEvents: 'none',
+                  outline: selected ? '2px solid var(--accent)' : 'none',
+                  outlineOffset: '-2px',
+                  zIndex: 2,
+                  textShadow: '0 1px 0 rgba(0,0,0,0.4)',
                 }}
+              >
+                {p.type === 'time' ? '⏱' : p.type === 'health' ? '♥' : '⚷'}
+              </div>
+            );
+          })}
+
+          <svg
+            data-testid="enemy-paths"
+            width={gridWidth}
+            height={gridHeight}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              pointerEvents: 'none',
+              zIndex: 2,
+            }}
+          >
+            <defs>
+              <marker
+                id="enemy-arrow"
+                viewBox="0 0 10 10"
+                refX="6"
+                refY="5"
+                markerWidth="4"
+                markerHeight="4"
+                orient="auto-start-reverse"
+              >
+                <path d="M0,0 L10,5 L0,10 Z" fill={ENEMY_COLOR} />
+              </marker>
+            </defs>
+            {level.enemies.map((e) => (
+              <polyline
+                key={`path-${e.id}`}
+                data-testid={`path-${e.id}`}
+                points={pathPointsAttr(e.path)}
+                fill="none"
+                stroke={ENEMY_COLOR}
+                strokeWidth={1.5}
+                strokeDasharray="3 2"
+                markerEnd="url(#enemy-arrow)"
               />
-            </div>
-          );
-        })}
+            ))}
+            {level.enemies.flatMap((e) =>
+              e.path.map((n, i) => (
+                <circle
+                  key={`node-${e.id}-${i}`}
+                  data-testid={`path-node-${e.id}-${i}`}
+                  cx={n.x * CELL_SIZE + CELL_SIZE / 2}
+                  cy={n.z * CELL_SIZE + CELL_SIZE / 2}
+                  r={3}
+                  fill={ENEMY_COLOR}
+                  stroke="#0c0d12"
+                  strokeWidth={1}
+                />
+              )),
+            )}
+          </svg>
+
+          {level.enemies.map((e) => {
+            const selected = selection?.kind === 'enemy' && selection.id === e.id;
+            return (
+              <div
+                key={e.id}
+                data-testid={`enemy-${e.id}`}
+                style={{
+                  position: 'absolute',
+                  left: e.x * CELL_SIZE,
+                  top: e.z * CELL_SIZE,
+                  width: CELL_SIZE,
+                  height: CELL_SIZE,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  pointerEvents: 'none',
+                  outline: selected ? '2px solid var(--accent)' : 'none',
+                  outlineOffset: '-2px',
+                  zIndex: 3,
+                }}
+              >
+                <span
+                  aria-hidden
+                  style={{
+                    display: 'inline-block',
+                    width: 14,
+                    height: 14,
+                    borderRadius: '50%',
+                    background: ENEMY_COLOR,
+                    border: '2px solid #0c0d12',
+                    boxShadow: '0 0 0 1px ' + ENEMY_COLOR,
+                  }}
+                />
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {isEmpty && (
+        <div className="editor-viewport-empty" data-testid="editor-viewport-empty">
+          <div>空关卡</div>
+          <div className="editor-viewport-empty__accent">选择工具 · 点击格子开始放置</div>
+        </div>
+      )}
+
+      {tool === 'pan' && !hasPanned && (
+        <div className="editor-viewport-pan-hint" data-testid="editor-viewport-pan-hint">
+          <div className="editor-viewport-pan-hint__icon" aria-hidden>✥</div>
+          <div className="editor-viewport-pan-hint__title">平移模式</div>
+          <div className="editor-viewport-pan-hint__body">
+            按住 <kbd>左键</kbd> 或 <kbd>右键</kbd> 在画布上拖动来移动视图
+          </div>
+          <div className="editor-viewport-pan-hint__sub">滚轮缩放 · ESC 退出</div>
+        </div>
+      )}
+
+      <HoverReadout
+        hoverRef={hoverCellRef}
+        tick={hoverCellTick}
+        width={width}
+        depth={depth}
+      />
+
+      <div className="editor-viewport-zoom" data-testid="editor-viewport-zoom">
+        <button
+          type="button"
+          className="editor-viewport-zoom__btn"
+          aria-label="缩小"
+          disabled={camera.zoom <= ZOOM_MIN}
+          onClick={() => setCamera({ zoom: Math.max(ZOOM_MIN, camera.zoom - ZOOM_STEP) })}
+        >
+          −
+        </button>
+        <div className="editor-viewport-zoom__value" aria-live="polite">
+          {(camera.zoom * 100).toFixed(0)}%
+        </div>
+        <button
+          type="button"
+          className="editor-viewport-zoom__btn"
+          aria-label="放大"
+          disabled={camera.zoom >= ZOOM_MAX}
+          onClick={() => setCamera({ zoom: Math.min(ZOOM_MAX, camera.zoom + ZOOM_STEP) })}
+        >
+          +
+        </button>
+      </div>
+
+      <div className="editor-viewport-minimap" data-testid="editor-viewport-minimap" aria-label="缩略图">
+        <div className="editor-viewport-minimap__title">
+          Map {width}×{depth}
+        </div>
+        <div className="editor-viewport-minimap__grid">
+          {Array.from({ length: depth }, (_, z) =>
+            Array.from({ length: width }, (_, x) => {
+              const isWall = level.walls[z]?.[x] === 1;
+              const isStart = level.start.x === x && level.start.z === z;
+              const isExit = level.exit.x === x && level.exit.z === z;
+              if (!isWall && !isStart && !isExit) return null;
+              const className = isStart
+                ? 'editor-viewport-minimap__cell editor-viewport-minimap__cell--start'
+                : isExit
+                  ? 'editor-viewport-minimap__cell editor-viewport-minimap__cell--exit'
+                  : 'editor-viewport-minimap__cell';
+              return (
+                <div
+                  key={cellKey(x, z)}
+                  className={className}
+                  style={minimapCellStyle(x, z, width, depth)}
+                />
+              );
+            }),
+          )}
+        </div>
       </div>
     </div>
+  );
+}
+
+// HoverReadout: a tiny child that subscribes to `tick` and reads
+// `hoverRef.current` on each render. The parent grid stays free of
+// hover state, so each mousemove only re-renders this readout, not the
+// full 50×50 grid.
+function HoverReadout({
+  hoverRef,
+  tick,
+  width,
+  depth,
+}: {
+  hoverRef: React.MutableRefObject<{ x: number; z: number } | null>;
+  tick: number;
+  width: number;
+  depth: number;
+}): React.ReactElement {
+  // tick is the dependency; the actual cell value lives in the ref.
+  void tick;
+  const cell = hoverRef.current;
+  return (
+    <div className="editor-viewport-readout" data-testid="editor-viewport-readout">
+      <span>
+        <span className="editor-viewport-readout__label">X</span>{' '}
+        <span className="editor-viewport-readout__value">
+          {cell ? String(cell.x).padStart(2, '0') : '—'}
+        </span>
+      </span>
+      <span>
+        <span className="editor-viewport-readout__label">Z</span>{' '}
+        <span className="editor-viewport-readout__value">
+          {cell ? String(cell.z).padStart(2, '0') : '—'}
+        </span>
+      </span>
+      <span className="editor-viewport-readout__divider" aria-hidden />
+      <span>
+        <span className="editor-viewport-readout__label">Grid</span>{' '}
+        <span className="editor-viewport-readout__value">
+          {width}×{depth}
+        </span>
+      </span>
+    </div>
+  );
+}
+
+// Start marker: filled green dot with expanding ring. Communicates "entry".
+function StartMarker({ x, z }: { x: number; z: number }): React.ReactElement {
+  return (
+    <span
+      data-testid={`start-${x}-${z}`}
+      style={{
+        position: 'absolute',
+        top: 6,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        width: 12,
+        height: 12,
+        borderRadius: '50%',
+        background: 'var(--ok)',
+        boxShadow: '0 0 0 2px rgba(62,196,109,0.35)',
+        pointerEvents: 'none',
+      }}
+    >
+      <span
+        aria-hidden
+        style={{
+          position: 'absolute',
+          inset: -3,
+          borderRadius: '50%',
+          border: '1px solid var(--ok)',
+          animation: 'editor-port-pulse 1.8s ease-out infinite',
+        }}
+      />
+    </span>
+  );
+}
+
+// Exit marker: a small red flag (pennant on a pole). Inline SVG so the
+// shape stays sharp at any zoom and the silhouette reads as a flag
+// rather than a generic marker. The pole casts a faint shadow to lift
+// it off the floor cell visually.
+function ExitMarker({ x, z }: { x: number; z: number }): React.ReactElement {
+  return (
+    <svg
+      data-testid={`exit-${x}-${z}`}
+      viewBox="0 0 24 24"
+      width={18}
+      height={18}
+      aria-hidden
+      style={{
+        position: 'absolute',
+        top: 3,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        pointerEvents: 'none',
+        overflow: 'visible',
+        filter: 'drop-shadow(0 1px 1px rgba(0,0,0,0.45))',
+      }}
+    >
+      {/* Pole */}
+      <line
+        x1={6}
+        y1={3}
+        x2={6}
+        y2={22}
+        stroke="#ff5252"
+        strokeWidth={1.6}
+        strokeLinecap="round"
+      />
+      {/* Pennant (triangular flag) */}
+      <path
+        d="M6 3 L21 7.5 L6 12 Z"
+        fill="#ff5252"
+        stroke="#ff5252"
+        strokeWidth={0.5}
+        strokeLinejoin="round"
+      />
+      {/* Pole base cap */}
+      <circle cx={6} cy={22} r={1.4} fill="#ff5252" />
+    </svg>
   );
 }

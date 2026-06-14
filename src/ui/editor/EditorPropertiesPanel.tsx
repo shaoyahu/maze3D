@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useEditorStore } from '../../store/editorStore';
-import type { EnemySpawn, MazeData, Pickup, PickupType } from '../../maze/types';
-import { isPickupType, isVictoryType } from '../../maze/types';
+import type { EnemySpawn, MazeData, Pickup, PickupType, VictoryType } from '../../maze/types';
+import { isPickupType, isVictoryType, VICTORY_TYPE_VALUES } from '../../maze/types';
 import { Button } from '../components/Button';
 
 const PICKUP_TYPE_OPTIONS: readonly PickupType[] = ['time', 'health', 'key'];
@@ -10,36 +10,206 @@ const PICKUP_TYPE_LABEL: Record<PickupType, string> = {
   health: '生命',
   key: '钥匙',
 };
-const VICTORY_OPTIONS = [
-  { value: 'reach-exit', label: '到达出口' },
-  { value: 'time-trial', label: '限时挑战' },
-  { value: 'survive', label: '存活模式' },
-] as const;
 
-const PANEL_STYLE = {
-  width: 320,
-  flexShrink: 0,
-  borderLeft: '1px solid var(--border)',
-  background: 'var(--panel)',
-  padding: 12,
-  overflowY: 'auto' as const,
-  fontSize: 13,
-  display: 'flex',
-  flexDirection: 'column' as const,
-  gap: 10,
-};
+const VICTORY_OPTIONS: ReadonlyArray<{ value: VictoryType; label: string }> =
+  VICTORY_TYPE_VALUES.map((v) => ({
+    value: v,
+    label: v === 'reach-exit' ? '到达出口' : v === 'time-trial' ? '限时挑战' : '存活模式',
+  }));
 
-const SECTION_TITLE = { fontSize: 12, fontWeight: 600, opacity: 0.85, marginBottom: 4 };
-const FIELD = { display: 'flex', flexDirection: 'column' as const, gap: 3 };
-const LABEL = { fontSize: 11, opacity: 0.75 };
-const INPUT = {
-  padding: '4px 6px',
-  background: 'rgba(255,255,255,0.04)',
-  border: '1px solid var(--border)',
-  borderRadius: 4,
-  color: 'var(--fg)',
-  fontSize: 13,
-};
+// ---------------------------------------------------------------------------
+// Collapsible card primitive
+// ---------------------------------------------------------------------------
+
+function Card({
+  variant,
+  selected,
+  title,
+  chip,
+  defaultCollapsed = false,
+  children,
+}: {
+  variant: 'meta' | 'rules' | 'pickup' | 'enemy' | 'wall';
+  selected?: boolean;
+  title: string;
+  chip?: string;
+  defaultCollapsed?: boolean;
+  children: React.ReactNode;
+}): React.ReactElement {
+  const [collapsed, setCollapsed] = useState(defaultCollapsed);
+  return (
+    <div
+      className={`editor-card editor-card--${variant}${collapsed ? ' editor-card--collapsed' : ''}${selected ? ' editor-card--selected' : ''}`}
+    >
+      <div
+        className="editor-card__header"
+        role="button"
+        tabIndex={0}
+        aria-expanded={!collapsed}
+        onClick={() => setCollapsed((c) => !c)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setCollapsed((c) => !c);
+          }
+        }}
+      >
+        <span>{title}</span>
+        {chip && <span className={`editor-card__chip editor-card__chip--${variant}`}>{chip}</span>}
+        <span className="editor-card__chevron" aria-hidden>
+          ▾
+        </span>
+      </div>
+      <div className="editor-card__body">{children}</div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Number stepper (atomic decrement/increment + direct input)
+// ---------------------------------------------------------------------------
+
+function Stepper({
+  value,
+  onChange,
+  min = 0,
+  max = 9999,
+  step = 1,
+  testId,
+  unit,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+  min?: number;
+  max?: number;
+  step?: number;
+  testId?: string;
+  unit?: string;
+}): React.ReactElement {
+  const [draft, setDraft] = useState(String(value));
+  useEffect(() => {
+    setDraft(String(value));
+  }, [value]);
+
+  const commit = (raw: string): void => {
+    const n = Number(raw);
+    if (!Number.isFinite(n)) {
+      setDraft(String(value));
+      return;
+    }
+    // Floor only when the step is integer; otherwise round to one decimal
+    // place so a 0.5-step preserves fractional values like 2.5.
+    const rounded = Number.isInteger(step) ? Math.floor(n) : Math.round(n * 10) / 10;
+    const clamped = Math.max(min, Math.min(max, rounded));
+    setDraft(String(clamped));
+    if (clamped !== value) onChange(clamped);
+  };
+
+  const dec = (): void => {
+    const next = value - step;
+    const rounded = Number.isInteger(step) ? Math.floor(next) : Math.round(next * 10) / 10;
+    commit(String(Math.max(min, rounded)));
+  };
+  const inc = (): void => {
+    const next = value + step;
+    const rounded = Number.isInteger(step) ? Math.floor(next) : Math.round(next * 10) / 10;
+    commit(String(Math.min(max, rounded)));
+  };
+
+  return (
+    <div className="editor-stepper">
+      <button
+        type="button"
+        className="editor-stepper__btn"
+        onClick={dec}
+        disabled={value <= min}
+        aria-label="减小"
+      >
+        −
+      </button>
+      <input
+        className="editor-stepper__input"
+        type="number"
+        value={draft}
+        onChange={(e) => commit(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+        }}
+        min={min}
+        max={max}
+        data-testid={testId}
+      />
+      <button
+        type="button"
+        className="editor-stepper__btn"
+        onClick={inc}
+        disabled={value >= max}
+        aria-label="增大"
+      >
+        +
+      </button>
+      {unit && <span className="editor-stepper__unit">{unit}</span>}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Segmented control (radio group with sliding indicator)
+// ---------------------------------------------------------------------------
+
+function Segmented<T extends string>({
+  options,
+  value,
+  onChange,
+  testIdPrefix,
+}: {
+  options: ReadonlyArray<{ value: T; label: string }>;
+  value: T;
+  onChange: (v: T) => void;
+  testIdPrefix: string;
+}): React.ReactElement {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [indicator, setIndicator] = useState<{ left: number; width: number }>({ left: 0, width: 0 });
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const idx = options.findIndex((o) => o.value === value);
+    if (idx < 0) return;
+    const option = el.querySelectorAll<HTMLElement>('[data-segmented-option]')[idx];
+    if (!option) return;
+    const rect = option.getBoundingClientRect();
+    const containerRect = el.getBoundingClientRect();
+    setIndicator({
+      left: rect.left - containerRect.left,
+      width: rect.width,
+    });
+  }, [value, options]);
+
+  return (
+    <div ref={containerRef} className="editor-segmented" role="radiogroup">
+      <span
+        className="editor-segmented__indicator"
+        aria-hidden
+        style={{ left: indicator.left, width: indicator.width }}
+      />
+      {options.map((opt) => (
+        <button
+          key={opt.value}
+          type="button"
+          role="radio"
+          aria-checked={value === opt.value}
+          data-segmented-option
+          data-testid={`${testIdPrefix}-${opt.value}`}
+          onClick={() => onChange(opt.value)}
+          className={`editor-segmented__option${value === opt.value ? ' editor-segmented__option--active' : ''}`}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Hook: debounce a value; `commit` runs after `delay` ms of no updates.
@@ -56,7 +226,7 @@ function useDebouncedCommit<T>(value: T, commit: (v: T) => void, delay: number):
 // ---------------------------------------------------------------------------
 // Level metadata form (selection === null)
 // ---------------------------------------------------------------------------
-function LevelMetadataForm({ level }: { level: MazeData }) {
+function LevelMetadataForm({ level }: { level: MazeData }): React.ReactElement {
   const updateName = useEditorStore((s) => s.updateName);
   const updateSize = useEditorStore((s) => s.updateSize);
   const updateRule = useEditorStore((s) => s.updateRule);
@@ -67,17 +237,8 @@ function LevelMetadataForm({ level }: { level: MazeData }) {
   const [initialTime, setInitialTime] = useState(level.rules.initialTime);
   const [maxHealth, setMaxHealth] = useState(level.rules.maxHealth);
   const [timeOnPickup, setTimeOnPickup] = useState(level.rules.timeOnPickup);
-  const [victory, setVictory] = useState(level.rules.victory);
+  const [victory, setVictory] = useState<VictoryType>(level.rules.victory);
 
-  // Re-sync local state when the store's level identity changes (e.g.
-  // `newLevel` was called) so the form shows the new values.
-  //
-  // Depend ONLY on `level.id`. Including `level.rules`, `level.size`, etc.
-  // would re-run this effect on every debounced commit within the same
-  // level, resetting sibling fields' in-flight local edits (F4: typing
-  // "90" into initialTime is silently reverted to 60 once width's 300ms
-  // debounce fires and bumps the rules reference). Same-level patches from
-  // outside (undo, import) are intentionally not re-synced into the form.
   useEffect(() => {
     setName(level.name);
     setWidth(level.size.width);
@@ -89,12 +250,6 @@ function LevelMetadataForm({ level }: { level: MazeData }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: only sync on level identity change (F4)
   }, [level.id]);
 
-  // F-H3: combine width + depth into a single debounced commit. Two
-  // independent useDebouncedCommit timers fire sequentially, each reading
-  // the other field from the store at fire time, which produces an
-  // intermediate half-size state (e.g. updateSize(20, 10) then
-  // updateSize(20, 12)) and a visible double "walls reset" to the user.
-  // One timer referencing both local fields gives a single, atomic commit.
   useDebouncedCommit(name, (v) => updateName(v), 300);
   useEffect(() => {
     const id = window.setTimeout(() => {
@@ -105,99 +260,95 @@ function LevelMetadataForm({ level }: { level: MazeData }) {
   useDebouncedCommit(initialTime, (v) => updateRule({ initialTime: Math.max(0, Math.floor(v)) }), 300);
   useDebouncedCommit(maxHealth, (v) => updateRule({ maxHealth: Math.max(1, Math.floor(v)) }), 300);
   useDebouncedCommit(timeOnPickup, (v) => updateRule({ timeOnPickup: Math.max(0, Math.floor(v)) }), 300);
-  // F-D-quality-HIGH-2: `victory` state is already typed as VictoryType
-  // (useState<VictoryType>(level.rules.victory) above), so `v` is narrowed
-  // at the call site. The old `as LevelRules['victory']` was a redundant
-  // type assertion hiding the fact that this entire commit is type-safe
-  // by construction. The `isVictoryType` guard re-asserts the invariant
-  // explicitly so a future refactor that widens `victory`'s state (e.g.
-  // to `VictoryType | null`) trips a compile error here instead of
-  // silently shipping a malformed `rules.victory`.
   useDebouncedCommit(victory, (v) => {
     if (isVictoryType(v)) updateRule({ victory: v });
   }, 300);
 
   return (
-    <div data-testid="level-metadata-form" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <div style={SECTION_TITLE}>关卡元数据</div>
-      <label style={FIELD}>
-        <span style={LABEL}>名称</span>
-        <input style={INPUT} value={name} onChange={(e) => setName(e.target.value)} data-testid="meta-name" />
-      </label>
-      <div style={{ display: 'flex', gap: 8 }}>
-        <label style={{ ...FIELD, flex: 1 }}>
-          <span style={LABEL}>宽 (width)</span>
+    <div data-testid="level-metadata-form">
+      <Card variant="meta" title="关卡元数据" chip="META">
+        <label className="editor-properties__field">
+          <span className="editor-properties__field-label">名称</span>
           <input
-            style={INPUT}
-            type="number"
-            min={1}
-            value={width}
-            onChange={(e) => setWidth(Number(e.target.value))}
-            data-testid="meta-width"
+            className="editor-properties__name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            data-testid="meta-name"
           />
         </label>
-        <label style={{ ...FIELD, flex: 1 }}>
-          <span style={LABEL}>深 (depth)</span>
-          <input
-            style={INPUT}
-            type="number"
-            min={1}
-            value={depth}
-            onChange={(e) => setDepth(Number(e.target.value))}
-            data-testid="meta-depth"
+        <div className="editor-properties__field">
+          <span className="editor-properties__field-label">网格尺寸</span>
+          <div className="editor-properties__row">
+            <label className="editor-properties__field">
+              <span className="editor-properties__field-label">宽 W</span>
+              <Stepper
+                value={width}
+                onChange={setWidth}
+                min={1}
+                max={50}
+                testId="meta-width"
+                unit="格"
+              />
+            </label>
+            <label className="editor-properties__field">
+              <span className="editor-properties__field-label">深 D</span>
+              <Stepper
+                value={depth}
+                onChange={setDepth}
+                min={1}
+                max={50}
+                testId="meta-depth"
+                unit="格"
+              />
+            </label>
+          </div>
+        </div>
+      </Card>
+
+      <Card variant="rules" title="规则" chip="RULES">
+        <label className="editor-properties__field">
+          <span className="editor-properties__field-label">初始时间</span>
+          <Stepper
+            value={initialTime}
+            onChange={setInitialTime}
+            min={0}
+            max={999}
+            testId="meta-initial-time"
+            unit="秒"
           />
         </label>
-      </div>
-      <div style={SECTION_TITLE}>规则</div>
-      <label style={FIELD}>
-        <span style={LABEL}>初始时间 (s)</span>
-        <input
-          style={INPUT}
-          type="number"
-          min={0}
-          value={initialTime}
-          onChange={(e) => setInitialTime(Number(e.target.value))}
-          data-testid="meta-initial-time"
-        />
-      </label>
-      <label style={FIELD}>
-        <span style={LABEL}>最大生命</span>
-        <input
-          style={INPUT}
-          type="number"
-          min={1}
-          value={maxHealth}
-          onChange={(e) => setMaxHealth(Number(e.target.value))}
-          data-testid="meta-max-health"
-        />
-      </label>
-      <label style={FIELD}>
-        <span style={LABEL}>拾取 +时间 (s)</span>
-        <input
-          style={INPUT}
-          type="number"
-          min={0}
-          value={timeOnPickup}
-          onChange={(e) => setTimeOnPickup(Number(e.target.value))}
-          data-testid="meta-time-on-pickup"
-        />
-      </label>
-      <div role="radiogroup" style={FIELD}>
-        <span style={LABEL}>胜利条件</span>
-        {VICTORY_OPTIONS.map((opt) => (
-          <label key={opt.value} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-            <input
-              type="radio"
-              name="victory"
-              value={opt.value}
-              checked={victory === opt.value}
-              onChange={() => setVictory(opt.value)}
-              data-testid={`meta-victory-${opt.value}`}
-            />
-            {opt.label}
-          </label>
-        ))}
-      </div>
+        <label className="editor-properties__field">
+          <span className="editor-properties__field-label">最大生命</span>
+          <Stepper
+            value={maxHealth}
+            onChange={setMaxHealth}
+            min={1}
+            max={99}
+            testId="meta-max-health"
+            unit="♥"
+          />
+        </label>
+        <label className="editor-properties__field">
+          <span className="editor-properties__field-label">拾取 +时间</span>
+          <Stepper
+            value={timeOnPickup}
+            onChange={setTimeOnPickup}
+            min={0}
+            max={60}
+            testId="meta-time-on-pickup"
+            unit="秒"
+          />
+        </label>
+        <div className="editor-properties__field" data-testid="meta-victory">
+          <span className="editor-properties__field-label">胜利条件</span>
+          <Segmented
+            options={VICTORY_OPTIONS}
+            value={victory}
+            onChange={setVictory}
+            testIdPrefix="meta-victory"
+          />
+        </div>
+      </Card>
     </div>
   );
 }
@@ -205,7 +356,7 @@ function LevelMetadataForm({ level }: { level: MazeData }) {
 // ---------------------------------------------------------------------------
 // Pickup form (selection.kind === 'pickup')
 // ---------------------------------------------------------------------------
-function PickupForm({ pickup }: { pickup: Pickup }) {
+function PickupForm({ pickup }: { pickup: Pickup }): React.ReactElement {
   const updatePickup = useEditorStore((s) => s.updatePickup);
   const deleteSelected = useEditorStore((s) => s.deleteSelected);
   const [type, setType] = useState<PickupType>(pickup.type);
@@ -216,56 +367,46 @@ function PickupForm({ pickup }: { pickup: Pickup }) {
     setValue(pickup.value);
   }, [pickup.id, pickup.type, pickup.value]);
 
-  // F-M5: commit on every change. updatePickup is dirty-only (no history
-  // push, see editorStore.ts:339-353), so the 300ms debounce added no
-  // value — it just delayed the visible form→store sync and created a
-  // 300ms window where the in-memory state diverged from the displayed
-  // form. Dispatch updatePickup synchronously alongside setState.
-
   return (
-    <div data-testid="pickup-form" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <div style={SECTION_TITLE}>拾取物 {pickup.id.slice(0, 8)}</div>
-      <label style={FIELD}>
-        <span style={LABEL}>类型</span>
-        <select
-          style={INPUT}
-          value={type}
-          onChange={(e) => {
-            // F-D-quality-HIGH-2: the <option> set is statically `PickupType`
-            // values, but the raw event target value is `string`. The old
-            // `as PickupType` cast trusted the DOM without verifying it;
-            // now we run `isPickupType` first. If a future option is
-            // misconfigured the call is a no-op instead of poisoning state.
-            const t = e.target.value;
-            if (!isPickupType(t)) return;
-            setType(t);
-            updatePickup(pickup.id, { type: t });
-          }}
-          data-testid="pickup-type"
-        >
-          {PICKUP_TYPE_OPTIONS.map((t) => (
-            <option key={t} value={t}>
-              {PICKUP_TYPE_LABEL[t]} ({t})
-            </option>
-          ))}
-        </select>
-      </label>
-      <label style={FIELD}>
-        <span style={LABEL}>数值</span>
-        <input
-          style={INPUT}
-          type="number"
-          min={0}
-          value={value}
-          onChange={(e) => {
-            const v = Math.max(0, Math.floor(Number(e.target.value)));
-            setValue(v);
-            updatePickup(pickup.id, { value: v });
-          }}
-          data-testid="pickup-value"
-        />
-      </label>
-      <Button variant="danger" onClick={() => deleteSelected()}>删除拾取物</Button>
+    <div data-testid="pickup-form">
+      <Card variant="pickup" selected title="拾取物" chip={pickup.id.slice(0, 8)}>
+        <label className="editor-properties__field">
+          <span className="editor-properties__field-label">类型</span>
+          <select
+            className="editor-properties__select"
+            value={type}
+            onChange={(e) => {
+              const t = e.target.value;
+              if (!isPickupType(t)) return;
+              setType(t);
+              updatePickup(pickup.id, { type: t });
+            }}
+            data-testid="pickup-type"
+          >
+            {PICKUP_TYPE_OPTIONS.map((t) => (
+              <option key={t} value={t}>
+                {PICKUP_TYPE_LABEL[t]} ({t})
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="editor-properties__field">
+          <span className="editor-properties__field-label">数值</span>
+          <Stepper
+            value={value}
+            onChange={(v) => {
+              setValue(v);
+              updatePickup(pickup.id, { value: v });
+            }}
+            min={0}
+            max={999}
+            testId="pickup-value"
+          />
+        </label>
+        <Button variant="danger" onClick={() => deleteSelected()}>
+          删除拾取物
+        </Button>
+      </Card>
     </div>
   );
 }
@@ -273,7 +414,7 @@ function PickupForm({ pickup }: { pickup: Pickup }) {
 // ---------------------------------------------------------------------------
 // Enemy form (selection.kind === 'enemy')
 // ---------------------------------------------------------------------------
-function EnemyForm({ enemy }: { enemy: EnemySpawn }) {
+function EnemyForm({ enemy }: { enemy: EnemySpawn }): React.ReactElement {
   const updateEnemy = useEditorStore((s) => s.updateEnemy);
   const moveEnemyNode = useEditorStore((s) => s.moveEnemyNode);
   const addEnemyNode = useEditorStore((s) => s.addEnemyNode);
@@ -295,25 +436,22 @@ function EnemyForm({ enemy }: { enemy: EnemySpawn }) {
   useDebouncedCommit(fovAngleDeg, (v) => updateEnemy(enemy.id, { fovAngleDeg: Math.max(0, v) }), 300);
 
   return (
-    <div data-testid="enemy-form" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <div style={SECTION_TITLE}>敌人 {enemy.id.slice(0, 8)}</div>
-      <div style={FIELD}>
-        <span style={LABEL}>出生点 (只读)</span>
-        <span style={{ fontFamily: 'monospace' }}>
+    <div data-testid="enemy-form">
+    <Card variant="enemy" selected title="敌人" chip={enemy.id.slice(0, 8)}>
+      <div className="editor-properties__field">
+        <span className="editor-properties__field-label">出生点</span>
+        <div className="editor-properties__readonly">
           ({enemy.x}, {enemy.z})
-        </span>
+        </div>
       </div>
-      <div style={FIELD}>
-        <span style={LABEL}>巡逻路径 ({enemy.path.length} 个节点)</span>
+      <div className="editor-properties__field">
+        <span className="editor-properties__field-label">
+          巡逻路径 · {enemy.path.length} 节点
+        </span>
         {enemy.path.map((node, i) => (
-          <div
-            key={i}
-            data-testid={`enemy-path-node-${i}`}
-            style={{ display: 'flex', alignItems: 'center', gap: 4 }}
-          >
-            <span style={{ fontSize: 11, opacity: 0.7, minWidth: 18 }}>#{i}</span>
+          <div key={i} className="editor-properties__path-row" data-testid={`enemy-path-node-${i}`}>
+            <span style={{ fontSize: 10, opacity: 0.7, fontFamily: 'var(--font-mono)' }}>#{i}</span>
             <input
-              style={{ ...INPUT, flex: 1 }}
               type="number"
               min={0}
               value={node.x}
@@ -322,7 +460,6 @@ function EnemyForm({ enemy }: { enemy: EnemySpawn }) {
               onChange={(e) => moveEnemyNode(enemy.id, i, Number(e.target.value), node.z)}
             />
             <input
-              style={{ ...INPUT, flex: 1 }}
               type="number"
               min={0}
               value={node.z}
@@ -335,15 +472,8 @@ function EnemyForm({ enemy }: { enemy: EnemySpawn }) {
               onClick={() => removeEnemyNode(enemy.id, i)}
               disabled={enemy.path.length <= 2}
               data-testid={`enemy-path-remove-${i}`}
-              style={{
-                background: 'transparent',
-                color: 'var(--fg)',
-                border: '1px solid var(--border)',
-                borderRadius: 4,
-                padding: '2px 6px',
-                cursor: enemy.path.length <= 2 ? 'not-allowed' : 'pointer',
-                opacity: enemy.path.length <= 2 ? 0.4 : 1,
-              }}
+              className="editor-properties__path-row__remove"
+              aria-label={`移除节点 ${i}`}
             >
               ×
             </button>
@@ -353,56 +483,49 @@ function EnemyForm({ enemy }: { enemy: EnemySpawn }) {
           type="button"
           onClick={() => addEnemyNode(enemy.id, enemy.x, enemy.z)}
           data-testid="enemy-path-add"
-          style={{
-            background: 'var(--panel)',
-            color: 'var(--fg)',
-            border: '1px dashed var(--border)',
-            borderRadius: 4,
-            padding: '4px 6px',
-            cursor: 'pointer',
-            fontSize: 12,
-            marginTop: 2,
-          }}
+          className="editor-properties__path-add"
         >
           + 添加节点
         </button>
       </div>
-      <label style={FIELD}>
-        <span style={LABEL}>停留时间 (s)</span>
-        <input
-          style={INPUT}
-          type="number"
-          min={0}
-          step={0.1}
+      <label className="editor-properties__field">
+        <span className="editor-properties__field-label">停留时间</span>
+        <Stepper
           value={dwellTime}
-          onChange={(e) => setDwellTime(Number(e.target.value))}
-          data-testid="enemy-dwell"
-        />
-      </label>
-      <label style={FIELD}>
-        <span style={LABEL}>视野范围 (格)</span>
-        <input
-          style={INPUT}
-          type="number"
+          onChange={setDwellTime}
           min={0}
-          value={fovRange}
-          onChange={(e) => setFovRange(Number(e.target.value))}
-          data-testid="enemy-fov-range"
+          max={60}
+          step={0.5}
+          testId="enemy-dwell"
+          unit="秒"
         />
       </label>
-      <label style={FIELD}>
-        <span style={LABEL}>视野角度 (°)</span>
-        <input
-          style={INPUT}
-          type="number"
+      <label className="editor-properties__field">
+        <span className="editor-properties__field-label">视野范围</span>
+        <Stepper
+          value={fovRange}
+          onChange={setFovRange}
+          min={0}
+          max={20}
+          testId="enemy-fov-range"
+          unit="格"
+        />
+      </label>
+      <label className="editor-properties__field">
+        <span className="editor-properties__field-label">视野角度</span>
+        <Stepper
+          value={fovAngleDeg}
+          onChange={setFovAngleDeg}
           min={0}
           max={360}
-          value={fovAngleDeg}
-          onChange={(e) => setFovAngleDeg(Number(e.target.value))}
-          data-testid="enemy-fov-angle"
+          testId="enemy-fov-angle"
+          unit="°"
         />
       </label>
-      <Button variant="danger" onClick={() => deleteSelected()}>删除敌人</Button>
+      <Button variant="danger" onClick={() => deleteSelected()}>
+        删除敌人
+      </Button>
+    </Card>
     </div>
   );
 }
@@ -410,26 +533,25 @@ function EnemyForm({ enemy }: { enemy: EnemySpawn }) {
 // ---------------------------------------------------------------------------
 // Wall form (selection.kind === 'wall')
 // ---------------------------------------------------------------------------
-function WallForm({ x, z }: { x: number; z: number }) {
+function WallForm({ x, z }: { x: number; z: number }): React.ReactElement {
   const deleteSelected = useEditorStore((s) => s.deleteSelected);
   return (
-    <div data-testid="wall-form" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <div style={SECTION_TITLE}>墙体</div>
-      <div style={FIELD}>
-        <span style={LABEL}>坐标 (只读)</span>
-        <span style={{ fontFamily: 'monospace' }}>
-          ({x}, {z})
-        </span>
-      </div>
-      <Button variant="danger" onClick={() => deleteSelected()}>删除墙体</Button>
+    <div data-testid="wall-form">
+      <Card variant="wall" selected title="墙体" chip={`${x},${z}`}>
+        <div className="editor-properties__field">
+          <span className="editor-properties__field-label">坐标</span>
+          <div className="editor-properties__readonly">
+            ({x}, {z})
+          </div>
+        </div>
+        <Button variant="danger" onClick={() => deleteSelected()}>
+          删除墙体
+        </Button>
+      </Card>
     </div>
   );
 }
 
-// P3-B-L26: extract the selection→form dispatch into a pure helper so
-// EditorPropertiesPanel's body is a single expression instead of a
-// `let body; if (a) {...} else if ...` chain. Same branches, fewer
-// mutable locals.
 type RenderBodyArgs = {
   selection: ReturnType<typeof useEditorStore.getState>['selection'];
   level: MazeData;
@@ -450,19 +572,21 @@ function renderBody({ selection, level }: RenderBodyArgs): React.ReactNode {
 // ---------------------------------------------------------------------------
 // Top-level panel: dispatches to the per-selection sub-form.
 // ---------------------------------------------------------------------------
-export function EditorPropertiesPanel() {
+export function EditorPropertiesPanel(): React.ReactElement {
   const level = useEditorStore((s) => s.level);
   const selection = useEditorStore((s) => s.selection);
 
   return (
-    <aside data-testid="editor-properties-panel" style={PANEL_STYLE}>
+    <aside data-testid="editor-properties-panel" className="editor-properties">
       {renderBody({ selection, level })}
     </aside>
   );
 }
 
-// Defensive: the selected id is gone (e.g. undo just dropped it). Tell
-// the user instead of rendering a form bound to undefined.
-function SelectionMissing({ kind }: { kind: 'pickup' | 'enemy' }) {
-  return <p style={{ opacity: 0.7 }}>选中的{kind === 'pickup' ? '拾取物' : '敌人'}已不存在。</p>;
+function SelectionMissing({ kind }: { kind: 'pickup' | 'enemy' }): React.ReactElement {
+  return (
+    <div className="editor-properties__empty">
+      选中的{kind === 'pickup' ? '拾取物' : '敌人'}已不存在。
+    </div>
+  );
 }

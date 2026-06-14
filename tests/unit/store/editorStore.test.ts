@@ -533,15 +533,18 @@ describe('useEditorStore', () => {
       expect(useEditorStore.getState().past.length).toBe(1);
     });
 
-    it('placeStart on a wall cell is rejected (no change, no history, no dirty flip)', () => {
+    it('placeStart on a wall cell auto-carves the wall and drops the start there', () => {
       // Arrange — (3,1) is a wall in the default all-1 grid.
       useEditorStore.setState({ past: [], dirty: false });
       // Act
       useEditorStore.getState().placeStart(3, 1);
-      // Assert
-      expect(useEditorStore.getState().level.start).toEqual({ x: 0, z: 0 });
-      expect(useEditorStore.getState().dirty).toBe(false);
-      expect(useEditorStore.getState().past.length).toBe(0);
+      // Assert — start moves to (3,1) AND the wall is carved to floor.
+      // UX win over the legacy silent-reject so the user isn't stuck
+      // with "I clicked but nothing happened".
+      expect(useEditorStore.getState().level.start).toEqual({ x: 3, z: 1 });
+      expect(useEditorStore.getState().level.walls[1]![3]).toBe(0);
+      expect(useEditorStore.getState().dirty).toBe(true);
+      expect(useEditorStore.getState().past.length).toBe(1);
     });
 
     it('placeStart out of bounds is rejected', () => {
@@ -678,17 +681,75 @@ describe('useEditorStore', () => {
       expect(useEditorStore.getState().past.length).toBe(1);
     });
 
-    it('clamps the second path node to the last column on the right edge (width=1)', () => {
+    it('falls back to (x-1) for the second seed node at the right edge so the two nodes never coincide', () => {
       // Arrange
       useEditorStore.setState({ past: [] });
-      // Act
+      // Act — width=5, x=4 is the last column; x+1 would land out of
+      // bounds. The store falls back to x-1 instead of clamping to x,
+      // so the seed path has two distinct nodes (a degenerate
+      // zero-length segment would break SVG marker-end orientation
+      // and confuse enemy AI patrol code).
       useEditorStore.getState().placeEnemy(4, 0, 5);
-      // Assert — second node clamped from (5, 0) to (4, 0).
+      // Assert — second node falls back to (3, 0).
       const e = useEditorStore.getState().level.enemies[0]!;
       expect(e.path).toEqual([
         { x: 4, z: 0 },
-        { x: 4, z: 0 },
+        { x: 3, z: 0 },
       ]);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // 8b. appendEnemyPathNode — covered separately because the click-to-extend
+  // path interaction (EditorViewport handleCellClick) routes through this
+  // action when an enemy is already selected.
+  // -----------------------------------------------------------------------
+  describe('appendEnemyPathNode', () => {
+    it('appends a new path node and auto-carves a wall under it', () => {
+      // Arrange — fresh enemy whose path ends at (1, 0).
+      useEditorStore.setState({ past: [] });
+      useEditorStore.getState().placeEnemy(0, 0, 5);
+      const enemyId = useEditorStore.getState().level.enemies[0]!.id;
+      // Force (1, 1) to be a wall so we can confirm carve-on-append.
+      const lvl = useEditorStore.getState().level;
+      const walls = lvl.walls.map((r) => r.slice());
+      walls[1]![1] = 1;
+      useEditorStore.setState({ level: { ...lvl, walls } });
+      // Act
+      useEditorStore.getState().appendEnemyPathNode(enemyId, 1, 1);
+      // Assert — node appended, wall carved.
+      const next = useEditorStore.getState().level;
+      expect(next.enemies[0]!.path).toEqual([
+        { x: 0, z: 0 },
+        { x: 1, z: 0 },
+        { x: 1, z: 1 },
+      ]);
+      expect(next.walls[1]![1]).toBe(0);
+      expect(useEditorStore.getState().lastError).toBeNull();
+    });
+
+    it('rejects duplicate appends (no-op when new node === last node)', () => {
+      // Arrange
+      useEditorStore.setState({ past: [] });
+      useEditorStore.getState().placeEnemy(0, 0, 5);
+      const enemyId = useEditorStore.getState().level.enemies[0]!.id;
+      const beforePath = useEditorStore.getState().level.enemies[0]!.path;
+      // Act — click the already-last cell again.
+      useEditorStore.getState().appendEnemyPathNode(enemyId, 1, 0);
+      // Assert — path unchanged. Without this guard the polyline would
+      // contain a zero-length segment, breaking SVG marker orientation
+      // and the enemy patrol AI's "advance to next node" loop.
+      const afterPath = useEditorStore.getState().level.enemies[0]!.path;
+      expect(afterPath).toEqual(beforePath);
+    });
+
+    it('records lastError and skips the append when the click is out of bounds', () => {
+      useEditorStore.setState({ past: [], lastError: null });
+      useEditorStore.getState().placeEnemy(0, 0, 5);
+      const enemyId = useEditorStore.getState().level.enemies[0]!.id;
+      useEditorStore.getState().appendEnemyPathNode(enemyId, 99, 99);
+      expect(useEditorStore.getState().level.enemies[0]!.path).toHaveLength(2);
+      expect(useEditorStore.getState().lastError).toBe('路径节点超出网格范围');
     });
   });
 

@@ -9,6 +9,11 @@ coverage/
 test-results/
 playwright-report/
 playwright/.cache/
+.playwright-mcp/
 *.log
 .DS_Store
 *.tsbuildinfo
+
+# Ad-hoc editor screenshots produced during local review / debugging.
+# These are not committed artifacts — keep the repo root clean.
+editor-*.png

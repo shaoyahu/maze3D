@@ -1,24 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
 import { useEditorStore } from '../../store/editorStore';
-import { EditorToolbar } from './EditorToolbar';
+import { EditorTopBar } from './EditorTopBar';
+import { EditorLeftDrawer } from './EditorLeftDrawer';
 import { EditorViewport } from './EditorViewport';
 import { EditorPropertiesPanel } from './EditorPropertiesPanel';
 import { EditorStatusBar } from './EditorStatusBar';
 import { useConfirm } from '../useConfirm';
-// F-project-review-2026-06-13-A-HIGH-2: handleExit's "save" branch
-// hands the validated level to useLevelStore.saveCustom, since
-// editorStore.saveLevel no longer writes to the level store on its own.
 import { useLevelStore } from '../../store/levelStore';
 
 const DRAFT_KEY = 'maze3d.editorDraft.v1';
 const AUTOSAVE_DELAY_MS = 2000;
-// P2-7: 3-option dirty-exit dialog. Exported so tests can pin the wording
-// and prevent the dialog text/behavior from drifting apart. Replaces the
-// 2-option "discard?" collapse that the spec's 3-option intent was
-// downgraded to under native window.confirm.
 export const DIRTY_EXIT_TITLE = '未保存的修改';
 export const DIRTY_EXIT_MESSAGE =
   '当前关卡有未保存的修改，请选择操作（继续编辑 = 留在此页）。';
+
 const PAGE_STYLE = {
   position: 'absolute' as const,
   inset: 0,
@@ -44,22 +39,15 @@ export interface EditorPageProps {
   onExit: () => void;
 }
 
-export function EditorPage({ onExit }: EditorPageProps) {
+export function EditorPage({ onExit }: EditorPageProps): React.ReactElement {
   const undo = useEditorStore((s) => s.undo);
   const redo = useEditorStore((s) => s.redo);
   const saveDraft = useEditorStore((s) => s.saveDraft);
   const loadDraft = useEditorStore((s) => s.loadDraft);
   const level = useEditorStore((s) => s.level);
-  // P2-7: themed confirm dialog replaces native window.confirm().
   const confirm = useConfirm();
 
   // ---- Draft recovery on mount ----------------------------------------
-  // F-L6: StrictMode dev 双调用 useEffect 会让用户进编辑器看 2 次 confirm。
-  // ref 标记已处理,保证 confirm 只弹一次(整个组件生命周期)。
-  //
-  // P2-7: state-driven render — first effect just flips a flag, second
-  // effect (gated on that flag) drives the async confirm. This avoids
-  // awaiting inside the StrictMode-doubled first effect.
   const [showDraftPrompt, setShowDraftPrompt] = useState(false);
   const draftPromptedRef = useRef(false);
   useEffect(() => {
@@ -97,8 +85,6 @@ export function EditorPage({ onExit }: EditorPageProps) {
   }, [showDraftPrompt, confirm, loadDraft]);
 
   // ---- Autosave: 2s debounce on level identity change ------------------
-  // Reference equality on `level` is enough — every mutating action builds
-  // a new MazeData object, so an unchanged level won't re-fire the timer.
   const autosaveTimer = useRef<number | null>(null);
   useEffect(() => {
     if (autosaveTimer.current !== null) {
@@ -137,13 +123,6 @@ export function EditorPage({ onExit }: EditorPageProps) {
   const handleExit = async (): Promise<void> => {
     const dirty = useEditorStore.getState().dirty;
     if (dirty) {
-      // P2-7: 3-option dirty-exit dialog (save / discard / cancel)
-      // replaces the 2-option window.confirm collapse. The save action
-      // calls saveLevel() inline; if validation fails we stay in the
-      // editor so the user can fix the level. The toolbar's "保存并退出"
-      // button still bypasses this dialog by calling saveLevel() itself
-      // before invoking onSaveAndExit, so this branch only fires when
-      // the user clicks plain "退出" with unsaved work.
       const choice = await confirm({
         title: DIRTY_EXIT_TITLE,
         message: DIRTY_EXIT_MESSAGE,
@@ -158,15 +137,12 @@ export function EditorPage({ onExit }: EditorPageProps) {
       if (choice === 'save') {
         const r = useEditorStore.getState().saveLevel();
         if (!r.ok) return; // stay in editor on save failure
-        // F-project-review-2026-06-13-A-HIGH-2: saveLevel is
-        // validation-only now; persist the validated level before we
-        // navigate away so the level is actually written to the store.
         useLevelStore.getState().saveCustom(r.level);
       }
-      // discard path falls through to clear-draft + onExit.
+      // 'discard' falls through: clear the draft + onExit below.
     }
     // Either clean state, save succeeded, or user explicitly chose to
-    // discard: drop the draft so re-entering the editor doesn't restore
+    // discard. Drop the draft so re-entering the editor doesn't restore
     // the abandoned in-memory state.
     if (typeof localStorage !== 'undefined') {
       localStorage.removeItem(DRAFT_KEY);
@@ -176,11 +152,10 @@ export function EditorPage({ onExit }: EditorPageProps) {
 
   return (
     <div data-testid="editor-page" style={PAGE_STYLE}>
-      <EditorToolbar onExit={handleExit} onSaveAndExit={handleExit} />
+      <EditorTopBar onExit={handleExit} onSaveAndExit={handleExit} />
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-        <div style={{ flex: 1, position: 'relative', minWidth: 0 }}>
-          <EditorViewport />
-        </div>
+        <EditorLeftDrawer />
+        <EditorViewport />
         <EditorPropertiesPanel />
       </div>
       <EditorStatusBar />

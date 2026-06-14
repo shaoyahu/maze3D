@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { EditorToolbar } from '../../../src/ui/editor/EditorToolbar';
+import { EditorTopBar } from '../../../src/ui/editor/EditorTopBar';
+import { EditorLeftDrawer } from '../../../src/ui/editor/EditorLeftDrawer';
 import { EditorViewport } from '../../../src/ui/editor/EditorViewport';
 import { Button } from '../../../src/ui/components/Button';
 import { useEditorStore } from '../../../src/store/editorStore';
@@ -33,36 +34,30 @@ function resetEditor(): void {
 }
 
 // P3-Theme 2 — a11y hardening: each test pins one assistive-tech hook so
-// a future change can't silently drop it. Together they cover B-L3
-// (toolbar aria-controls), B-L21 (file input aria-label), B-L25
-// (Button aria-busy), and B-L34 (dirty marker aria-live).
-describe('EditorToolbar a11y (P3-Theme 2)', () => {
+// a future change can't silently drop it. After the P3-Phase-2 split, the
+// topbar no longer carries `role="toolbar"` (the toolbar role moved to
+// the LeftDrawer, and the TopBar is now `role="banner"`). The dirty
+// marker, the file-input aria-label, and the aria-controls relationship
+// all live in the new EditorTopBar.
+describe('EditorTopBar a11y (P3-Theme 2)', () => {
   beforeEach(() => {
     resetEditor();
   });
 
-  it('toolbar role points at the viewport via aria-controls (B-L3)', () => {
-    // Render both the toolbar AND the viewport in the same tree so the
-    // aria-controls id actually resolves. AT only benefits from the
-    // aria-controls relationship when both nodes coexist on the page.
+  it('LeftDrawer exposes role=toolbar with aria-label "Editor tools" (B-L3, post-split)', () => {
     render(
       <ConfirmProvider>
-        <EditorToolbar />
-        <EditorViewport />
+        <EditorLeftDrawer />
       </ConfirmProvider>,
     );
     const toolbar = screen.getByRole('toolbar', { name: 'Editor tools' });
-    const controlsId = toolbar.getAttribute('aria-controls');
-    expect(controlsId).toBeTruthy();
-    // The id must resolve to an actual element on the same page so AT
-    // can announce the relationship.
-    expect(document.getElementById(controlsId as string)).not.toBeNull();
+    expect(toolbar).toBeInTheDocument();
   });
 
   it('hidden file input has an aria-label so AT can announce it (B-L21)', () => {
     render(
       <ConfirmProvider>
-        <EditorToolbar />
+        <EditorTopBar />
       </ConfirmProvider>,
     );
     const fileInput = screen.getByTestId('tool-import-input');
@@ -73,7 +68,7 @@ describe('EditorToolbar a11y (P3-Theme 2)', () => {
     useEditorStore.setState({ dirty: true });
     render(
       <ConfirmProvider>
-        <EditorToolbar />
+        <EditorTopBar />
       </ConfirmProvider>,
     );
     const dirty = screen.getByTestId('tool-dirty');

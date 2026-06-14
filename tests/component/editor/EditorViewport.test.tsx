@@ -110,11 +110,16 @@ describe('EditorViewport (P2-4b #11)', () => {
     expect(useEditorStore.getState().level.start).toEqual({ x: 2, z: 1 });
   });
 
-  it('start tool ignores clicks on walls (silent reject — keeps existing start)', () => {
+  it('start tool on a wall cell auto-carves the wall and moves the start there', () => {
+    // P3-Phase-2 fix: previously the click was silent-rejected. Now the
+    // user can drop the start on top of a wall and the cell is carved
+    // to floor — the legacy test pinned the silent-reject behaviour.
     useEditorStore.setState({ tool: 'start' });
     render(<EditorViewport />);
-    fireEvent.click(screen.getByTestId('cell-1-1')); // wall
-    expect(useEditorStore.getState().level.start).toEqual({ x: 0, z: 0 });
+    fireEvent.click(screen.getByTestId('cell-1-1')); // wall in fixture
+    const lvl = useEditorStore.getState().level;
+    expect(lvl.start).toEqual({ x: 1, z: 1 });
+    expect(lvl.walls[1]![1]).toBe(0);
   });
 
   it('clicking a cell with the exit tool moves exit to that cell', () => {
