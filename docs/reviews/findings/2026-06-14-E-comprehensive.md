@@ -2,9 +2,9 @@
 
 > Scope: 全 65 个 `src/**` 源文件。
 > Date: 2026-06-14.
-> 前置评审: [`../project-review-2026-06-14.md`](../project-review-2026-06-14.md).
-> Excludes everything already addressed in earlier reviews (`A-architecture`,
-> `B-ui`, `C-tests`, `D-quality` from 2026-06-13).
+> 前置评审: [`../2026-06-14-project-review.md`](../2026-06-14-project-review.md).
+> Excludes everything already addressed in earlier reviews (`2026-06-13-A-architecture`,
+> `2026-06-13-B-ui`, `2026-06-13-C-tests`, `2026-06-13-D-quality` from 2026-06-13).
 
 ## Summary
 

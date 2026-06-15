@@ -513,6 +513,14 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
         set({ lastError: null, lastErrorKey: 'editor.lastError.startOutOfBounds' });
         return;
       }
+      // F-2026-06-15-C-1: silent-reject when target cell IS the current exit.
+      // validateMaze would reject "start and exit are on the same cell" at
+      // save time; surfacing the rejection at click time keeps editor UX in
+      // sync with the runtime contract.
+      if (level.exit.x === x && level.exit.z === z) {
+        set({ lastError: null, lastErrorKey: 'editor.lastError.startOnExit' });
+        return;
+      }
       // Auto-carve the cell if it's currently a wall — UX win so the user
       // can drop a start on top of an existing wall rather than getting a
       // silent reject. Mirrors the carve-on-resize behaviour.
@@ -532,6 +540,12 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
         set({ lastError: null, lastErrorKey: 'editor.lastError.exitOutOfBounds' });
         return;
       }
+      // F-2026-06-15-C-1: mirror of placeStart — silent-reject when target
+      // cell IS the current start. See placeStart for rationale.
+      if (level.start.x === x && level.start.z === z) {
+        set({ lastError: null, lastErrorKey: 'editor.lastError.exitOnStart' });
+        return;
+      }
       // Auto-carve the cell if it's currently a wall so the user can drop
       // an exit on top of a wall instead of getting a silent reject.
       let nextWalls = level.walls;
@@ -549,6 +563,11 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
       if (!isFloor(level, x, z)) return;
       // Match the runtime: never let a pickup sit on the start cell.
       if (level.start.x === x && level.start.z === z) return;
+      // F-2026-06-15-C-1: also mirror the runtime exit-cell rejection
+      // (JsonMazeProvider:176-178). Without this guard the user can drop a
+      // pickup on exit; validateMaze then rejects at save time, leaving the
+      // user confused about what happened.
+      if (level.exit.x === x && level.exit.z === z) return;
       const newPickup: Pickup = {
         id: generateId(),
         x,
@@ -713,7 +732,24 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
         start: { x: startX, z: startZ },
         exit: { x: exitX, z: exitZ },
       };
-      set(commitLevel(get(), nextLevel));
+      // F-2026-06-15-H-3.5: resizing wipes pickups/enemies from the level
+      // (the all-walls grid above replaces them on next placement). The
+      // current selection may now point at a pickup/enemy that no longer
+      // exists, or at a wall cell outside the new bounds. Clear the
+      // selection if it has become an orphan so PropertiesPanel doesn't
+      // render against missing data.
+      const sel = get().selection;
+      let nextSelection: EditorSelection | null = sel;
+      if (sel !== null) {
+        if (sel.kind === 'wall') {
+          if (!inBounds(sel.x, sel.z, width, depth)) nextSelection = null;
+        } else if (sel.kind === 'pickup') {
+          if (!nextLevel.pickups.some((p) => p.id === sel.id)) nextSelection = null;
+        } else if (sel.kind === 'enemy') {
+          if (!nextLevel.enemies.some((e) => e.id === sel.id)) nextSelection = null;
+        }
+      }
+      set(commitLevel(get(), nextLevel, nextSelection));
     },
 
     // ---- enemy path edits ----
@@ -770,6 +806,12 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
       const { level } = get();
       const target = level.enemies.find((e) => e.id === enemyId);
       if (!target) return;
+      // F-2026-06-15-M-4.4: defensive bounds check on nodeIndex. Without
+      // this, an out-of-range index silently no-ops via `filter` (since no
+      // element matches) — looks like the call worked but nothing changed.
+      // The UI guard below (path.length <= 2) protects the legitimate path,
+      // but a stale React event or test typo can still pass a bad index.
+      if (nodeIndex < 0 || nodeIndex >= target.path.length) return;
       // Defensive: every placement action in this store uses silent
       // rejection (`return;`) when the action would produce an invalid
       // state. Match the idiom here — a UI double-click or a queued

@@ -3,7 +3,7 @@
 **Slug**: project-review-2026-06-13
 **日期**: 2026-06-13
 **前置评审**: [`2026-06-11-code-review.md`](./2026-06-11-code-review.md)（35 条已全部关闭）
-**关联文档**: [`findings/A-architecture.md`](./findings/A-architecture.md) · [`B-ui.md`](./findings/B-ui.md) · [`C-tests.md`](./findings/C-tests.md) · [`D-quality.md`](./findings/D-quality.md)
+**关联文档**: [`findings/2026-06-13-A-architecture.md`](./findings/2026-06-13-A-architecture.md) · [`2026-06-13-B-ui.md`](./findings/2026-06-13-B-ui.md) · [`2026-06-13-C-tests.md`](./findings/2026-06-13-C-tests.md) · [`2026-06-13-D-quality.md`](./findings/2026-06-13-D-quality.md)
 
 ---
 

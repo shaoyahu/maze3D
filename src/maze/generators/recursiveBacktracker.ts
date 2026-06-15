@@ -102,7 +102,9 @@ function orderedDirs(rng: () => number): Array<[number, number, number]> {
     [0, 1, 0b0100],
     [0, -1, 0b1000],
   ];
-  const first = Math.floor(rng() * dirs.length) % dirs.length;
+  // F-2026-06-15-L-5.6: `% dirs.length` was a no-op — rng() is [0, 1) so
+  // Math.floor(rng() * 4) is already in [0, 3]. Removed.
+  const first = Math.floor(rng() * dirs.length);
   const out: Array<[number, number, number]> = [dirs[first]];
   for (let i = 0; i < dirs.length; i++) {
     if (i !== first) out.push(dirs[i]);

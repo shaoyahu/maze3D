@@ -24,6 +24,10 @@ function makeValidLevel(overrides: Record<string, unknown> = {}): Record<string,
       victory: 'reach-exit',
       timeOnPickup: 10,
     },
+    // F-2026-06-15-H-3.2: enemies is now a required field; default to []
+    // here so the fixture stays minimal and individual tests that exercise
+    // enemies can override.
+    enemies: [],
     ...overrides,
   };
 }

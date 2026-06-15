@@ -396,6 +396,13 @@ export const useGameStore = create<GameState>((set, get) => ({
       elapsedTime: 0,
       restartKey: 0,
       useItemFlash: null,
+      // F-2026-06-15-C-2: reset currentMode and currentEnemyCount to their
+      // initial values so a survive run followed by goToMenu doesn't leak
+      // 'survive' into the next reach-exit level. Initial state declares
+      // currentMode: 'reach-exit' / currentEnemyCount: 0 — goToMenu must
+      // match that contract.
+      currentMode: 'reach-exit',
+      currentEnemyCount: 0,
       currentSurviveSeconds: SURVIVE_SECONDS_DEFAULT,
       invulnerableUntil: 0,
       // P2-4a F4: hitCount is the monotonic counter HealthBar/InvulnerableFlash

@@ -278,7 +278,16 @@ export function LevelSelect({
 
   const lastSublevelBySourceRef = useRef<Partial<Record<LevelSource, string | null>>>({});
   useEffect(() => {
-    setSublevelId(lastSublevelBySourceRef.current[levelSource] ?? null);
+    // F-2026-06-15-M-4.10: only reset sublevelId from the cache when there
+    // IS a cached value for this source. Without the guard, switching to
+    // a source we've never visited (`?? null`) wipes the current pick to
+    // null and then the next render's `effectiveSublevelId` falls back to
+    // `sublevelOptions[0]?.id` — visually the user sees the first option
+    // selected but the state field is null until the user picks again.
+    const cached = lastSublevelBySourceRef.current[levelSource];
+    if (cached !== undefined) {
+      setSublevelId(cached);
+    }
   }, [levelSource]);
 
   useEffect(() => {
@@ -656,7 +665,7 @@ export function LevelSelect({
                       <div className="console-card__stats">
                         <div>
                           <span className="console-card__stat-label">{t('levels.stat.best')}</span>
-                          <span className={`console-card__stat-value${best ? ' console-card__stat-value--accent' : ' console-card--muted'}`}>
+                          <span className={`console-card__stat-value${best ? ' console-card__stat-value--accent' : ' console-card__stat-value--muted'}`}>
                             {best ? formatTime(best.timeUsed) : '--:--'}
                           </span>
                         </div>

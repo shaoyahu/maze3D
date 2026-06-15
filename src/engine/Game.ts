@@ -181,26 +181,31 @@ export class Game {
     this.sceneRefs?.setDarkMode(enabled);
   }
 
-  requestPointerLock(): Promise<void> {
+  requestPointerLock(): Promise<{ ok: boolean }> {
     // requestPointerLock() returns a Promise in modern browsers but
-    // undefined in others (and when called outside a user gesture). The
-    // optional-chained call above used to crash with "can't access property
-    // catch of undefined" when the result wasn't a thenable. Guard both
-    // halves. The Promise rejects on denial so the caller (GameCanvas)
-    // can surface a user-visible error.
+    // undefined in others (and when called outside a user gesture). Both
+    // halves are guarded.
+    //
+    // F-2026-06-15-H-3.9: previously this returned Promise<void> and
+    // re-threw on rejection — any caller that forgot `.catch(...)`
+    // surfaced an Uncaught (in promise) on the console (and could be
+    // misclassified by telemetry as a real error). Now we always
+    // resolve with { ok: boolean } so callers handle the outcome
+    // explicitly. console.warn is preserved so the dev-time breadcrumb
+    // does not disappear.
     const el = this.renderer?.domElement;
-    if (!el) return Promise.resolve();
+    if (!el) return Promise.resolve({ ok: false });
     const p = el.requestPointerLock();
     if (p && typeof p.then === 'function') {
       return p.then(
-        () => undefined,
+        () => ({ ok: true }),
         (e: unknown) => {
           console.warn('Game.requestPointerLock: pointer lock request rejected', e);
-          throw e;
+          return { ok: false };
         },
       );
     }
-    return Promise.resolve();
+    return Promise.resolve({ ok: true });
   }
 
   startLevel(maze: MazeData, options?: StartLevelOptions) {

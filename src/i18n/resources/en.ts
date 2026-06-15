@@ -354,10 +354,18 @@ export const en: Translations = {
   'editor.persist.reason.quota': 'Local storage is full — auto-save failed (delete some old levels and try again)',
   'editor.persist.reason.serialization': 'The level data could not be serialized — auto-save failed',
 
+  // F-2026-06-15-H-3.1: write-failure messages surfaced by AppShell when
+  // record() / saveCustom() / deleteCustom() can't persist. The {reason}
+  // placeholder is one of the persist.reason.* messages above.
+  'app.error.writeFailedRecord': "Best record couldn't be saved: {reason}",
+  'app.error.writeFailedCustomLevel': "Custom level couldn't be saved: {reason}",
+
   'editor.lastError.wallOnStart': "Can't place a wall on the start cell",
   'editor.lastError.wallOnExit': "Can't place a wall on the exit cell",
   'editor.lastError.startOutOfBounds': 'Start is out of grid bounds',
   'editor.lastError.exitOutOfBounds': 'Exit is out of grid bounds',
+  'editor.lastError.startOnExit': "Start can't overlap the exit cell",
+  'editor.lastError.exitOnStart': "Exit can't overlap the start cell",
   'editor.lastError.pathOutOfBounds': 'Path node is out of grid bounds',
 
   // ============================================================

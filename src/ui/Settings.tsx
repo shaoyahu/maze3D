@@ -108,6 +108,17 @@ export function Settings({ onBack }: { onBack: () => void }) {
               key={s.id}
               href={`#section-${s.id}`}
               className="prefs-nav__item"
+              onClick={(e) => {
+                // F-2026-06-15-M-4.8: prevent the default anchor jump
+                // (which pushes a history entry); instead scroll the
+                // section into view manually. This preserves ESC's
+                // one-press exit from Settings → main menu — without
+                // this, every nav click adds a history entry that the
+                // back/ESC stack has to walk back through.
+                e.preventDefault();
+                const el = document.getElementById(`section-${s.id}`);
+                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }}
             >
               <span>{t(s.labelKey)}</span>
               <span className="prefs-nav__codename">{s.codename}</span>

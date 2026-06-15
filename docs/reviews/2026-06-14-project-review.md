@@ -2,8 +2,8 @@
 
 **Slug**: project-review-2026-06-14
 **日期**: 2026-06-14
-**前置评审**: [`2026-06-13-project-review.md`](./project-review.md)（138 条 baseline）
-**关联文档**: [`findings/E-2026-06-14.md`](./findings/E-2026-06-14.md)
+**前置评审**: [`2026-06-13-project-review.md`](./2026-06-13-project-review.md)（138 条 baseline）
+**关联文档**: [`findings/2026-06-14-E-comprehensive.md`](./findings/2026-06-14-E-comprehensive.md)
 
 ---
 

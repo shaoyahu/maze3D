@@ -63,6 +63,31 @@ export function EditorViewport(): React.ReactElement {
   const appendEnemyPathNode = useEditorStore((s) => s.appendEnemyPathNode);
   const select = useEditorStore((s) => s.select);
   const clearSelection = useEditorStore((s) => s.clearSelection);
+  const setTool = useEditorStore((s) => s.setTool);
+
+  // F-2026-06-15-M-4.5: global Escape handler. Without this, the user
+  // has no keyboard path to leave a non-select tool or to clear the
+  // current selection. Pressing Escape clears any selection AND resets
+  // the tool to 'select' so the next click does the expected thing.
+  // Bound on `document` (not the viewport) so the binding survives the
+  // viewport losing focus — e.g. user finished an input edit, lost
+  // focus to the body, then hits Escape.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape') return;
+      // Skip when focus is in an editable field — Escape there typically
+      // means "abandon the current input value", not "exit tool mode".
+      const t = e.target;
+      if (t instanceof HTMLElement) {
+        const tag = t.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t.isContentEditable) return;
+      }
+      clearSelection();
+      setTool('select');
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [clearSelection, setTool]);
 
   // hoverCell lives in a child <HoverReadout> rather than here so each
   // mousemove only re-renders the small readout, not the entire grid.

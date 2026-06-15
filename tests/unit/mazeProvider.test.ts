@@ -176,12 +176,11 @@ describe('JsonMazeProvider', () => {
     expect(loaded.enemies[1].dwellTime).toBe(0.5);
   });
 
-  it('defaults enemies to [] when the field is missing', async () => {
+  it('rejects when the enemies field is missing (F-2026-06-15-H-3.2)', async () => {
     const maze = { ...validMaze } as Record<string, unknown>;
     delete (maze as { enemies?: unknown }).enemies;
     const provider = new JsonMazeProvider({ 'm1': maze });
-    const loaded = await provider.load('m1');
-    expect(loaded.enemies).toEqual([]);
+    await expect(provider.load('m1')).rejects.toThrow(/missing 'enemies' field/);
   });
 
   it('drops an enemy whose path has fewer than 2 nodes (and warns)', async () => {

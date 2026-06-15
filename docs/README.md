@@ -19,9 +19,20 @@ docs/
 ├── mvp/                               # Phase 1（MVP）原始设计与计划
 │   ├── design.md                      #   主设计文档
 │   └── plan.md                        #   完整实施计划
-├── reviews/                           # 代码评审
+├── reviews/                           # 代码评审（命名: YYYY-MM-DD-slug.md，按日期可直接 sort）
 │   ├── 2026-06-10-full-code-review.md
-│   └── 2026-06-11-code-review.md
+│   ├── 2026-06-11-code-review.md
+│   ├── 2026-06-13-project-review.md
+│   ├── 2026-06-14-local-review.md
+│   ├── 2026-06-14-project-review.md
+│   ├── 2026-06-15-full-bug-scan.md
+│   ├── 2026-06-15-fresh-full-review.md
+│   └── findings/                       # 评审分项 findings（按日期 + 字母分类）
+│       ├── 2026-06-13-A-architecture.md
+│       ├── 2026-06-13-B-ui.md
+│       ├── 2026-06-13-C-tests.md
+│       ├── 2026-06-13-D-quality.md
+│       └── 2026-06-14-E-comprehensive.md
 ├── _template/                         # 增量文档模板
 │   ├── increment-spec.md
 │   ├── increment-plan.md

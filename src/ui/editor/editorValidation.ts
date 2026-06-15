@@ -17,7 +17,7 @@ export interface ValidationIssue {
 // numerical order (1, 2, 3, 4, 5), each appearing at most once.
 export function validateDesign(level: MazeData): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
-  const { walls, start, exit, pickups, enemies } = level;
+  const { walls, start, exit, pickups, enemies, rules } = level;
   const startOnWall = walls[start.z]?.[start.x] === 1;
   const exitOnWall = walls[exit.z]?.[exit.x] === 1;
 
@@ -70,6 +70,32 @@ export function validateDesign(level: MazeData): ValidationIssue[] {
       severity: 'error',
       message: 'Exit cell is on a wall',
       where: 'exit',
+    });
+  }
+
+  // F-2026-06-15-M-4.2: rules range checks. JsonMazeProvider.validateMaze
+  // rejects each of these at save time with a structural error; surfacing
+  // them as design warnings here lets the editor flag them before the user
+  // tries to save and gets a vague "validation failed" toast.
+  if (!(rules.initialTime > 0)) {
+    issues.push({
+      severity: 'error',
+      message: `rules.initialTime must be > 0 (got ${rules.initialTime})`,
+      where: 'rules',
+    });
+  }
+  if (!(rules.maxHealth > 0)) {
+    issues.push({
+      severity: 'error',
+      message: `rules.maxHealth must be > 0 (got ${rules.maxHealth})`,
+      where: 'rules',
+    });
+  }
+  if (!(rules.timeOnPickup > 0)) {
+    issues.push({
+      severity: 'error',
+      message: `rules.timeOnPickup must be > 0 (got ${rules.timeOnPickup})`,
+      where: 'rules',
     });
   }
 

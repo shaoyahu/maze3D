@@ -367,10 +367,18 @@ export const zh: Translations = {
   'editor.persist.reason.quota': '本地存储已满，自动保存失败（请删除旧关卡后重试）',
   'editor.persist.reason.serialization': '关卡数据无法序列化，自动保存失败',
 
+  // F-2026-06-15-H-3.1: write-failure messages surfaced by AppShell when
+  // record() / saveCustom() / deleteCustom() can't persist. The {reason}
+  // placeholder is one of the persist.reason.* messages above.
+  'app.error.writeFailedRecord': '本次最佳成绩未能保存：{reason}',
+  'app.error.writeFailedCustomLevel': '自定义关卡未能保存：{reason}',
+
   'editor.lastError.wallOnStart': '无法在起点放置墙（墙不能覆盖起点）',
   'editor.lastError.wallOnExit': '无法在终点放置墙（墙不能覆盖终点）',
   'editor.lastError.startOutOfBounds': '起点位置超出网格范围',
   'editor.lastError.exitOutOfBounds': '终点位置超出网格范围',
+  'editor.lastError.startOnExit': '起点不能与终点重叠',
+  'editor.lastError.exitOnStart': '终点不能与起点重叠',
   'editor.lastError.pathOutOfBounds': '路径节点超出网格范围',
 
   // ============================================================

@@ -90,9 +90,11 @@ describe('App onRetry (F9)', () => {
   async function startLevelWith(options: object | undefined) {
     levelSelectOptions = options;
     render(<App />);
-    // MainMenu → LevelSelect
-    await waitFor(() => expect(screen.getByText('开始')).toBeInTheDocument());
-    fireEvent.click(screen.getByText('开始'));
+    // MainMenu → LevelSelect. The MainMenu "开始" button is rendered as
+    // "▶ 开始" after the home-revamp (icon prefix), so getByText('开始')
+    // no longer matches exactly. Use the stable testid instead.
+    await waitFor(() => expect(screen.getByTestId('main-menu-start')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('main-menu-start'));
     // Mocked LevelSelect 用 data-testid="pick-test-level" 而不是 "Test Level" 文本
     await waitFor(() => expect(screen.getByTestId('pick-test-level')).toBeInTheDocument());
     fireEvent.click(screen.getByTestId('pick-test-level'));

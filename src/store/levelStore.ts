@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { loadJSON, saveJSON } from './persist';
+import { loadJSON, safeSetItem, type PersistResult } from './persist';
 // F-project-review-2026-06-13-D-21: route every localStorage load through
 // the migration chokepoint so a future v2 schema bump can transform v1
 // data on load without touching the call site here.
@@ -53,6 +53,31 @@ interface LevelStore {
   // treats `null` as "don't render."
   lastLoadSummary: LoadSummary | null;
   dismissLoadSummary: () => void;
+  // F-2026-06-15-H-3.1: transient field set when a `record()` / `saveCustom()`
+  // localStorage write fails (quota exceeded, storage disabled, payload too
+  // large). Previously these failures fell through `saveJSON` with only a
+  // `console.warn`, silently losing best records and custom levels. The
+  // store now routes through `safeSetItem` and exposes the failure via this
+  // field so the UI can surface a toast. `null` means "no pending write
+  // failure". The latest failure replaces any older one — the user is
+  // notified on next dismissal/reload at the latest, which is the right
+  // cadence for a best-effort persistence layer.
+  lastWriteError: WriteError | null;
+  dismissWriteError: () => void;
+}
+
+/**
+ * F-2026-06-15-H-3.1: structured write-failure record. `kind` discriminates
+ * the call site so the UI can render a context-specific message (e.g. "本次
+ * 最佳成绩未能保存" vs "自定义关卡保存失败"). `reason` reuses the
+ * PersistResult discriminator from persist.ts so adding a new reason there
+ * automatically widens this type.
+ */
+export interface WriteError {
+  kind: 'record' | 'customLevel';
+  // The PersistResult.reason from the failed safeSetItem call. Bundled with
+  // the call-site kind so the UI doesn't have to thread two enums.
+  reason: Extract<PersistResult, { ok: false }>['reason'];
 }
 
 /**
@@ -256,8 +281,18 @@ export const useLevelStore = create<LevelStore>((set, get) => {
     }
     if (!get().peekIsBetter(r)) return;
     const next = { ...get().bestByLevel, [r.levelId]: r };
-    saveJSON(STORAGE_KEY, next);
-    set({ bestByLevel: next });
+    // F-2026-06-15-H-3.1: route through safeSetItem so a quota / storage
+    // failure is captured in lastWriteError instead of being swallowed by
+    // the silent saveJSON path. In-memory state is updated whether or not
+    // persistence succeeds so the UI for the current session is consistent
+    // — the toast tells the user the record won't survive reload.
+    const result = safeSetItem(STORAGE_KEY, next);
+    if (!result.ok) {
+      console.warn('levelStore.record: persist failed', result.reason);
+      set({ bestByLevel: next, lastWriteError: { kind: 'record', reason: result.reason } });
+      return;
+    }
+    set({ bestByLevel: next, lastWriteError: null });
   },
   getBest: (levelId) => get().bestByLevel[levelId],
 
@@ -269,8 +304,15 @@ export const useLevelStore = create<LevelStore>((set, get) => {
   saveCustom: (level) => {
     const validated = validateMaze(level, level.id);
     const next = { ...get().customLevels, [validated.id]: validated };
-    saveJSON(CUSTOM_STORAGE_KEY, next);
-    set({ customLevels: next });
+    // F-2026-06-15-H-3.1: same surfacing pattern as record() above —
+    // editor save UX needs to know when persistence actually failed.
+    const result = safeSetItem(CUSTOM_STORAGE_KEY, next);
+    if (!result.ok) {
+      console.warn('levelStore.saveCustom: persist failed', result.reason);
+      set({ customLevels: next, lastWriteError: { kind: 'customLevel', reason: result.reason } });
+      return;
+    }
+    set({ customLevels: next, lastWriteError: null });
   },
   getCustom: (id) => get().customLevels[id],
   // No-op when the id is unknown. Deleting a missing key from a plain
@@ -280,8 +322,16 @@ export const useLevelStore = create<LevelStore>((set, get) => {
     if (!(id in get().customLevels)) return;
     const next = { ...get().customLevels };
     delete next[id];
-    saveJSON(CUSTOM_STORAGE_KEY, next);
-    set({ customLevels: next });
+    // F-2026-06-15-H-3.1: same safeSetItem treatment as saveCustom — a
+    // delete that fails to persist (very unlikely, but possible in private
+    // mode) still updates in-memory state and surfaces the failure.
+    const result = safeSetItem(CUSTOM_STORAGE_KEY, next);
+    if (!result.ok) {
+      console.warn('levelStore.deleteCustom: persist failed', result.reason);
+      set({ customLevels: next, lastWriteError: { kind: 'customLevel', reason: result.reason } });
+      return;
+    }
+    set({ customLevels: next, lastWriteError: null });
   },
   listCustom: () => Object.keys(get().customLevels),
   // F-project-review-2026-06-13-D-10: see `lastLoadSummary` declaration
@@ -289,5 +339,11 @@ export const useLevelStore = create<LevelStore>((set, get) => {
   // construction; cleared when the toast is dismissed.
   lastLoadSummary,
   dismissLoadSummary: () => set({ lastLoadSummary: null }),
+  // F-2026-06-15-H-3.1: write-failure surface. Starts null (no pending
+  // failure); record() / saveCustom() / deleteCustom() set it on a
+  // safeSetItem rejection. dismissWriteError clears it (user acknowledged
+  // the toast). The next successful write also clears it.
+  lastWriteError: null,
+  dismissWriteError: () => set({ lastWriteError: null }),
   };
 });

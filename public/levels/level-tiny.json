@@ -17,5 +17,6 @@
     "maxHealth": 3,
     "victory": "reach-exit",
     "timeOnPickup": 15
-  }
+  },
+  "enemies": []
 }

@@ -195,7 +195,12 @@ export function GameCanvas({ maze, options }: { maze: MazeData; options?: StartL
           any 3D content drawn at canvas-NDC (0, 0) appears in the visible
           viewport's bottom-right corner instead of the center. */}
       <canvas ref={ref} onClick={() => {
-        gameRef.current?.requestPointerLock().catch(() => {
+        // F-2026-06-15-H-3.9: requestPointerLock now resolves with
+        // { ok: boolean } instead of throwing. Branch on .ok so the
+        // failure UX (toast + auto-clear) is explicit rather than
+        // hidden in a .catch(...).
+        void gameRef.current?.requestPointerLock().then((r) => {
+          if (r.ok) return;
           setPointerLockError(t('app.error.pointerLockFailed'));
           if (pointerLockTimerRef.current !== null) {
             window.clearTimeout(pointerLockTimerRef.current);

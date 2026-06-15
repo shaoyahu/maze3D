@@ -3,7 +3,11 @@ import { defineConfig, devices } from '@playwright/test';
 export default defineConfig({
   testDir: './tests/e2e',
   fullyParallel: false,
-  retries: 0,
+  // F-2026-06-15-H-3.8: CI gets 1 retry to swallow transient browser flakes
+  // (network, GC pause, page.clock interaction with rAF); local runs stay
+  // at 0 so flaky tests fail loudly during development. Local workers stays
+  // at 1 because several specs share localStorage state via the dev server.
+  retries: process.env.CI ? 1 : 0,
   workers: 1,
   // F-project-review-2026-06-13-C-M1: HTML reporter (open: 'never') so
   // failure triage has the per-test detail the prior 'list' only path

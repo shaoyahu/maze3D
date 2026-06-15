@@ -47,7 +47,14 @@ export class InputManager {
     // (e.g. for a second level without tearing down) would otherwise
     // carry the post-lock-acquire skip flag into the new level's first
     // frame.
+    //
+    // F-2026-06-15-L-5.3: also clear `this.keys` and the mouse delta so
+    // a future pool-style reuse of InputManager doesn't carry phantom
+    // input across dispose/init.
     this.skipNextMove = false;
+    this.keys.clear();
+    this.mouse.x = 0;
+    this.mouse.y = 0;
     window.removeEventListener('keydown', this.onKeyDown);
     window.removeEventListener('keyup', this.onKeyUp);
     document.removeEventListener('mousemove', this.onMouseMove);

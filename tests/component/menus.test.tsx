@@ -21,8 +21,12 @@ describe('menu components', () => {
     const onStart = vi.fn();
     const onSettings = vi.fn();
     render(<MainMenu onStart={onStart} onSettings={onSettings} />);
-    expect(screen.getByText('3D Maze')).toBeInTheDocument();
-    fireEvent.click(screen.getByText('开始'));
+    // F-2026-06-15-H-3.6: title text varies by locale (i18n via P2-8).
+    // Use the panel testid so the assertion is locale-stable. The "开始"
+    // button now renders as "▶ 开始" after the home-revamp icon prefix —
+    // use the testid for the same reason.
+    expect(screen.getByTestId('main-menu-panel')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('main-menu-start'));
     expect(onStart).toHaveBeenCalled();
     fireEvent.click(screen.getByText('设置'));
     expect(onSettings).toHaveBeenCalled();

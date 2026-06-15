@@ -10,6 +10,7 @@
 // runtime does — no second validator to keep in sync.
 
 import { validateMaze } from './JsonMazeProvider';
+import { clampErrorValue } from '../utils/errors';
 import type { MazeData } from './types';
 
 // The only accepted schemaVersion right now. Pinned to the literal 1 so a
@@ -82,7 +83,10 @@ export function parseImport(raw: string): { level: MazeData; nameToPreserve: str
     // Wrap any validator failure (LevelLoadError today, but in principle
     // any thrown value) so callers only ever need to catch ImportError
     // for the import flow.
-    const detail = e instanceof Error ? e.message : String(e);
+    // F-2026-06-15-L-5.7: clamp the wrapped detail so a future validator
+    // message containing user-controlled content (e.g. an oversized name
+    // field) doesn't blow up the editor toast.
+    const detail = clampErrorValue(e instanceof Error ? e.message : String(e));
     throw new ImportError(`Imported level is invalid: ${detail}`);
   }
 

@@ -77,6 +77,11 @@ function AppShell({ children }: { children: React.ReactNode }) {
   const customLevels = useLevelStore((s) => s.customLevels);
   const lastLoadSummary = useLevelStore((s) => s.lastLoadSummary);
   const dismissLoadSummary = useLevelStore((s) => s.dismissLoadSummary);
+  // F-2026-06-15-H-3.1: surface write failures from levelStore so quota /
+  // private-mode storage errors no longer silently drop best records and
+  // custom levels.
+  const lastWriteError = useLevelStore((s) => s.lastWriteError);
+  const dismissWriteError = useLevelStore((s) => s.dismissWriteError);
 
   useLayoutEffect(() => {
     const root = document.documentElement;
@@ -124,6 +129,59 @@ function AppShell({ children }: { children: React.ReactNode }) {
             data-testid="load-summary-toast-dismiss"
             type="button"
             onClick={dismissLoadSummary}
+            aria-label={t('app.error.bannerCloseAria')}
+            style={{
+              padding: '4px 10px',
+              fontSize: 13,
+              border: '1px solid var(--border)',
+              borderRadius: 4,
+              background: 'transparent',
+              color: 'var(--fg)',
+              cursor: 'pointer',
+            }}
+          >
+            {t('app.error.bannerClose')}
+          </button>
+        </div>
+      )}
+      {lastWriteError && (
+        // F-2026-06-15-H-3.1: write-failure toast. Renders above the
+        // load-summary toast (bottom: 80) so both can be visible at once.
+        // Same dismissal pattern.
+        <div
+          data-testid="write-error-toast"
+          role="alert"
+          aria-live="assertive"
+          style={{
+            position: 'absolute',
+            left: '50%',
+            bottom: 80,
+            transform: 'translateX(-50%)',
+            maxWidth: 560,
+            padding: '12px 16px',
+            background: 'var(--panel)',
+            color: 'var(--fg)',
+            border: '1px solid var(--danger)',
+            borderRadius: 8,
+            boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            zIndex: 1000,
+          }}
+        >
+          <span style={{ flex: 1, fontSize: 14, lineHeight: 1.4 }}>
+            {t(
+              lastWriteError.kind === 'record'
+                ? 'app.error.writeFailedRecord'
+                : 'app.error.writeFailedCustomLevel',
+              { reason: t(`editor.persist.reason.${lastWriteError.reason}`) },
+            )}
+          </span>
+          <button
+            data-testid="write-error-toast-dismiss"
+            type="button"
+            onClick={dismissWriteError}
             aria-label={t('app.error.bannerCloseAria')}
             style={{
               padding: '4px 10px',
@@ -323,6 +381,13 @@ function GamePage() {
   // would re-run startLevel — that matches today's behavior where
   // navigating into the same level re-initializes the game state.
   useEffect(() => {
+    // F-2026-06-15-M-4.1: bump the token at the head of the effect
+    // body — not only in the cleanup. The cleanup only fires when the
+    // EFFECT itself unmounts, which happens after the next effect
+    // already ran. Without an in-body bump, an old in-flight .then()
+    // can race ahead of the cleanup and write stale state. Putting the
+    // bump first makes every (re-)run start with a fresh token.
+    loadTokenRef.current++;
     if (!parsed.ok) {
       setUrlError(`关卡 URL 不合法：${parsed.error}`);
       setActiveMaze(null);

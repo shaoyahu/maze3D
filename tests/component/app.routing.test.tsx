@@ -44,19 +44,21 @@ describe('App routing', () => {
 
   it('lands on the main menu at "/"', async () => {
     renderAt(['/']);
-    await waitFor(() => expect(screen.getByText('开始')).toBeInTheDocument());
-    expect(screen.getByText('3D Maze')).toBeInTheDocument();
+    // F-2026-06-15-H-3.6: "开始" button is rendered as "▶ 开始" after the
+    // home-revamp icon prefix; title is i18n'd. Use stable testids.
+    await waitFor(() => expect(screen.getByTestId('main-menu-start')).toBeInTheDocument());
+    expect(screen.getByTestId('main-menu-panel')).toBeInTheDocument();
   });
 
   it('falls back to "/" when given an unknown path', async () => {
     renderAt(['/this-route-does-not-exist']);
-    await waitFor(() => expect(screen.getByText('开始')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('main-menu-start')).toBeInTheDocument());
   });
 
   it('navigates MainMenu → Levels when 开始 is clicked', async () => {
     renderAt(['/']);
-    await waitFor(() => expect(screen.getByText('开始')).toBeInTheDocument());
-    fireEvent.click(screen.getByText('开始'));
+    await waitFor(() => expect(screen.getByTestId('main-menu-start')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('main-menu-start'));
     // LevelSelect renders the "选择关卡" heading when mounted.
     await waitFor(() => expect(screen.getByText('选择关卡')).toBeInTheDocument());
   });
@@ -108,7 +110,8 @@ describe('App routing', () => {
     fireEvent.click(screen.getByText('返回主菜单'));
     // After quit: store.screen resets to 'menu', URL is /.
     await waitFor(() => expect(useGameStore.getState().screen).toBe('menu'));
-    await waitFor(() => expect(screen.getByText('3D Maze')).toBeInTheDocument());
+    // F-2026-06-15-H-3.6: title is i18n'd; use the locale-stable panel testid.
+    await waitFor(() => expect(screen.getByTestId('main-menu-panel')).toBeInTheDocument());
   });
 });
 

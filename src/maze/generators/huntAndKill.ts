@@ -29,7 +29,7 @@ function buildHuntAndKillTree(size: number, rng: () => number): TreeEdge[] {
 
   while (true) {
     // Walk: try to extend from curX,curZ.
-    const unvisitedNeighbors = unvisitedNeighborList(curX, curZ, visited);
+    const unvisitedNeighbors = unvisitedNeighborList(curX, curZ, visited, size);
     if (unvisitedNeighbors.length > 0) {
       const [dx, dz] = unvisitedNeighbors[Math.floor(rng() * unvisitedNeighbors.length)];
       const nx = curX + dx;
@@ -45,7 +45,7 @@ function buildHuntAndKillTree(size: number, rng: () => number): TreeEdge[] {
     for (let z = 0; z < size && !found; z++) {
       for (let x = 0; x < size && !found; x++) {
         if (visited[z * size + x]) continue;
-        const visitedNeighbors = visitedNeighborList(x, z, visited);
+        const visitedNeighbors = visitedNeighborList(x, z, visited, size);
         if (visitedNeighbors.length === 0) continue;
         const [dx, dz] = visitedNeighbors[Math.floor(rng() * visitedNeighbors.length)];
         const vx = x + dx;
@@ -62,12 +62,15 @@ function buildHuntAndKillTree(size: number, rng: () => number): TreeEdge[] {
   return tree;
 }
 
+// F-2026-06-15-L-5.5: accept `size` as a parameter instead of recomputing
+// `Math.sqrt(visited.length)` on every call. The walk + hunt phases call
+// these helpers O(cells × degree) times per generation.
 function unvisitedNeighborList(
   x: number,
   z: number,
   visited: Uint8Array,
+  size: number,
 ): Array<[number, number]> {
-  const size = Math.sqrt(visited.length);
   const out: Array<[number, number]> = [];
   if (x + 1 < size && !visited[z * size + x + 1]) out.push([1, 0]);
   if (x - 1 >= 0 && !visited[z * size + x - 1]) out.push([-1, 0]);
@@ -80,8 +83,8 @@ function visitedNeighborList(
   x: number,
   z: number,
   visited: Uint8Array,
+  size: number,
 ): Array<[number, number]> {
-  const size = Math.sqrt(visited.length);
   const out: Array<[number, number]> = [];
   if (x + 1 < size && visited[z * size + x + 1]) out.push([1, 0]);
   if (x - 1 >= 0 && visited[z * size + x - 1]) out.push([-1, 0]);

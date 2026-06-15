@@ -24,7 +24,7 @@ function buildPrimTree(size: number, rng: () => number): TreeEdge[] {
   const seedX = 0;
   const seedZ = 0;
   visited[0] = 1;
-  pushNeighbors(seedX, seedZ, visited, frontier);
+  pushNeighbors(seedX, seedZ, visited, frontier, size);
 
   const tree: TreeEdge[] = [];
   while (frontier.length > 0) {
@@ -37,18 +37,21 @@ function buildPrimTree(size: number, rng: () => number): TreeEdge[] {
     if (visited[bk]) continue; // edge already consumed by a prior pick
     visited[bk] = 1;
     tree.push(e);
-    pushNeighbors(e.bx, e.bz, visited, frontier);
+    pushNeighbors(e.bx, e.bz, visited, frontier, size);
   }
   return tree;
 }
 
+// F-2026-06-15-L-5.5: accept `size` as a parameter instead of recomputing
+// `Math.sqrt(visited.length)` on every call. On a 50x50 maze this saves
+// hundreds of sqrt invocations per generation.
 function pushNeighbors(
   x: number,
   z: number,
   visited: Uint8Array,
   frontier: TreeEdge[],
+  size: number,
 ): void {
-  const size = Math.sqrt(visited.length);
   if (x + 1 < size && !visited[z * size + x + 1]) {
     frontier.push({ ax: x, az: z, bx: x + 1, bz: z });
   }

@@ -44,6 +44,7 @@ export function Button({
   }`;
   return (
     <button
+      type="button"
       onClick={onClick}
       disabled={disabled}
       data-testid={rest['data-testid']}

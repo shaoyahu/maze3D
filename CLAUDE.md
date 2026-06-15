@@ -115,6 +115,91 @@ Playwright 配置:`fullyParallel: false`、`workers: 1`、`retries: 0`、`baseUR
 - 新会话启动时,先读 `docs/roadmap.md` 顶部的「当前进行中」锚点 —— 若有活跃增量,先做完再开新工作。
 - 关卡身份写在 URL 里;新代码路径若需要关卡,应从 `parseGameSearchParams` 读取,而不是只从 props 传。
 
+## 代码评审文档规范(`docs/reviews/`)
+
+每次完成 code review 后,把发现以 markdown 形式存到 `docs/reviews/`,遵循以下规范。
+
+### 文件命名
+
+- **格式**:`YYYY-MM-DD-<slug>.md`(日期前缀 + 短语 slug,kebab-case)
+- **slug 选词**:体现评审范围或类型,如 `full-code-review` / `project-review` / `local-review` / `full-bug-scan` / `fresh-full-review`
+- **同一天多份**:slug 区分主题,例如 `2026-06-15-fresh-full-review.md` + `2026-06-15-full-bug-scan.md`
+- **目的**:`ls` 默认排序即按日期升序,无需额外索引
+
+### 目录结构
+
+```
+docs/reviews/
+  YYYY-MM-DD-<slug>.md           # 主评审报告(每份 review 一个文件)
+  findings/
+    YYYY-MM-DD-<letter>-<topic>.md   # 分项 / 子代理 finding 块
+```
+
+- **主报告**放 `docs/reviews/`(总览 + 严重度分类 + Next Steps)
+- **分项 findings**放 `docs/reviews/findings/`(按领域字母 A/B/C/D/E 分类,如 `2026-06-13-A-architecture.md`、`2026-06-14-E-comprehensive.md`)
+- **不要**在仓库其它位置存评审副本
+
+### 文件顶部元数据(主报告)
+
+```markdown
+# Project Review — <短标题> (YYYY-MM-DD)
+
+**Slug**: <文件名去 .md 的部分>
+**日期**: YYYY-MM-DD
+**评审窗口**: `main` HEAD = `<short-sha> <commit-subject>`
+**前置评审**: [`<前一份文件名>`](./<前一份文件名>)(<上次发现数> 条 baseline)
+**关联文档**: [`findings/<分项>`](./findings/<分项>) · ...
+**评审方式**: <子代理拆分 / 单代理 / 工具组合等>
+```
+
+### 严重度分级(统一用四级)
+
+- **CRITICAL** — 数据损坏 / 安全漏洞 / 引擎崩溃
+- **HIGH** — 玩法 bug / 类型不安全 / 内存泄漏 / 关键测试塌方
+- **MEDIUM** — UX 不一致 / 代码异味 / 较隐蔽的回归风险
+- **LOW** — magic number / 风格 / 注释 / 微小性能
+
+### 必备结构
+
+主报告至少包含:
+
+1. **§0 元数据 & 方法** — 评审范围、文件数、子代理拆分方式
+2. **§1 总览** — 严重度统计表 + 一句话结论
+3. **§2-5 按严重度分组的 finding** — 每条带 `<file>:<line>` 精确锚点 + 影响 + 复现 + 修复
+4. **§6 验证为假阳性的子代理报告** — 否定理由(避免重复审查时再被报出)
+5. **§7 验证结果** — typecheck / test / build / lint 退出状态
+6. **§8 跨切关注** — 跨多 finding 的工程债主题
+7. **§9 优先级行动建议** — 按工作量 + 严重度排序
+8. **§10 Files Reviewed** — 模块 × 文件数 × finding 数表
+
+### 跨文件引用 & 重命名
+
+- 引用其它 review 用**相对路径**(`./2026-06-14-project-review.md`、`./findings/2026-06-13-A-architecture.md`)
+- 重命名一份 review 时:
+  1. `mv` 物理文件
+  2. `grep -rn` `docs/` 找出所有引用并同步更新
+  3. 不要改源码里的 `F-<date>-<...>` tag(那是稳定标识符)
+
+### F-tag 引用(源码注释 → review)
+
+修复 finding 时,在代码注释中留下 `F-YYYY-MM-DD-<severity>-<num>` 格式的 tag,例如:
+
+```ts
+// F-2026-06-15-C-2: reset currentMode and currentEnemyCount to their
+// initial values so a survive run followed by goToMenu doesn't leak
+// 'survive' into the next reach-exit level.
+```
+
+- 这样 git blame 能直接定位到原始 review
+- F-tag 是**稳定的不可变标识符**,即使 review 文件被重命名也不要改动
+- 新增 finding 时给一个连续递增编号(`C-1`/`C-2`/`H-3.1`/`M-4.5` 等),编号风格随 review 自身,但同一份 review 内保持一致
+
+### Slug 与文件名的关系
+
+- 顶部 `**Slug**` 字段是文件名去 `.md` 的部分(或描述性短语)
+- **不强制** slug 等于文件名 — 历史评审有些 slug 没带日期(如 `project-review-2026-06-13`),不必回填
+- 重命名文件**只改文件名 + 跨文件引用**,slug 字段保持原样(它是文档内部 metadata,不影响导航)
+
 ## 内置关卡 JSON(`public/levels/`)
 
 | 文件 | 用途 |

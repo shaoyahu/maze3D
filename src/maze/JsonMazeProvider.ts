@@ -83,12 +83,11 @@ export function validateMaze(raw: unknown, id: string): MazeData {
   if (cellSize < MIN_CELL_SIZE) {
     throw new LevelLoadError(`Maze '${id}': cellSize must be at least ${MIN_CELL_SIZE} to fit the player`);
   }
-  if (!Number.isFinite(m.cellSize as number) || (m.cellSize as number) <= 0) {
-    throw new LevelLoadError(`Maze '${id}': cellSize must be a finite positive number`);
-  }
-  if ((m.cellSize as number) < MIN_CELL_SIZE) {
-    throw new LevelLoadError(`Maze '${id}': cellSize must be at least ${MIN_CELL_SIZE} to fit the player`);
-  }
+  // F-2026-06-15-H-3.4: removed two duplicate `if (!Number.isFinite(m.cellSize as
+  // number) || ...)` branches that were unreachable dead code — requireNumber
+  // already guarantees cellSize is a finite number, and the `as number` casts
+  // they introduced bypassed the type system. Real validation lives in the
+  // two ifs above.
 
   requireObject(m, 'start', id);
   const start = m.start as Record<string, unknown>;
@@ -217,6 +216,14 @@ export function validateMaze(raw: unknown, id: string): MazeData {
   }
   const rules: LevelRules = { initialTime, maxHealth, timeOnPickup, victory: r.victory };
 
+  // F-2026-06-15-H-3.2: enemies is a required field per MazeData schema.
+  // The previous code passed `m.enemies` directly to parseEnemies, which
+  // silently coerced `undefined` to `[]`. A hand-written level missing
+  // this field would load as a no-enemy survive run with no error — the
+  // exact failure mode the schema is meant to prevent.
+  if (!('enemies' in m)) {
+    throw new LevelLoadError(`Maze '${id}': missing 'enemies' field (use [] for none)`);
+  }
   const enemies = parseEnemies(m.enemies, id, width, depth, walls);
 
   // F-D-quality-D-15: assemble the MazeData by name instead of `{ ...m,
@@ -263,6 +270,13 @@ function parseEnemies(raw: unknown, id: string, width: number, depth: number, wa
     requireNumber(ee, 'x', `${id}.enemies[${i}]`);
     requireNumber(ee, 'z', `${id}.enemies[${i}]`);
     requireInBounds(ee, 'x', 'z', `${id}.enemies[${i}]`, width, depth);
+    // F-2026-06-15-H-3.3: the file-level comment claims spawn x/z must be
+    // on a walkable cell, but the original code only enforced this for path
+    // nodes — spawn itself was unchecked. A spawn on a wall renders the
+    // enemy stuck inside collision geometry and freezes patrol AI.
+    if (walls[ee.z as number][ee.x as number] === 1) {
+      throw new LevelLoadError(`Maze '${id}': enemy ${clampErrorValue(ee.id)} spawn is on a wall`);
+    }
 
     if (!Array.isArray(ee.path)) {
       throw new LevelLoadError(`Maze '${id}': enemy ${clampErrorValue(ee.id)} path must be array`);
