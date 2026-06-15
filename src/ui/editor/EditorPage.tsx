@@ -7,9 +7,14 @@ import { EditorPropertiesPanel } from './EditorPropertiesPanel';
 import { EditorStatusBar } from './EditorStatusBar';
 import { useConfirm } from '../useConfirm';
 import { useLevelStore } from '../../store/levelStore';
+import { useT } from '../../i18n';
 
 const DRAFT_KEY = 'maze3d.editorDraft.v1';
 const AUTOSAVE_DELAY_MS = 2000;
+// P2-8: these test-stable constants are kept verbatim so the EditorPage
+// test that asserts on DIRTY_EXIT_TITLE / DIRTY_EXIT_MESSAGE constants
+// still works (the test calls the raw exported strings). The runtime
+// dialog text now flows through t() instead.
 export const DIRTY_EXIT_TITLE = '未保存的修改';
 export const DIRTY_EXIT_MESSAGE =
   '当前关卡有未保存的修改，请选择操作（继续编辑 = 留在此页）。';
@@ -23,10 +28,6 @@ const PAGE_STYLE = {
   color: 'var(--fg)',
 };
 
-// Ctrl/Cmd+Z (undo) and Ctrl/Cmd+Shift+Z or Ctrl+Y (redo) — applied to the
-// editor only when focus is NOT inside a text field, so the user can still
-// undo native text edits inside the toolbar's name input or any number
-// field in the properties panel.
 function isUndoRedoTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return true;
   const tag = target.tagName;
@@ -40,6 +41,7 @@ export interface EditorPageProps {
 }
 
 export function EditorPage({ onExit }: EditorPageProps): React.ReactElement {
+  const t = useT();
   const undo = useEditorStore((s) => s.undo);
   const redo = useEditorStore((s) => s.redo);
   const saveDraft = useEditorStore((s) => s.saveDraft);
@@ -64,11 +66,11 @@ export function EditorPage({ onExit }: EditorPageProps): React.ReactElement {
     let cancelled = false;
     (async () => {
       const choice = await confirm({
-        title: '恢复草稿',
-        message: '发现上次未保存的草稿，是否恢复？',
+        title: t('editor.draft.title'),
+        message: t('editor.draft.message'),
         actions: [
-          { label: '放弃', value: 'cancel', variant: 'secondary' },
-          { label: '恢复', value: 'ok', variant: 'primary' },
+          { label: t('editor.draft.discard'), value: 'cancel', variant: 'secondary' },
+          { label: t('editor.draft.restore'), value: 'ok',     variant: 'primary' },
         ],
       });
       if (cancelled) return;
@@ -82,7 +84,7 @@ export function EditorPage({ onExit }: EditorPageProps): React.ReactElement {
     return () => {
       cancelled = true;
     };
-  }, [showDraftPrompt, confirm, loadDraft]);
+  }, [showDraftPrompt, confirm, loadDraft, t]);
 
   // ---- Autosave: 2s debounce on level identity change ------------------
   const autosaveTimer = useRef<number | null>(null);
@@ -124,12 +126,12 @@ export function EditorPage({ onExit }: EditorPageProps): React.ReactElement {
     const dirty = useEditorStore.getState().dirty;
     if (dirty) {
       const choice = await confirm({
-        title: DIRTY_EXIT_TITLE,
-        message: DIRTY_EXIT_MESSAGE,
+        title: t('editor.dirtyExit.title'),
+        message: t('editor.dirtyExit.message'),
         actions: [
-          { label: '保存并退出', value: 'save', variant: 'primary' },
-          { label: '放弃修改', value: 'discard', variant: 'danger' },
-          { label: '继续编辑', value: 'cancel', variant: 'secondary' },
+          { label: t('editor.dirtyExit.save'),    value: 'save',    variant: 'primary'   },
+          { label: t('editor.dirtyExit.discard'), value: 'discard', variant: 'danger'    },
+          { label: t('editor.dirtyExit.cancel'),  value: 'cancel',  variant: 'secondary' },
         ],
         danger: false,
       });
@@ -139,11 +141,7 @@ export function EditorPage({ onExit }: EditorPageProps): React.ReactElement {
         if (!r.ok) return; // stay in editor on save failure
         useLevelStore.getState().saveCustom(r.level);
       }
-      // 'discard' falls through: clear the draft + onExit below.
     }
-    // Either clean state, save succeeded, or user explicitly chose to
-    // discard. Drop the draft so re-entering the editor doesn't restore
-    // the abandoned in-memory state.
     if (typeof localStorage !== 'undefined') {
       localStorage.removeItem(DRAFT_KEY);
     }

@@ -3,23 +3,24 @@ import { useEditorStore } from '../../store/editorStore';
 import type { EnemySpawn, MazeData, Pickup, PickupType, VictoryType } from '../../maze/types';
 import { isPickupType, isVictoryType, VICTORY_TYPE_VALUES } from '../../maze/types';
 import { Button } from '../components/Button';
+import { useT } from '../../i18n';
 
 const PICKUP_TYPE_OPTIONS: readonly PickupType[] = ['time', 'health', 'key'];
-const PICKUP_TYPE_LABEL: Record<PickupType, string> = {
-  time: '时间',
-  health: '生命',
-  key: '钥匙',
+const PICKUP_TYPE_LABEL_KEYS: Record<PickupType, string> = {
+  time: 'editor.properties.pickupType.time',
+  health: 'editor.properties.pickupType.health',
+  key: 'editor.properties.pickupType.key',
 };
 
-const VICTORY_OPTIONS: ReadonlyArray<{ value: VictoryType; label: string }> =
+const VICTORY_OPTIONS: ReadonlyArray<{ value: VictoryType; labelKey: string }> =
   VICTORY_TYPE_VALUES.map((v) => ({
     value: v,
-    label: v === 'reach-exit' ? '到达出口' : v === 'time-trial' ? '限时挑战' : '存活模式',
+    labelKey: v === 'reach-exit'
+      ? 'editor.properties.victory.reachExit'
+      : v === 'time-trial'
+        ? 'editor.properties.victory.timeTrial'
+        : 'editor.properties.victory.survive',
   }));
-
-// ---------------------------------------------------------------------------
-// Collapsible card primitive
-// ---------------------------------------------------------------------------
 
 function Card({
   variant,
@@ -65,10 +66,6 @@ function Card({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Number stepper (atomic decrement/increment + direct input)
-// ---------------------------------------------------------------------------
-
 function Stepper({
   value,
   onChange,
@@ -77,6 +74,7 @@ function Stepper({
   step = 1,
   testId,
   unit,
+  t,
 }: {
   value: number;
   onChange: (v: number) => void;
@@ -85,6 +83,7 @@ function Stepper({
   step?: number;
   testId?: string;
   unit?: string;
+  t: ReturnType<typeof useT>;
 }): React.ReactElement {
   const [draft, setDraft] = useState(String(value));
   useEffect(() => {
@@ -97,8 +96,6 @@ function Stepper({
       setDraft(String(value));
       return;
     }
-    // Floor only when the step is integer; otherwise round to one decimal
-    // place so a 0.5-step preserves fractional values like 2.5.
     const rounded = Number.isInteger(step) ? Math.floor(n) : Math.round(n * 10) / 10;
     const clamped = Math.max(min, Math.min(max, rounded));
     setDraft(String(clamped));
@@ -123,7 +120,7 @@ function Stepper({
         className="editor-stepper__btn"
         onClick={dec}
         disabled={value <= min}
-        aria-label="减小"
+        aria-label={t('editor.properties.minusAria')}
       >
         −
       </button>
@@ -144,7 +141,7 @@ function Stepper({
         className="editor-stepper__btn"
         onClick={inc}
         disabled={value >= max}
-        aria-label="增大"
+        aria-label={t('editor.properties.plusAria')}
       >
         +
       </button>
@@ -152,10 +149,6 @@ function Stepper({
     </div>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Segmented control (radio group with sliding indicator)
-// ---------------------------------------------------------------------------
 
 function Segmented<T extends string>({
   options,
@@ -211,11 +204,6 @@ function Segmented<T extends string>({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Hook: debounce a value; `commit` runs after `delay` ms of no updates.
-// Used so a typing burst (e.g. "12" in a number field) produces one
-// store dispatch rather than two.
-// ---------------------------------------------------------------------------
 function useDebouncedCommit<T>(value: T, commit: (v: T) => void, delay: number): void {
   useEffect(() => {
     const id = window.setTimeout(() => commit(value), delay);
@@ -223,10 +211,8 @@ function useDebouncedCommit<T>(value: T, commit: (v: T) => void, delay: number):
   }, [value, commit, delay]);
 }
 
-// ---------------------------------------------------------------------------
-// Level metadata form (selection === null)
-// ---------------------------------------------------------------------------
 function LevelMetadataForm({ level }: { level: MazeData }): React.ReactElement {
+  const t = useT();
   const updateName = useEditorStore((s) => s.updateName);
   const updateSize = useEditorStore((s) => s.updateSize);
   const updateRule = useEditorStore((s) => s.updateRule);
@@ -266,9 +252,9 @@ function LevelMetadataForm({ level }: { level: MazeData }): React.ReactElement {
 
   return (
     <div data-testid="level-metadata-form">
-      <Card variant="meta" title="关卡元数据" chip="META">
+      <Card variant="meta" title={t('editor.properties.metaCard')} chip={t('editor.properties.metaChip')}>
         <label className="editor-properties__field">
-          <span className="editor-properties__field-label">名称</span>
+          <span className="editor-properties__field-label">{t('editor.properties.field.name')}</span>
           <input
             className="editor-properties__name"
             value={name}
@@ -277,48 +263,51 @@ function LevelMetadataForm({ level }: { level: MazeData }): React.ReactElement {
           />
         </label>
         <div className="editor-properties__field">
-          <span className="editor-properties__field-label">网格尺寸</span>
+          <span className="editor-properties__field-label">{t('editor.properties.field.grid')}</span>
           <div className="editor-properties__row">
             <label className="editor-properties__field">
-              <span className="editor-properties__field-label">宽 W</span>
+              <span className="editor-properties__field-label">{t('editor.properties.field.width')}</span>
               <Stepper
                 value={width}
                 onChange={setWidth}
                 min={1}
                 max={50}
                 testId="meta-width"
-                unit="格"
+                unit={t('editor.properties.unit.cell')}
+                t={t}
               />
             </label>
             <label className="editor-properties__field">
-              <span className="editor-properties__field-label">深 D</span>
+              <span className="editor-properties__field-label">{t('editor.properties.field.depth')}</span>
               <Stepper
                 value={depth}
                 onChange={setDepth}
                 min={1}
                 max={50}
                 testId="meta-depth"
-                unit="格"
+                unit={t('editor.properties.unit.cell')}
+                t={t}
               />
             </label>
           </div>
         </div>
       </Card>
 
-      <Card variant="rules" title="规则" chip="RULES">
+      <Card variant="rules" title={t('editor.properties.rulesCard')} chip={t('editor.properties.rulesChip')}>
         <label className="editor-properties__field">
-          <span className="editor-properties__field-label">初始时间</span>
+          <span className="editor-properties__field-label">{t('editor.properties.field.initialTime')}</span>
           <Stepper
             value={initialTime}
             onChange={setInitialTime}
             min={0}
             max={999}
             testId="meta-initial-time"
-            unit="秒"
+            unit={t('editor.properties.unit.second')}
+            t={t}
           />
         </label>
         <label className="editor-properties__field">
-          <span className="editor-properties__field-label">最大生命</span>
+          <span className="editor-properties__field-label">{t('editor.properties.field.maxHealth')}</span>
           <Stepper
             value={maxHealth}
             onChange={setMaxHealth}
@@ -326,23 +315,25 @@ function LevelMetadataForm({ level }: { level: MazeData }): React.ReactElement {
             max={99}
             testId="meta-max-health"
             unit="♥"
+            t={t}
           />
         </label>
         <label className="editor-properties__field">
-          <span className="editor-properties__field-label">拾取 +时间</span>
+          <span className="editor-properties__field-label">{t('editor.properties.field.timeOnPickup')}</span>
           <Stepper
             value={timeOnPickup}
             onChange={setTimeOnPickup}
             min={0}
             max={60}
             testId="meta-time-on-pickup"
-            unit="秒"
+            unit={t('editor.properties.unit.second')}
+            t={t}
           />
         </label>
         <div className="editor-properties__field" data-testid="meta-victory">
-          <span className="editor-properties__field-label">胜利条件</span>
+          <span className="editor-properties__field-label">{t('editor.properties.field.victory')}</span>
           <Segmented
-            options={VICTORY_OPTIONS}
+            options={VICTORY_OPTIONS.map((o) => ({ value: o.value, label: t(o.labelKey) }))}
             value={victory}
             onChange={setVictory}
             testIdPrefix="meta-victory"
@@ -353,16 +344,8 @@ function LevelMetadataForm({ level }: { level: MazeData }): React.ReactElement {
   );
 }
 
-// ---------------------------------------------------------------------------
-// "Back to level" affordance.
-//
-// Renders above the entity-specific card so the user can always reach the
-// level-metadata form (name / size / rules) without first having to click
-// the empty viewport. Without this, once any wall/pickup/enemy is selected
-// the right panel is locked into the per-object form and the user has no
-// way to change game-wide settings until they deselect via the viewport.
-// ---------------------------------------------------------------------------
 function BackToLevel(): React.ReactElement {
+  const t = useT();
   const clearSelection = useEditorStore((s) => s.clearSelection);
   return (
     <button
@@ -372,15 +355,13 @@ function BackToLevel(): React.ReactElement {
       className="editor-properties__back"
     >
       <span aria-hidden>←</span>
-      <span>关卡属性</span>
+      <span>{t('editor.properties.panelTitle')}</span>
     </button>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Pickup form (selection.kind === 'pickup')
-// ---------------------------------------------------------------------------
 function PickupForm({ pickup }: { pickup: Pickup }): React.ReactElement {
+  const t = useT();
   const updatePickup = useEditorStore((s) => s.updatePickup);
   const deleteSelected = useEditorStore((s) => s.deleteSelected);
   const [type, setType] = useState<PickupType>(pickup.type);
@@ -394,29 +375,29 @@ function PickupForm({ pickup }: { pickup: Pickup }): React.ReactElement {
   return (
     <div data-testid="pickup-form" className="editor-properties__form">
       <BackToLevel />
-      <Card variant="pickup" selected title="拾取物" chip={pickup.id.slice(0, 8)}>
+      <Card variant="pickup" selected title={t('editor.properties.pickupCard')} chip={pickup.id.slice(0, 8)}>
         <label className="editor-properties__field">
-          <span className="editor-properties__field-label">类型</span>
+          <span className="editor-properties__field-label">{t('editor.properties.field.type')}</span>
           <select
             className="editor-properties__select"
             value={type}
             onChange={(e) => {
-              const t = e.target.value;
-              if (!isPickupType(t)) return;
-              setType(t);
-              updatePickup(pickup.id, { type: t });
+              const tp = e.target.value;
+              if (!isPickupType(tp)) return;
+              setType(tp);
+              updatePickup(pickup.id, { type: tp });
             }}
             data-testid="pickup-type"
           >
-            {PICKUP_TYPE_OPTIONS.map((t) => (
-              <option key={t} value={t}>
-                {PICKUP_TYPE_LABEL[t]} ({t})
+            {PICKUP_TYPE_OPTIONS.map((tp) => (
+              <option key={tp} value={tp}>
+                {t(PICKUP_TYPE_LABEL_KEYS[tp])} ({tp})
               </option>
             ))}
           </select>
         </label>
         <label className="editor-properties__field">
-          <span className="editor-properties__field-label">数值</span>
+          <span className="editor-properties__field-label">{t('editor.properties.field.value')}</span>
           <Stepper
             value={value}
             onChange={(v) => {
@@ -426,20 +407,19 @@ function PickupForm({ pickup }: { pickup: Pickup }): React.ReactElement {
             min={0}
             max={999}
             testId="pickup-value"
+            t={t}
           />
         </label>
         <Button variant="danger" onClick={() => deleteSelected()}>
-          删除拾取物
+          {t('editor.properties.deletePickup')}
         </Button>
       </Card>
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Enemy form (selection.kind === 'enemy')
-// ---------------------------------------------------------------------------
 function EnemyForm({ enemy }: { enemy: EnemySpawn }): React.ReactElement {
+  const t = useT();
   const updateEnemy = useEditorStore((s) => s.updateEnemy);
   const moveEnemyNode = useEditorStore((s) => s.moveEnemyNode);
   const addEnemyNode = useEditorStore((s) => s.addEnemyNode);
@@ -463,16 +443,16 @@ function EnemyForm({ enemy }: { enemy: EnemySpawn }): React.ReactElement {
   return (
     <div data-testid="enemy-form" className="editor-properties__form">
     <BackToLevel />
-    <Card variant="enemy" selected title="敌人" chip={enemy.id.slice(0, 8)}>
+    <Card variant="enemy" selected title={t('editor.properties.enemyCard')} chip={enemy.id.slice(0, 8)}>
       <div className="editor-properties__field">
-        <span className="editor-properties__field-label">出生点</span>
+        <span className="editor-properties__field-label">{t('editor.properties.field.spawn')}</span>
         <div className="editor-properties__readonly">
           ({enemy.x}, {enemy.z})
         </div>
       </div>
       <div className="editor-properties__field">
         <span className="editor-properties__field-label">
-          巡逻路径 · {enemy.path.length} 节点
+          {t('editor.properties.pathNodes', { count: enemy.path.length })}
         </span>
         {enemy.path.map((node, i) => (
           <div key={i} className="editor-properties__path-row" data-testid={`enemy-path-node-${i}`}>
@@ -499,7 +479,7 @@ function EnemyForm({ enemy }: { enemy: EnemySpawn }): React.ReactElement {
               disabled={enemy.path.length <= 2}
               data-testid={`enemy-path-remove-${i}`}
               className="editor-properties__path-row__remove"
-              aria-label={`移除节点 ${i}`}
+              aria-label={t('editor.properties.removeNodeAria', { index: i })}
             >
               ×
             </button>
@@ -511,11 +491,11 @@ function EnemyForm({ enemy }: { enemy: EnemySpawn }): React.ReactElement {
           data-testid="enemy-path-add"
           className="editor-properties__path-add"
         >
-          + 添加节点
+          {t('editor.properties.addNode')}
         </button>
       </div>
       <label className="editor-properties__field">
-        <span className="editor-properties__field-label">停留时间</span>
+        <span className="editor-properties__field-label">{t('editor.properties.field.dwellTime')}</span>
         <Stepper
           value={dwellTime}
           onChange={setDwellTime}
@@ -523,22 +503,24 @@ function EnemyForm({ enemy }: { enemy: EnemySpawn }): React.ReactElement {
           max={60}
           step={0.5}
           testId="enemy-dwell"
-          unit="秒"
+          unit={t('editor.properties.unit.second')}
+          t={t}
         />
       </label>
       <label className="editor-properties__field">
-        <span className="editor-properties__field-label">视野范围</span>
+        <span className="editor-properties__field-label">{t('editor.properties.field.viewRange')}</span>
         <Stepper
           value={fovRange}
           onChange={setFovRange}
           min={0}
           max={20}
           testId="enemy-fov-range"
-          unit="格"
+          unit={t('editor.properties.unit.cell')}
+          t={t}
         />
       </label>
       <label className="editor-properties__field">
-        <span className="editor-properties__field-label">视野角度</span>
+        <span className="editor-properties__field-label">{t('editor.properties.field.viewAngle')}</span>
         <Stepper
           value={fovAngleDeg}
           onChange={setFovAngleDeg}
@@ -546,33 +528,32 @@ function EnemyForm({ enemy }: { enemy: EnemySpawn }): React.ReactElement {
           max={360}
           testId="enemy-fov-angle"
           unit="°"
+          t={t}
         />
       </label>
       <Button variant="danger" onClick={() => deleteSelected()}>
-        删除敌人
+        {t('editor.properties.deleteEnemy')}
       </Button>
     </Card>
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Wall form (selection.kind === 'wall')
-// ---------------------------------------------------------------------------
 function WallForm({ x, z }: { x: number; z: number }): React.ReactElement {
+  const t = useT();
   const deleteSelected = useEditorStore((s) => s.deleteSelected);
   return (
     <div data-testid="wall-form" className="editor-properties__form">
       <BackToLevel />
-      <Card variant="wall" selected title="墙体" chip={`${x},${z}`}>
+      <Card variant="wall" selected title={t('editor.properties.wallCard')} chip={`${x},${z}`}>
         <div className="editor-properties__field">
-          <span className="editor-properties__field-label">坐标</span>
+          <span className="editor-properties__field-label">{t('editor.properties.field.coord')}</span>
           <div className="editor-properties__readonly">
             ({x}, {z})
           </div>
         </div>
         <Button variant="danger" onClick={() => deleteSelected()}>
-          删除墙体
+          {t('editor.properties.deleteWall')}
         </Button>
       </Card>
     </div>
@@ -596,9 +577,6 @@ function renderBody({ selection, level }: RenderBodyArgs): React.ReactNode {
   return <WallForm x={selection.x} z={selection.z} />;
 }
 
-// ---------------------------------------------------------------------------
-// Top-level panel: dispatches to the per-selection sub-form.
-// ---------------------------------------------------------------------------
 export function EditorPropertiesPanel(): React.ReactElement {
   const level = useEditorStore((s) => s.level);
   const selection = useEditorStore((s) => s.selection);
@@ -611,9 +589,14 @@ export function EditorPropertiesPanel(): React.ReactElement {
 }
 
 function SelectionMissing({ kind }: { kind: 'pickup' | 'enemy' }): React.ReactElement {
+  const t = useT();
   return (
     <div className="editor-properties__empty">
-      选中的{kind === 'pickup' ? '拾取物' : '敌人'}已不存在。
+      {t('editor.properties.selectionMissing', {
+        thing: kind === 'pickup'
+          ? t('editor.properties.selection.pickup')
+          : t('editor.properties.selection.enemy'),
+      })}
     </div>
   );
 }
