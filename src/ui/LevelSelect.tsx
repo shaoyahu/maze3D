@@ -1,11 +1,3 @@
-// F-redesign-2026-06-14: /levels surface reworked into a "Cartographer's
-// Console" mission-planner layout (left source rail + level card grid
-// + procedural config panel + briefing panel + bottom action row).
-// All P2-6 data-testids, F-B-ui-M-7 per-source sublevel cache, and
-// validation logic are preserved. The visible source picker is a
-// vertical button rail; a sr-only <select> with the legacy
-// level-source-select testid remains in the DOM so existing tests
-// (and keyboard users) can still operate the source picker.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ENEMY_COUNT_DEFAULT,
@@ -34,38 +26,34 @@ import { isStorageAvailable } from '../store/persist';
 import { useLevelStore } from '../store/levelStore';
 import { algorithmForMode } from '../maze/AlgorithmMazeProvider';
 import { useConfirm } from './useConfirm';
+import { useT } from '../i18n';
+import { useSettingsStore } from '../store/settingsStore';
+import { getDisplayName } from '../utils/getDisplayName';
 
-// F-redesign-2026-06-14: LevelDef widened to optionally carry the full
-// MazeData so the card UI can render an SVG thumbnail (walls + start +
-// exit) + best-record readouts without re-loading via the provider.
-// Tests that pass only { id, name } still satisfy the shape.
 export interface LevelDef { id: string; name: string; data?: MazeData }
 
-// P2-6: 4 关卡来源(教学/随机/我的/指定种子)。每个 option 都带稳定
-// data-testid,方便 e2e 用 within(select) 精确选 option。
-// F-redesign-2026-06-14: codename 是新的「任务编号」展示, 纯视觉。
 const LEVEL_SOURCE_OPTIONS: ReadonlyArray<{
   value: LevelSource;
-  label: string;
+  labelKey: string;
   codename: string;
   testId: string;
 }> = [
-  { value: 'teaching', label: '教学',   codename: 'T-01', testId: 'level-source-teaching' },
-  { value: 'random',   label: '随机',   codename: 'R-02', testId: 'level-source-random'   },
-  { value: 'custom',   label: '我的',   codename: 'U-03', testId: 'level-source-custom'   },
-  { value: 'seed',     label: '指定',   codename: 'S-04', testId: 'level-source-seed'     },
+  { value: 'teaching', labelKey: 'levels.source.teaching', codename: 'T-01', testId: 'level-source-teaching' },
+  { value: 'random',   labelKey: 'levels.source.random',   codename: 'R-02', testId: 'level-source-random'   },
+  { value: 'custom',   labelKey: 'levels.source.custom',   codename: 'U-03', testId: 'level-source-custom'   },
+  { value: 'seed',     labelKey: 'levels.source.seed',     codename: 'S-04', testId: 'level-source-seed'     },
 ];
 
-const MODE_OPTIONS: ReadonlyArray<{ value: VictoryType; label: string; testId: string }> = [
-  { value: 'reach-exit', label: '到达出口', testId: 'mode-reach-exit' },
-  { value: 'time-trial', label: '限时挑战', testId: 'mode-time-trial' },
-  { value: 'survive',    label: '存活模式', testId: 'mode-survive'    },
+const MODE_OPTIONS: ReadonlyArray<{ value: VictoryType; labelKey: string; testId: string }> = [
+  { value: 'reach-exit', labelKey: 'levels.mode.reachExit',  testId: 'mode-reach-exit' },
+  { value: 'time-trial', labelKey: 'levels.mode.timeTrial',  testId: 'mode-time-trial' },
+  { value: 'survive',    labelKey: 'levels.mode.survive',    testId: 'mode-survive'    },
 ];
 
-const SIZE_OPTIONS: ReadonlyArray<{ value: MazeSize; label: string }> = [
-  { value: 15, label: '15×15 (小)' },
-  { value: 30, label: '30×30 (中)' },
-  { value: 50, label: '50×50 (大)' },
+const SIZE_OPTIONS: ReadonlyArray<{ value: MazeSize; labelKey: string }> = [
+  { value: 15, labelKey: 'levels.size.small'  },
+  { value: 30, labelKey: 'levels.size.medium' },
+  { value: 50, labelKey: 'levels.size.large'  },
 ];
 
 const ENEMY_COUNT_OPTIONS: ReadonlyArray<number> = (() => {
@@ -77,9 +65,6 @@ const ENEMY_COUNT_OPTIONS: ReadonlyArray<number> = (() => {
 const HEX_RE = /^[0-9a-f]{16}$/;
 const LAST_SEED_KEY = 'maze3d.lastSeed';
 
-// F-D-quality-D-3: prefer crypto.getRandomValues (cryptographically
-// strong, browser-consistent); only fall back to the deterministic
-// time-seeded generator when crypto is unavailable.
 function randomHexSeed(): string {
   if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
     const bytes = new Uint8Array(8);
@@ -91,8 +76,6 @@ function randomHexSeed(): string {
   return fallbackRandomHexSeed(Date.now());
 }
 
-// P2-6 FR-13: validateSelection() 是单一真实源,既决定 start-button 的
-// disabled 状态,也决定 onClick 真正传给 onPick 的 (id, options)。
 type Validation =
   | { valid: true; id: string; options?: StartLevelOptions }
   | { valid: false; reason: string };
@@ -162,18 +145,6 @@ function buildOptions(ctx: ValidationContext, seed: Seed): StartLevelOptions {
   return opts;
 }
 
-// ---------------------------------------------------------------------------
-// Sub-components
-// ---------------------------------------------------------------------------
-
-// F-redesign-2026-06-14: small SVG thumbnail of a maze. Walls render as
-// soft gray lines, start (--tool-port = green) + exit (--tool-exit =
-// red) as squares, pickups as small yellow dots. The viewBox is the
-// raw grid; the parent sets width/height 100%. Walls are drawn as a
-// background fill on the wall cell (1) — keeps the SVG to O(W*D) rects
-// which is fine for the small hand-crafted mazes the teaching source
-// uses (max 50x50 = 2500 rects; the thumbnail viewBox is 100x100 so
-// each wall is ~1px, never visible as aliasing).
 function LevelThumb({ data }: { data: MazeData }) {
   const W = data.size.width;
   const D = data.size.depth;
@@ -181,8 +152,6 @@ function LevelThumb({ data }: { data: MazeData }) {
   const startZ = data.start.z;
   const exitX = data.exit.x;
   const exitZ = data.exit.z;
-  // Build the wall rect list once. Memoize? At 2500 cells the cost is
-  // trivial relative to React's render — keep simple.
   const walls: JSX.Element[] = [];
   for (let z = 0; z < D; z++) {
     for (let x = 0; x < W; x++) {
@@ -197,8 +166,6 @@ function LevelThumb({ data }: { data: MazeData }) {
       }
     }
   }
-  // Pickup dots (--tool-pickup). Cap at 32 visible so a 50x50 maze
-  // with 100 pickups doesn't get visually noisy.
   const visiblePickups = data.pickups.slice(0, 32);
   return (
     <svg
@@ -223,12 +190,10 @@ function LevelThumb({ data }: { data: MazeData }) {
           opacity="0.85"
         />
       ))}
-      {/* Start = green */}
       <rect
         x={startX + 0.1} y={startZ + 0.1} width={0.8} height={0.8}
         fill="var(--ok)"
       />
-      {/* Exit = red */}
       <rect
         x={exitX + 0.1} y={exitZ + 0.1} width={0.8} height={0.8}
         fill="var(--danger)"
@@ -237,10 +202,6 @@ function LevelThumb({ data }: { data: MazeData }) {
   );
 }
 
-// F-redesign-2026-06-14: 5-bar difficulty meter. Bars 0..n-1 light up
-// in the accent color; the rest stay dim. Used on teaching + custom
-// cards. The bar count is derived from a heuristic on pickups + size
-// (more pickups + bigger size = harder); clamped to 5.
 function difficultyOf(data: MazeData | undefined): number {
   if (!data) return 0;
   const cells = data.size.width * data.size.depth;
@@ -250,9 +211,9 @@ function difficultyOf(data: MazeData | undefined): number {
   return Math.min(5, base + pickupBonus + enemyBonus);
 }
 
-function DifficultyBar({ value }: { value: number }) {
+function DifficultyBar({ value, t }: { value: number; t: ReturnType<typeof useT> }) {
   return (
-    <span className="console-card__difficulty" aria-label={`难度 ${value}/5`}>
+    <span className="console-card__difficulty" aria-label={t('levels.difficulty.aria', { value })}>
       {[0, 1, 2, 3, 4].map((i) => (
         <span
           key={i}
@@ -263,9 +224,23 @@ function DifficultyBar({ value }: { value: number }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Main: LevelSelect
-// ---------------------------------------------------------------------------
+const SECTION_TITLE_KEYS: Record<LevelSource, string> = {
+  teaching: 'levels.section.teaching',
+  random: 'levels.section.random',
+  custom: 'levels.section.custom',
+  seed: 'levels.section.seed',
+};
+const SECTION_SUBTITLE_KEYS: Record<LevelSource, string> = {
+  teaching: 'levels.section.teachingAlt',
+  random: 'levels.section.randomAlt',
+  custom: 'levels.section.customAlt',
+  seed: 'levels.section.seed',
+};
+const VICTORY_LABEL_KEYS: Record<VictoryType, string> = {
+  'reach-exit': 'levels.victory.reachExit',
+  'time-trial': 'levels.victory.timeTrial',
+  survive: 'levels.victory.survive',
+};
 
 export function LevelSelect({
   available,
@@ -278,6 +253,8 @@ export function LevelSelect({
   onPick: (id: string, options?: StartLevelOptions) => void;
   onBack: () => void;
 }) {
+  const t = useT();
+  const locale = useSettingsStore((s) => s.language);
   const [levelSource, setLevelSource] = useState<LevelSource>('teaching');
   const [sublevelId, setSublevelId] = useState<string | null>(null);
   const [mode, setMode] = useState<VictoryType>('time-trial');
@@ -299,13 +276,11 @@ export function LevelSelect({
     .sort((a, b) => a.name.localeCompare(b.name, 'zh'));
   const customLevelIds = customDefs.map((d) => d.id);
 
-  // F-B-ui-M-7: per-source sublevelId cache (see original P2-6 logic).
   const lastSublevelBySourceRef = useRef<Partial<Record<LevelSource, string | null>>>({});
   useEffect(() => {
     setSublevelId(lastSublevelBySourceRef.current[levelSource] ?? null);
   }, [levelSource]);
 
-  // P2-4a FR-20: mount 时读 localStorage 的 lastSeed,免去老用户重复输入。
   useEffect(() => {
     if (!isStorageAvailable()) return;
     const last = localStorage.getItem(LAST_SEED_KEY);
@@ -320,7 +295,6 @@ export function LevelSelect({
 
   const effectiveSublevelId = sublevelId ?? sublevelOptions[0]?.id ?? null;
 
-  // P3-B-L37: when the user flips into 'random', mint a fresh seed.
   useEffect(() => {
     if (levelSource === 'random') setRandomSeed(randomHexSeed());
   }, [levelSource]);
@@ -353,67 +327,45 @@ export function LevelSelect({
   const showSeedFields = levelSource === 'seed';
   const isSurvive = mode === 'survive';
 
-  // F-redesign-2026-06-14: derive the display title + subtitle from the
-  // active source. Both feed the title block in the new layout.
-  const titleFor = (s: LevelSource) =>
-    s === 'teaching' ? '任务简报' :
-    s === 'random'   ? '程序生成' :
-    s === 'custom'   ? '我的关卡' :
-                       '指定种子';
-  const subtitleFor = (s: LevelSource) =>
-    s === 'teaching' ? '任务简报 // 目录' :
-    s === 'random'   ? '程序生成器' :
-    s === 'custom'   ? '用户创作' :
-                       '指定种子';
-
-  // Current seed displayed in the generator readout. For 'random' this
-  // is the auto-minted randomSeed; for 'seed' it's the user input.
   const displayedSeed = levelSource === 'random' ? randomSeed : seedInput;
-
-  // Total counts for the status bar (mission scope readouts).
   const teachingCount = available.length;
   const customCount = customDefs.length;
 
+  // P2-8: localize level display names. For teaching levels, the JSON
+  // already carries the canonical name + i18n.en override; for custom
+  // levels (editor-created) we fall back to `lv.name` via the same helper.
+  const displayName = (lv: { name: string; data?: MazeData }): string =>
+    lv.data ? getDisplayName(lv.data, locale) : lv.name;
+
   return (
     <div data-testid="level-select-root" className="console-shell">
-      {/* Top status bar */}
       <div className="console-statusbar">
         <span className="console-statusbar__chip console-statusbar__chip--accent">
-          关卡选择 v1.0
+          {t('levels.status.version')}
         </span>
         <span className="console-statusbar__divider" />
-        <span className="console-statusbar__chip">来源 {LEVEL_SOURCE_OPTIONS.length}</span>
-        <span className="console-statusbar__chip">内置 {teachingCount}</span>
-        <span className="console-statusbar__chip">自定义 {customCount}</span>
+        <span className="console-statusbar__chip">{t('levels.status.sources', { count: LEVEL_SOURCE_OPTIONS.length })}</span>
+        <span className="console-statusbar__chip">{t('levels.status.builtin', { count: teachingCount })}</span>
+        <span className="console-statusbar__chip">{t('levels.status.custom', { count: customCount })}</span>
         <span className="console-statusbar__live">
           <span className="console-statusbar__live-dot" />
-          在线
+          {t('levels.status.online')}
         </span>
       </div>
 
-      {/* Title block */}
       <div className="console-titleblock">
         <div>
-          {/* F-redesign-2026-06-14: a stable base title "选择关卡" + a
-              dynamic source-specific title. The base title is what
-              app.routing.test.tsx looks up via getByText; the dynamic
-              part reads as the section name ("任务简报" / "程序生成"
-              / "我的关卡" / "指定种子") for users mid-flow. */}
           <h2 className="console-title">
             <span className="console-title__index">MS-01</span>
-            <span>选择关卡</span>
+            <span>{t('levels.title')}</span>
             <span className="console-title__sep" aria-hidden="true">//</span>
-            <span style={{ color: 'var(--fg-muted)' }}>{titleFor(levelSource)}</span>
+            <span style={{ color: 'var(--fg-muted)' }}>{t(SECTION_TITLE_KEYS[levelSource])}</span>
           </h2>
-          <p className="console-subtitle">{subtitleFor(levelSource)}</p>
+          <p className="console-subtitle">{t(SECTION_SUBTITLE_KEYS[levelSource])}</p>
         </div>
-        {/* Sr-only <select> drives state via the existing level-source-select
-            testid; the visual rail mirrors its value. A native <select>
-            also keeps keyboard users able to step through sources via the
-            OS combobox semantics. */}
         <select
           data-testid="level-source-select"
-          aria-label="关卡来源"
+          aria-label={t('levels.nav.sourceLabel')}
           value={levelSource}
           onChange={(e) => {
             const v = e.target.value;
@@ -428,7 +380,7 @@ export function LevelSelect({
         >
           {LEVEL_SOURCE_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value} data-testid={opt.testId}>
-              {opt.label}
+              {t(opt.labelKey)}
             </option>
           ))}
         </select>
@@ -437,20 +389,19 @@ export function LevelSelect({
             <span style={{ color: 'var(--danger)' }}>{error}</span>
           ) : (
             <>
-              <span>会话</span>
-              <span className="console-title-meta__value">玩家-01</span>
+              <span>{t('levels.profile.session')}</span>
+              <span className="console-title-meta__value">{t('levels.profile.value')}</span>
               <span className="console-statusbar__divider" />
-              <span>编号</span>
+              <span>{t('levels.profile.idLabel')}</span>
               <span className="console-title-meta__value">0xA7F2</span>
             </>
           )}
         </div>
       </div>
 
-      {/* Body: rail + main */}
       <div className="console-body">
-        <nav className="console-rail" aria-label="关卡来源">
-          <span className="console-rail__label">来源</span>
+        <nav className="console-rail" aria-label={t('levels.nav.sourceAria')}>
+          <span className="console-rail__label">{t('levels.nav.railLabel')}</span>
           {LEVEL_SOURCE_OPTIONS.map((opt) => {
             const active = levelSource === opt.value;
             return (
@@ -460,9 +411,9 @@ export function LevelSelect({
                 onClick={() => setLevelSource(opt.value)}
                 className={`console-rail__tab${active ? ' console-rail__tab--active' : ''}`}
                 aria-pressed={active}
-                aria-label={opt.label}
+                aria-label={t(opt.labelKey)}
               >
-                <span>{opt.label}</span>
+                <span>{t(opt.labelKey)}</span>
                 <span className="console-rail__tab-codename">{opt.codename}</span>
               </button>
             );
@@ -470,27 +421,11 @@ export function LevelSelect({
         </nav>
 
         <div className="console-main">
-          {/* FR-16: P2-6 legacy testid containers are always present in
-              the DOM. The e2e "preserves all P2-5 legacy testid
-              containers" case asserts procedural-controls (initial mount,
-              source=teaching) + custom-levels-group + specified-seed-
-              section (after switch to random) all live in the document.
-              The four sibling sections below (teaching grid, custom
-              grid, procedural panel, seed input section) are each
-              always rendered with display:none when not the active
-              source, so the testids + their DOM contents (cards,
-              delete buttons, mode select, etc.) are always addressable
-              and `getByTestId` never finds duplicates. */}
-
           {showSublevel && (
             <>
-              {/* Sublevel dropdown kept for back-compat (P2-6 testid). It
-                  lives as a sr-only select so the visual layout can
-                  prioritize cards, while the e2e tests can still flip
-                  sublevels programmatically. */}
               <select
                 data-testid="sublevel-select"
-                aria-label="子关卡"
+                aria-label={t('levels.sublevel.aria')}
                 value={effectiveSublevelId ?? ''}
                 onChange={(e) => {
                   const next = e.target.value || null;
@@ -506,25 +441,22 @@ export function LevelSelect({
                 }}
               >
                 {sublevelOptions.length === 0 ? (
-                  <option value="" data-testid="sublevel-empty">暂无可选</option>
+                  <option value="" data-testid="sublevel-empty">{t('levels.sublevel.empty')}</option>
                 ) : (
                   sublevelOptions.map((lv) => (
                     <option key={lv.id} value={lv.id} data-testid={`sublevel-option-${lv.id}`}>
-                      {lv.name}
+                      {displayName(lv)}
                     </option>
                   ))
                 )}
               </select>
 
-              {/* Teaching cards: visible when source=teaching. The grid
-                  is a separate container from custom-levels-group so each
-                  can be hidden/shown independently of the other. */}
               {available.length === 0 ? (
                 <div
                   className="console-grid console-grid--empty"
                   style={{ display: levelSource === 'teaching' ? 'flex' : 'none' }}
                 >
-                  // 暂无教学关卡 //
+                  {t('levels.sublevel.emptyTeaching')}
                 </div>
               ) : (
                 <div
@@ -539,6 +471,7 @@ export function LevelSelect({
                       ? lv.data.walls.reduce((acc, row) => acc + row.filter((c) => c === 1).length, 0)
                       : null;
                     const isCustom = levelSource === 'custom';
+                    const name = displayName(lv);
                     return (
                       <article
                         key={lv.id}
@@ -568,22 +501,22 @@ export function LevelSelect({
                             onClick={async (e) => {
                               e.stopPropagation();
                               const choice = await confirm({
-                                title: '删除关卡',
-                                message: `确定删除「${lv.name}」？此操作不可撤销。`,
+                                title: t('levels.delete.confirmTitle'),
+                                message: t('levels.delete.confirmMessage', { name }),
                                 actions: [
-                                  { label: '取消', value: 'cancel', variant: 'secondary' },
-                                  { label: '删除', value: 'ok', variant: 'danger' },
+                                  { label: t('levels.delete.cancel'), value: 'cancel', variant: 'secondary' },
+                                  { label: t('levels.delete.ok'),     value: 'ok',     variant: 'danger'    },
                                 ],
                                 danger: true,
                               });
                               if (choice === 'ok') deleteCustom(lv.id);
                             }}
-                            aria-label={`删除 ${lv.name}`}
+                            aria-label={t('levels.delete.aria', { name })}
                             data-testid={`delete-custom-${lv.id}`}
                             className="console-card__delete"
                             style={{ position: 'absolute', top: 8, left: 8, zIndex: 3 }}
                           >
-                            删除
+                            {t('levels.delete.ok')}
                           </button>
                         )}
                         <div className="console-card__thumb">
@@ -599,37 +532,39 @@ export function LevelSelect({
                           <span className="console-card__id">
                             ID · {lv.id.toUpperCase()}
                           </span>
-                          <h3 className="console-card__name">{lv.name}</h3>
+                          <h3 className="console-card__name">{name}</h3>
                           <div className="console-card__stats">
                             <div>
-                              <span className="console-card__stat-label">最佳</span>
+                              <span className="console-card__stat-label">{t('levels.stat.best')}</span>
                               <span className={`console-card__stat-value${best ? ' console-card__stat-value--accent' : ' console-card__stat-value--muted'}`}>
                                 {best ? formatTime(best.timeUsed) : '--:--'}
                               </span>
                             </div>
                             <div>
-                              <span className="console-card__stat-label">已收</span>
+                              <span className="console-card__stat-label">{t('levels.stat.collected')}</span>
                               <span className={`console-card__stat-value${best ? ' console-card__stat-value--ok' : ' console-card__stat-value--muted'}`}>
                                 {best ? `${best.collected}/${best.total}` : `--/${pickupCount || '--'}`}
                               </span>
                             </div>
                             <div>
-                              <span className="console-card__stat-label">尺寸</span>
+                              <span className="console-card__stat-label">{t('levels.stat.size')}</span>
                               <span className="console-card__stat-value">
                                 {lv.data ? `${lv.data.size.width}×${lv.data.size.depth}` : '--'}
                               </span>
                             </div>
                             <div>
-                              <span className="console-card__stat-label">墙体</span>
+                              <span className="console-card__stat-label">{t('levels.stat.walls')}</span>
                               <span className="console-card__stat-value">
                                 {wallCount ?? '--'}
                               </span>
                             </div>
                           </div>
                           <div className="console-card__footer">
-                            <DifficultyBar value={difficultyOf(lv.data)} />
+                            <DifficultyBar value={difficultyOf(lv.data)} t={t} />
                             <span className="console-card__id">
-                              {({ 'reach-exit': '终点模式', 'time-trial': '限时模式', 'survive': '存活模式' } as const)[lv.data?.rules.victory ?? 'reach-exit'] ?? lv.data?.rules.victory?.toUpperCase() ?? 'N/A'}
+                              {lv.data
+                                ? t(VICTORY_LABEL_KEYS[lv.data.rules.victory] ?? '')
+                                : 'N/A'}
                             </span>
                           </div>
                         </div>
@@ -641,18 +576,13 @@ export function LevelSelect({
             </>
           )}
 
-          {/* Custom-levels-group: always rendered. P2-6 contract: the
-              test asserts the testid is in the document regardless of
-              active source, AND that delete-custom-{id} buttons +
-              custom-level-{id} rows are findable from any source.
-              The visible content is gated by `display`. */}
           {customDefs.length === 0 ? (
             <div
               className="console-grid console-grid--empty"
               data-testid="custom-levels-group"
               style={{ display: levelSource === 'custom' ? 'flex' : 'none' }}
             >
-              // 暂无用户关卡 // 进入编辑器创建你的第一个关卡
+              {t('levels.sublevel.emptyCustom')}
             </div>
           ) : (
             <div
@@ -667,6 +597,7 @@ export function LevelSelect({
                 const wallCount = lv.data
                   ? lv.data.walls.reduce((acc, row) => acc + row.filter((c) => c === 1).length, 0)
                   : null;
+                const name = displayName(lv);
                 return (
                   <article
                     key={lv.id}
@@ -695,22 +626,22 @@ export function LevelSelect({
                       onClick={async (e) => {
                         e.stopPropagation();
                         const choice = await confirm({
-                          title: '删除关卡',
-                          message: `确定删除「${lv.name}」？此操作不可撤销。`,
+                          title: t('levels.delete.confirmTitle'),
+                          message: t('levels.delete.confirmMessage', { name }),
                           actions: [
-                            { label: '取消', value: 'cancel', variant: 'secondary' },
-                            { label: '删除', value: 'ok', variant: 'danger' },
+                            { label: t('levels.delete.cancel'), value: 'cancel', variant: 'secondary' },
+                            { label: t('levels.delete.ok'),     value: 'ok',     variant: 'danger'    },
                           ],
                           danger: true,
                         });
                         if (choice === 'ok') deleteCustom(lv.id);
                       }}
-                      aria-label={`删除 ${lv.name}`}
+                      aria-label={t('levels.delete.aria', { name })}
                       data-testid={`delete-custom-${lv.id}`}
                       className="console-card__delete"
                       style={{ position: 'absolute', top: 8, left: 8, zIndex: 3 }}
                     >
-                      删除
+                      {t('levels.delete.ok')}
                     </button>
                     <div className="console-card__thumb">
                       <LevelThumb data={lv.data} />
@@ -721,37 +652,39 @@ export function LevelSelect({
                       <span className="console-card__id">
                         ID · {lv.id.toUpperCase()}
                       </span>
-                      <h3 className="console-card__name">{lv.name}</h3>
+                      <h3 className="console-card__name">{name}</h3>
                       <div className="console-card__stats">
                         <div>
-                          <span className="console-card__stat-label">最佳</span>
-                          <span className={`console-card__stat-value${best ? ' console-card__stat-value--accent' : ' console-card__stat-value--muted'}`}>
+                          <span className="console-card__stat-label">{t('levels.stat.best')}</span>
+                          <span className={`console-card__stat-value${best ? ' console-card__stat-value--accent' : ' console-card--muted'}`}>
                             {best ? formatTime(best.timeUsed) : '--:--'}
                           </span>
                         </div>
                         <div>
-                          <span className="console-card__stat-label">已收</span>
+                          <span className="console-card__stat-label">{t('levels.stat.collected')}</span>
                           <span className={`console-card__stat-value${best ? ' console-card__stat-value--ok' : ' console-card__stat-value--muted'}`}>
                             {best ? `${best.collected}/${best.total}` : `--/${pickupCount || '--'}`}
                           </span>
                         </div>
                         <div>
-                          <span className="console-card__stat-label">尺寸</span>
+                          <span className="console-card__stat-label">{t('levels.stat.size')}</span>
                           <span className="console-card__stat-value">
                             {lv.data ? `${lv.data.size.width}×${lv.data.size.depth}` : '--'}
                           </span>
                         </div>
                         <div>
-                          <span className="console-card__stat-label">墙体</span>
+                          <span className="console-card__stat-label">{t('levels.stat.walls')}</span>
                           <span className="console-card__stat-value">
                             {wallCount ?? '--'}
                           </span>
                         </div>
                       </div>
                       <div className="console-card__footer">
-                        <DifficultyBar value={difficultyOf(lv.data)} />
+                        <DifficultyBar value={difficultyOf(lv.data)} t={t} />
                         <span className="console-card__id">
-                          {({ 'reach-exit': '终点模式', 'time-trial': '限时模式', 'survive': '存活模式' } as const)[lv.data?.rules.victory ?? 'reach-exit'] ?? lv.data?.rules.victory?.toUpperCase() ?? 'N/A'}
+                          {lv.data
+                            ? t(VICTORY_LABEL_KEYS[lv.data.rules.victory] ?? '')
+                            : 'N/A'}
                         </span>
                       </div>
                     </div>
@@ -761,11 +694,6 @@ export function LevelSelect({
             </div>
           )}
 
-          {/* FR-16: when the procedural source is active the visible
-              proc panel carries the testid; when it's NOT active (e.g.
-              source=teaching on initial mount) we render a hidden stub
-              so the testid is still addressable. The two never coexist
-              in the same render so `getByTestId` never sees duplicates. */}
           {showProceduralFields ? (
             <div
               className="console-proc"
@@ -773,29 +701,24 @@ export function LevelSelect({
               style={{ display: 'grid' }}
             >
               <div className="console-proc__panel">
-                <h3 className="console-proc__panel-title">生成器</h3>
+                <h3 className="console-proc__panel-title">{t('levels.panel.generator')}</h3>
                 <div>
-                  <div className="console-proc__seed-label">种子 · 64位 HEX</div>
+                  <div className="console-proc__seed-label">{t('levels.seed.label')}</div>
                   <div className="console-proc__seed-readout">
                     <span>0x</span>
                     <span style={{ flex: 1 }}>{displayedSeed || '— — — — — — — —'}</span>
                   </div>
                   <p className="console-proc__seed-hint" style={{ marginTop: 6 }}>
                     {levelSource === 'random'
-                      ? '// 自动生成 · 切换来源时重新洗牌'
-                      : '// 16 位十六进制 · 不区分大小写 · 实时过滤'}
+                      ? t('levels.seed.autoNote')
+                      : t('levels.seed.manualNote')}
                   </p>
                 </div>
                 <div className="console-proc__config-grid">
-                  <span className="console-proc__config-label">游戏模式</span>
-                  {/* Sr-only <select> keeps the legacy mode-select testid
-                      addressable by fireEvent.change in e2e (a <div> with
-                      role=tablist can't receive a `change` event with a
-                      `.value`). The visible segmented control below reads
-                      from the same `mode` state. */}
+                  <span className="console-proc__config-label">{t('levels.config.mode')}</span>
                   <select
                     data-testid="mode-select"
-                    aria-label="游戏模式"
+                    aria-label={t('levels.config.modeAria')}
                     value={mode}
                     onChange={(e) => {
                       const v = e.target.value;
@@ -810,11 +733,11 @@ export function LevelSelect({
                   >
                     {MODE_OPTIONS.map((opt) => (
                       <option key={opt.value} value={opt.value} data-testid={opt.testId}>
-                        {opt.label}
+                        {t(opt.labelKey)}
                       </option>
                     ))}
                   </select>
-                  <div className="console-segmented" role="tablist" aria-label="游戏模式">
+                  <div className="console-segmented" role="tablist" aria-label={t('levels.config.modeAria')}>
                     {MODE_OPTIONS.map((opt) => {
                       const active = mode === opt.value;
                       return (
@@ -829,7 +752,7 @@ export function LevelSelect({
                           role="tab"
                           aria-selected={active}
                         >
-                          {opt.label}
+                          {t(opt.labelKey)}
                         </button>
                       );
                     })}
@@ -842,7 +765,7 @@ export function LevelSelect({
                     />
                   </div>
 
-                  <span className="console-proc__config-label">迷宫尺寸</span>
+                  <span className="console-proc__config-label">{t('levels.config.size')}</span>
                   <select
                     data-testid="size-select"
                     className="console-select"
@@ -851,29 +774,29 @@ export function LevelSelect({
                       const n = Number(e.target.value);
                       if (isMazeSize(n)) setSelectedSize(n);
                     }}
-                    aria-label="迷宫尺寸"
+                    aria-label={t('levels.config.sizeAria')}
                   >
                     {SIZE_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      <option key={opt.value} value={opt.value}>{t(opt.labelKey)}</option>
                     ))}
                   </select>
 
                   {isSurvive ? (
                     <>
-                      <span className="console-proc__config-label">敌人数量</span>
+                      <span className="console-proc__config-label">{t('levels.config.enemyCount')}</span>
                       <select
                         data-testid="enemy-count-select"
                         className="console-select"
                         value={enemyCount}
                         onChange={(e) => setEnemyCount(Number(e.target.value))}
-                        aria-label="敌人数量"
+                        aria-label={t('levels.config.enemyCountAria')}
                       >
                         {ENEMY_COUNT_OPTIONS.map((n) => (
                           <option key={n} value={n} data-testid={`enemy-count-${n}`}>{n}</option>
                         ))}
                       </select>
 
-                      <span className="console-proc__config-label">存活秒数</span>
+                      <span className="console-proc__config-label">{t('levels.config.surviveSeconds')}</span>
                       <div>
                         <div className="console-stepper">
                           <input
@@ -903,7 +826,7 @@ export function LevelSelect({
                               }
                             }}
                             aria-invalid={surviveSecondsError ? 'true' : 'false'}
-                            aria-label="存活秒数"
+                            aria-label={t('levels.config.surviveSecondsAria')}
                             className="console-stepper__input"
                           />
                           <span className="console-stepper__unit">SEC</span>
@@ -926,7 +849,7 @@ export function LevelSelect({
                         </div>
                       </div>
 
-                      <span className="console-proc__config-label">渐进生成</span>
+                      <span className="console-proc__config-label">{t('levels.config.progressive')}</span>
                       <label className="console-checkbox">
                         <input
                           type="checkbox"
@@ -938,14 +861,14 @@ export function LevelSelect({
                         <span>
                           ON
                           <span className="console-checkbox__meta" style={{ marginLeft: 8 }}>
-                            {`每 ${SPAWN_SCHEDULE_DEFAULT.intervalSec}s + 每 pickup +1`}
+                            {t('levels.config.progressiveHint', { interval: SPAWN_SCHEDULE_DEFAULT.intervalSec })}
                           </span>
                         </span>
                       </label>
 
                       {progressive && (
                         <>
-                          <span className="console-proc__config-label">渐进上限</span>
+                          <span className="console-proc__config-label">{t('levels.config.progressiveMax')}</span>
                           <div className="console-stepper" style={{ maxWidth: 160 }}>
                             <input
                               data-testid="progressive-max-input"
@@ -958,7 +881,7 @@ export function LevelSelect({
                                 if (Number.isNaN(n)) return;
                                 setProgressiveMax(Math.max(1, Math.min(ENEMY_COUNT_MAX, n)));
                               }}
-                              aria-label="渐进上限"
+                              aria-label={t('levels.config.progressiveMaxAria')}
                               className="console-stepper__input"
                             />
                             <span className="console-stepper__unit">MAX</span>
@@ -968,49 +891,49 @@ export function LevelSelect({
                     </>
                   ) : (
                     <span className="console-proc__config-label console-proc__config-label--full">
-                      // 当前模式无敌人
+                      {t('levels.config.noEnemyForMode')}
                     </span>
                   )}
                 </div>
               </div>
 
               <div className="console-proc__panel">
-                <h3 className="console-proc__panel-title">任务简报</h3>
+                <h3 className="console-proc__panel-title">{t('levels.panel.brief')}</h3>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   <div>
-                    <div className="console-proc__seed-label">模式</div>
+                    <div className="console-proc__seed-label">{t('levels.brief.mode')}</div>
                     <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 600, color: 'var(--fg)' }}>
-                      {MODE_OPTIONS.find((o) => o.value === mode)?.label}
+                      {t(MODE_OPTIONS.find((o) => o.value === mode)?.labelKey ?? '')}
                     </div>
                   </div>
                   <div>
-                    <div className="console-proc__seed-label">算法</div>
+                    <div className="console-proc__seed-label">{t('levels.brief.algorithm')}</div>
                     <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--accent)' }}>
                       {algorithmForMode(mode)}
                     </div>
                   </div>
                   <div>
-                    <div className="console-proc__seed-label">网格</div>
+                    <div className="console-proc__seed-label">{t('levels.brief.grid')}</div>
                     <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--fg)', fontVariantNumeric: 'tabular-nums' }}>
                       {selectedSize} × {selectedSize} · {selectedSize * selectedSize} cells
                     </div>
                   </div>
                   {isSurvive && (
                     <div>
-                      <div className="console-proc__seed-label">存活</div>
+                      <div className="console-proc__seed-label">{t('levels.brief.survive')}</div>
                       <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--fg)', fontVariantNumeric: 'tabular-nums' }}>
                         {formatTime(surviveSecondsInput)} · {enemyCount} enemy{progressive ? ` · progressive` : ''}
                       </div>
                     </div>
                   )}
                   <div>
-                    <div className="console-proc__seed-label">编号预览</div>
+                    <div className="console-proc__seed-label">{t('levels.brief.idPreview')}</div>
                     <div style={{
                       fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--fg-muted)',
                       wordBreak: 'break-all', lineHeight: 1.4, padding: 8,
                       background: 'var(--bg-inset)', borderRadius: 3, border: '1px solid var(--border)',
                     }}>
-                      {validation.valid ? validation.id : '— 等待有效输入 —'}
+                      {validation.valid ? validation.id : t('levels.brief.waiting')}
                     </div>
                   </div>
                 </div>
@@ -1022,9 +945,7 @@ export function LevelSelect({
                   className="console-proc__panel"
                   style={{ gridColumn: '1 / -1', display: 'flex' }}
                 >
-                  {/* specified-seed-section testid is asserted by the e2e
-                      "preserves all P2-5 legacy testid containers" case. */}
-                  <h3 className="console-proc__panel-title">种子输入</h3>
+                  <h3 className="console-proc__panel-title">{t('levels.panel.seedInput')}</h3>
                   <div className="console-stepper" style={{ maxWidth: 360 }}>
                     <span className="console-stepper__unit" style={{ borderLeft: 'none', borderRight: '1px solid var(--border)' }}>0x</span>
                     <input
@@ -1055,7 +976,7 @@ export function LevelSelect({
                     className="console-ghost-btn"
                     style={{ alignSelf: 'flex-start' }}
                   >
-                    ↻ 使用上次种子
+                    {t('levels.seedInput.useLast')}
                   </button>
                 </section>
               ) : (
@@ -1076,19 +997,18 @@ export function LevelSelect({
         </div>
       </div>
 
-      {/* Action row */}
       <div className="console-action-row">
         <span className="console-action-row__hint">
-          按 <kbd>Enter</kbd> 进入 · 按 <kbd>Esc</kbd> 退出
+          {t('levels.action.hint', { enter: 'Enter', esc: 'Esc' })}
         </span>
         <div className="console-action-row__buttons">
           <button
             type="button"
             onClick={onBack}
-            aria-label="返回"
+            aria-label={t('levels.action.back')}
             className="console-ghost-btn"
           >
-            返回
+            {t('levels.action.back')}
           </button>
           <button
             type="button"
@@ -1097,7 +1017,7 @@ export function LevelSelect({
             disabled={startDisabled}
             className="console-primary-btn"
           >
-            <span>进入游戏</span>
+            <span>{t('levels.action.enter')}</span>
             <span className="console-primary-btn__arrow">▶</span>
           </button>
         </div>
