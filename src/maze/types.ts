@@ -96,6 +96,11 @@ export interface LevelRules {
 export interface MazeData {
   id: string;
   name: string;
+  // P2-8: optional per-locale display names. `name` is the canonical
+  // (Chinese) name and is used in URLs / seeds; UI consumers should
+  // resolve the user-facing name via `getDisplayName(maze, locale)`
+  // which falls back to `name` when an entry is missing or empty.
+  i18n?: { en?: string };
   size: { width: number; depth: number };
   cellSize: number;
   start: { x: number; z: number };

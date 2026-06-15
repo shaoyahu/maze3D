@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { loadJSON, saveJSONDebounced } from './persist';
 import type { EnemyAggression } from '../maze/types';
+import { isLocale, type Locale } from '../i18n/types';
 
 const VALID_AGGRESSION: EnemyAggression[] = ['easy', 'medium', 'hard'];
 
@@ -12,6 +13,10 @@ export interface Settings {
   // user-facing radio come in Task9; the field is defined now so
   // the engine's GameBridge can read it.
   enemyAggression: EnemyAggression;
+  // P2-8: UI locale. Defaults to 'zh' so Chinese users get the existing
+  // experience verbatim; English users toggle from /settings and the
+  // change is persisted via the same `maze3d.settings.v1` channel.
+  language: Locale;
 }
 
 interface SettingsStore extends Settings {
@@ -23,6 +28,7 @@ const DEFAULTS: Settings = {
   fov: 60,
   darkMode: false,
   enemyAggression: 'medium',
+  language: 'zh',
 };
 const STORAGE_KEY = 'maze3d.settings.v1';
 
@@ -41,11 +47,17 @@ export function sanitizeSettings(raw: unknown): Settings | null {
     typeof s.enemyAggression === 'string' && VALID_AGGRESSION.includes(s.enemyAggression as EnemyAggression)
       ? (s.enemyAggression as EnemyAggression)
       : 'medium';
+  // P2-8: same lenient treatment for `language` — a pre-P2-8 record
+  // (or a corrupted value) falls back to 'zh' instead of failing the
+  // whole-settings validation. `set('language', unknown)` is still
+  // rejected via `isValidSetting` at write time.
+  const language: Locale = isLocale(s.language) ? s.language : 'zh';
   return {
     pointerSensitivity: s.pointerSensitivity,
     fov: s.fov,
     darkMode: s.darkMode,
     enemyAggression: aggression,
+    language,
   };
 }
 
@@ -55,6 +67,7 @@ function pickSettings(s: Settings): Settings {
     fov: s.fov,
     darkMode: s.darkMode,
     enemyAggression: s.enemyAggression,
+    language: s.language,
   };
 }
 
@@ -70,6 +83,9 @@ function isValidSetting(k: keyof Settings, v: unknown): v is Settings[keyof Sett
   }
   if (k === 'enemyAggression') {
     return typeof v === 'string' && VALID_AGGRESSION.includes(v as EnemyAggression);
+  }
+  if (k === 'language') {
+    return isLocale(v);
   }
   return false;
 }

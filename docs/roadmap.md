@@ -46,6 +46,8 @@
 | P2-5 | UI 改版 + 存活模式重平衡 (MainMenu 3D + LevelSelect 重设计 + 敌人按模式硬门 + algorithmForMode) | P1 | — | Large | `docs/increments/p2-5-ui-and-rebalance/` | ✅ done (2026-06-11) |
 | P2-6 | LevelSelect 级联重构 (主 dropdown 4 关卡源 + 单一「进入游戏」+ 存活模式 4 设置成组 + 关键老 testid 全保留) | P1 | — | Medium | `docs/increments/level-select-cascading-redesign/` | ✅ done (10/10) (2026-06-12) |
 | P2-7 | 自定义 Dialog 系统 (替换 5 处 `window.confirm` + E2E `page.once('dialog')`；`<ConfirmProvider>` 主题化；3 选项脏数据退出 + 草稿恢复) | P1 | — | Small | `docs/increments/p2-7-custom-dialog/` | ✅ done (8/8) (2026-06-12) |
+| P2-8 | 第二语言支持（English） (自研轻量 i18n：`getT` + `useT` + `settingsStore.language`；中英资源 `src/i18n/resources/{zh,en}.ts`；`/settings` 实时切换；既有 279 行中文测试断言零迁移) | P1 | — | Medium | `docs/increments/p2-8-i18n/` | 🔄 in-progress (draft, 2026-06-15) |
+| P2-8 | 第二语言支持（English） (自研轻量 i18n：`getT` + `useT` + `settingsStore.language`；中英资源 `src/i18n/resources/{zh,en}.ts`；`/settings` 实时切换；既有 279 行中文测试断言零迁移) | P1 | — | Medium | `docs/increments/p2-8-i18n/` | 🔄 in-progress (draft, 2026-06-15) |
 
 > **P2-1 已删除**：原计划"多关卡 JSON（中/大尺寸）"被 P2-3 算法生成取代。MVP 保留 `level-small.json` 作为"教学关"，`level-tiny.json` 留 E2E。
 > **P2-4 拆分**：原"敌人 + 编辑器"X-Large 拆成 P2-4a（敌人+survive mode，依赖 P2-3）和 P2-4b（编辑器，独立）。

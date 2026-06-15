@@ -1,9 +1,15 @@
+import { useT } from '../../i18n';
+
 export function ControlHints() {
+  const t = useT();
+  // The kbd column holds the keycap label (WASD / 鼠标 / P / ESC); the
+  // span column holds the description. In the original Chinese layout
+  // 鼠标 had a placeholder `l`; in EN the keycap itself reads "Look".
   const items = [
-    { k: 'WASD', l: '移动' },
-    { k: '鼠标', l: '视角' },
-    { k: 'P', l: '暂停' },
-    { k: 'ESC', l: '释放鼠标' },
+    { k: 'WASD', l: t('controls.move') },
+    { k: t('controls.look'), l: '' },
+    { k: 'P', l: t('controls.pause') },
+    { k: 'ESC', l: t('controls.releaseMouse') },
   ];
   return (
     <div

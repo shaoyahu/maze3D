@@ -1,6 +1,7 @@
 {
   "id": "level-tiny-pickups",
   "name": "补给线",
+  "i18n": { "en": "Supply Line" },
   "size": { "width": 5, "depth": 1 },
   "cellSize": 2,
   "start": { "x": 0, "z": 0 },

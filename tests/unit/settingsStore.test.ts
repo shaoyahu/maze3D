@@ -113,6 +113,7 @@ describe('settingsStore', () => {
         fov: 80,
         darkMode: true,
         enemyAggression: 'medium',
+        language: 'zh', // P2-8 lenient default for pre-P2-8 records
       });
     });
 
@@ -130,6 +131,7 @@ describe('settingsStore', () => {
         fov: 75,
         darkMode: false,
         enemyAggression: 'medium',
+        language: 'zh',
       });
     });
   });

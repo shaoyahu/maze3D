@@ -1,6 +1,7 @@
 {
   "id": "level-tiny-enemy",
   "name": "哨兵走廊",
+  "i18n": { "en": "Sentry Corridor" },
   "size": { "width": 3, "depth": 3 },
   "cellSize": 2,
   "start": { "x": 0, "z": 1 },

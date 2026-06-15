@@ -1,6 +1,7 @@
 {
   "id": "level-tiny",
   "name": "空庭",
+  "i18n": { "en": "Empty Court" },
   "size": { "width": 3, "depth": 3 },
   "cellSize": 2,
   "start": { "x": 0, "z": 1 },

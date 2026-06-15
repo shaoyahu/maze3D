@@ -3,8 +3,10 @@ import { useGameStore } from '../store/gameStore';
 import { useLevelStore } from '../store/levelStore';
 import { Button } from './components/Button';
 import { formatTime } from '../utils/time';
+import { useT } from '../i18n';
 
 export function WinOverlay({ onRetry, onQuit, onNext }: { onRetry: () => void; onQuit: () => void; onNext?: () => void; }) {
+  const t = useT();
   const pickupCount = useGameStore((s) => s.pickupCount);
   const currentLevelId = useGameStore((s) => s.currentLevelId);
   const timeUsed = useGameStore((s) => s.elapsedTime);
@@ -12,15 +14,15 @@ export function WinOverlay({ onRetry, onQuit, onNext }: { onRetry: () => void; o
   const best = useLevelStore((s) => (currentLevelId ? s.bestByLevel[currentLevelId] : undefined));
   return (
     <div style={overlayStyle}>
-      <h2 style={{ color: 'var(--accent)' }}>通关！</h2>
-      <p>用时 {formatTime(timeUsed)}</p>
-      <p>收集 {pickupCount.collected} / {pickupCount.total}</p>
-      {best && <p>历史最佳 {formatTime(best.timeUsed)}</p>}
-      {newRecord && <p style={{ color: 'var(--accent)' }}>新纪录！</p>}
+      <h2 style={{ color: 'var(--accent)' }}>{t('overlays.win.title')}</h2>
+      <p>{t('overlays.win.timeUsed', { time: formatTime(timeUsed) })}</p>
+      <p>{t('overlays.win.pickups', pickupCount)}</p>
+      {best && <p>{t('overlays.win.best', { time: formatTime(best.timeUsed) })}</p>}
+      {newRecord && <p style={{ color: 'var(--accent)' }}>{t('overlays.win.newRecord')}</p>}
       <div style={{ display: 'flex', gap: 12, marginTop: 20 }}>
-        <Button onClick={onRetry}>重玩</Button>
-        {onNext && <Button onClick={onNext}>下一关</Button>}
-        <Button onClick={onQuit} variant="secondary">返回主菜单</Button>
+        <Button onClick={onRetry}>{t('overlays.win.retry')}</Button>
+        {onNext && <Button onClick={onNext}>{t('overlays.win.next')}</Button>}
+        <Button onClick={onQuit} variant="secondary">{t('overlays.win.backToMenu')}</Button>
       </div>
     </div>
   );
