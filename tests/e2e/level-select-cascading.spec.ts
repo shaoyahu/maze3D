@@ -43,7 +43,7 @@ test.describe('P2-6 level-select cascading source dropdown', () => {
   // (or the URL state doesn't navigate back to / before reload
   // resolves). Mark fixme; root cause is in the home shell + reload
   // interaction, not in the source-switch logic itself.
-  test.fixme('switching to 我的 reveals the sublevel dropdown (with custom levels)', async ({ page }) => {
+  test('switching to 我的 reveals the sublevel dropdown (with custom levels)', async ({ page }) => {
     // Seed the level store with one custom level so the sublevel-select
     // is enabled (default empty state would render it disabled).
     await page.evaluate(() => {
@@ -70,6 +70,10 @@ test.describe('P2-6 level-select cascading source dropdown', () => {
       localStorage.setItem('maze3d.customLevels.v1', JSON.stringify(store));
     });
     await page.reload();
+    // After reload we're still on /levels from beforeEach. The test was
+    // originally written assuming reload reset to /, but the URL persists
+    // — navigate home first, then click the start button.
+    await page.goto('/');
     await page.getByTestId('main-menu-start').click();
     await page.getByTestId('level-source-select').selectOption('custom');
     const sub = page.getByTestId('sublevel-select');

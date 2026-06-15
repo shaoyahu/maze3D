@@ -100,8 +100,15 @@ export interface EditorStoreState {
    *  reads this to surface silent-reject feedback; the consumer is
    *  responsible for calling `clearLastError` (or auto-clearing via
    *  useEffect) once it has been shown. null when there is nothing to
-   *  report. F-2026-06-12-H1. */
+   *  report. F-2026-06-12-H1. P2-8: prefer `lastErrorKey` so the
+   *  consumer can `t()`-translate via the i18n module; `lastError`
+   *  remains as a fallback string passthrough for legacy callers. */
   lastError: string | null;
+  /** P2-8: stable i18n key for the editor's last surfaced error
+   *  (placeWall / placeStart / placeExit / appendEnemyPathNode). The
+   *  UI reads this and translates via `t(lastErrorKey)`; null means
+   *  no editor-emitted error is active. */
+  lastErrorKey: string | null;
   /** F-2026-06-12-B2: hash of the level at the last "save baseline"
    *  (initial empty level, last `saveLevel` success, last `loadLevel`,
    *  last `loadDraft`, or last `importJson`). `dirty` is derived from
@@ -352,6 +359,7 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
     dirty: false,
     lastSavedAt: null,
     lastError: null,
+    lastErrorKey: null,
     lastSavedHash: initialLastSavedHash,
     // F-project-review-2026-06-13-D-5/D-18: a fresh editor session has
     // never written to localStorage, so neither flag is pending.
@@ -461,7 +469,7 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
 
     clearSelection: () => set({ selection: null }),
 
-    clearLastError: () => set({ lastError: null }),
+    clearLastError: () => set({ lastError: null, lastErrorKey: null }),
 
     // F-project-review-2026-06-13-D-5/D-18: a successful levelStore
     // save (or a corrective edit that shrinks the draft below
@@ -483,11 +491,13 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
       if (x === level.start.x && z === level.start.z) {
         // F-2026-06-12-H1: surface the silent-reject so the user knows
         // why the click was dropped, not just that "nothing happened".
-        set({ lastError: '无法在起点放置墙（墙不能覆盖起点）' });
+        // P2-8: emit a stable i18n key instead of a hardcoded string
+        // so the UI layer can t()-translate via the i18n module.
+        set({ lastError: null, lastErrorKey: 'editor.lastError.wallOnStart' });
         return;
       }
       if (x === level.exit.x && z === level.exit.z) {
-        set({ lastError: '无法在终点放置墙（墙不能覆盖终点）' });
+        set({ lastError: null, lastErrorKey: 'editor.lastError.wallOnExit' });
         return;
       }
       const nextWalls = level.walls.map((r, zi) =>
@@ -500,7 +510,7 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
     placeStart: (x, z) => {
       const { level } = get();
       if (!inBounds(x, z, level.size.width, level.size.depth)) {
-        set({ lastError: '起点位置超出网格范围' });
+        set({ lastError: null, lastErrorKey: 'editor.lastError.startOutOfBounds' });
         return;
       }
       // Auto-carve the cell if it's currently a wall — UX win so the user
@@ -519,7 +529,7 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
     placeExit: (x, z) => {
       const { level } = get();
       if (!inBounds(x, z, level.size.width, level.size.depth)) {
-        set({ lastError: '终点位置超出网格范围' });
+        set({ lastError: null, lastErrorKey: 'editor.lastError.exitOutOfBounds' });
         return;
       }
       // Auto-carve the cell if it's currently a wall so the user can drop
@@ -598,7 +608,7 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
     appendEnemyPathNode: (enemyId, nx, nz) => {
       const { level } = get();
       if (!inBounds(nx, nz, level.size.width, level.size.depth)) {
-        set({ lastError: '路径节点超出网格范围' });
+        set({ lastError: null, lastErrorKey: 'editor.lastError.pathOutOfBounds' });
         return;
       }
       // Reject a no-op append: clicking the same cell twice would otherwise

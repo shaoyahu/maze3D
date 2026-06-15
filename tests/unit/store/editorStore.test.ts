@@ -442,26 +442,26 @@ describe('useEditorStore', () => {
     // F-2026-06-12-H1: silent-reject is great for state but invisible to
     // the user. Surface the rejection via `lastError` so the toolbar can
     // show "无法在起点放置墙" and the click isn't a mystery.
-    it('placeWall on the start cell sets lastError (UX feedback for the silent-reject)', () => {
+    it('placeWall on the start cell sets lastErrorKey (UX feedback for the silent-reject)', () => {
       // Arrange
-      useEditorStore.setState({ past: [], dirty: false, lastError: null });
+      useEditorStore.setState({ past: [], dirty: false, lastError: null, lastErrorKey: null });
       // Act
       useEditorStore.getState().placeWall(0, 0);
       // Assert
-      const err = useEditorStore.getState().lastError;
-      expect(err).toBeTypeOf('string');
-      expect(err).toMatch(/起点|start/);
+      const key = useEditorStore.getState().lastErrorKey;
+      expect(key).toBeTypeOf('string');
+      expect(key).toBe('editor.lastError.wallOnStart');
     });
 
-    it('placeWall on the exit cell sets lastError mentioning exit', () => {
+    it('placeWall on the exit cell sets lastErrorKey', () => {
       // Arrange
-      useEditorStore.setState({ past: [], dirty: false, lastError: null });
+      useEditorStore.setState({ past: [], dirty: false, lastError: null, lastErrorKey: null });
       // Act
       useEditorStore.getState().placeWall(4, 3);
       // Assert
-      const err = useEditorStore.getState().lastError;
-      expect(err).toBeTypeOf('string');
-      expect(err).toMatch(/终点|exit/);
+      const key = useEditorStore.getState().lastErrorKey;
+      expect(key).toBeTypeOf('string');
+      expect(key).toBe('editor.lastError.wallOnExit');
     });
 
     it('placeWall on a regular floor cell clears any previous lastError', () => {
@@ -749,7 +749,7 @@ describe('useEditorStore', () => {
       const enemyId = useEditorStore.getState().level.enemies[0]!.id;
       useEditorStore.getState().appendEnemyPathNode(enemyId, 99, 99);
       expect(useEditorStore.getState().level.enemies[0]!.path).toHaveLength(2);
-      expect(useEditorStore.getState().lastError).toBe('路径节点超出网格范围');
+      expect(useEditorStore.getState().lastErrorKey).toBe('editor.lastError.pathOutOfBounds');
     });
   });
 
