@@ -2,7 +2,7 @@ import { useEffect, useMemo } from 'react';
 import { useSettingsStore } from '../store/settingsStore';
 import { ENEMY_CHASE_MULTIPLIER_EASY, ENEMY_CHASE_MULTIPLIER_MEDIUM, ENEMY_CHASE_MULTIPLIER_HARD, type EnemyAggression } from '../maze/types';
 import { useT } from '../i18n';
-import { LOCALES, type Locale } from '../i18n/types';
+import { LOCALES } from '../i18n/types';
 
 interface AggressionOption {
   value: EnemyAggression;

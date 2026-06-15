@@ -53,6 +53,7 @@ export function EditorTopBar({ onExit, onSaveAndExit }: EditorTopBarProps): Reac
   const exportJson = useEditorStore((s) => s.exportJson);
   const importJson = useEditorStore((s) => s.importJson);
   const lastError = useEditorStore((s) => s.lastError);
+  const lastErrorKey = useEditorStore((s) => s.lastErrorKey);
   const clearLastError = useEditorStore((s) => s.clearLastError);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -64,10 +65,10 @@ export function EditorTopBar({ onExit, onSaveAndExit }: EditorTopBarProps): Reac
   });
 
   useEffect(() => {
-    if (lastError === null) return undefined;
+    if (lastError === null && lastErrorKey === null) return undefined;
     const id = window.setTimeout(() => clearLastError(), LAST_ERROR_DISPLAY_MS);
     return () => window.clearTimeout(id);
-  }, [lastError, clearLastError]);
+  }, [lastError, lastErrorKey, clearLastError]);
 
   const prevDirtyRef = useRef<boolean>(dirty);
   useEffect(() => {
@@ -151,11 +152,13 @@ export function EditorTopBar({ onExit, onSaveAndExit }: EditorTopBarProps): Reac
   };
 
   const display: { kind: 'ok' | 'error'; message: string } | null =
-    lastError !== null
-      ? { kind: 'error', message: lastError }
-      : status.kind !== 'idle'
-        ? status
-        : null;
+    lastErrorKey !== null
+      ? { kind: 'error', message: t(lastErrorKey) }
+      : lastError !== null
+        ? { kind: 'error', message: lastError }
+        : status.kind !== 'idle'
+          ? status
+          : null;
 
   return (
     <header data-testid="editor-toolbar" className="editor-topbar">
