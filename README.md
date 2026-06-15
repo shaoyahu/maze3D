@@ -164,10 +164,14 @@ npm run test:e2e:install  # 安装 Playwright 浏览器
 `/settings` 提供：
 
 - **暗色 / 亮色主题**（持久化到 `settingsStore`）
+- **语言** `language`：在「中文 / English」之间切换；切换后整个游戏所有 UI 立即重新渲染（关卡名、菜单、HUD、暂停 / 通关 / 失败遮罩、设置面板、编辑器等）
 - **敌人追击强度** `enemyAggression`：影响敌人 `chase` 状态的反应速度
 - **HUD 数值精度 / 控件偏好**（视版本而定）
 
 所有偏好持久化到 `localStorage` 并经过 `sanitizeSettings` 显式校验，校验失败丢弃而非吞错。
+
+`maze3d.settings.v1` schema 含 5 个字段：`pointerSensitivity / fov / darkMode / enemyAggression / language`。
+新增的 `language: 'zh' | 'en'` 默认 `'zh'`，旧 record 无该字段时 lenient 回退（forward-compat）。
 
 ---
 
@@ -253,6 +257,7 @@ Phase 2 增量按序推进，已完成：
 | P2-5 | UI 改版 + 存活模式重平衡 | ✅ 已完成（16/16） |
 | P2-6 | LevelSelect 级联重构 | ✅ 已完成（10/10） |
 | P2-7 | 自定义 Dialog 系统 | ✅ 已完成（8/8） |
+| P2-8 | 第二语言支持（English） (自研零依赖 i18n：`src/i18n/{types,index}.ts` + `resources/{zh,en}.ts` 270 keys + `getT/locale/useT`；`settingsStore.language` 持久化；Settings 页 `locale-zh/en` 切换控件；4 个内置关卡 JSON 加 `i18n.en` + `getDisplayName` helper；13 个 UI 组件全量迁移) | ✅ 已完成（37 files / 5 commits / 889 tests） |
 
 候选池（待用户决策）：音频管线、移动端 / 触摸支持、额外 pickup 子类型。
 

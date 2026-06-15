@@ -6,8 +6,10 @@ import { useSettingsStore } from '../store/settingsStore';
 import { Crosshair } from './components/Crosshair';
 import { Minimap } from './components/Minimap';
 import type { MazeData, StartLevelOptions } from '../maze/types';
+import { useT } from '../i18n';
 
 export function GameCanvas({ maze, options }: { maze: MazeData; options?: StartLevelOptions }) {
+  const t = useT();
   const ref = useRef<HTMLCanvasElement>(null);
   const gameRef = useRef<Game | null>(null);
   // The crosshair is a gameplay cue — hide it the moment the screen is no
@@ -194,7 +196,7 @@ export function GameCanvas({ maze, options }: { maze: MazeData; options?: StartL
           viewport's bottom-right corner instead of the center. */}
       <canvas ref={ref} onClick={() => {
         gameRef.current?.requestPointerLock().catch(() => {
-          setPointerLockError('无法锁定鼠标，请检查浏览器设置后重试');
+          setPointerLockError(t('app.error.pointerLockFailed'));
           if (pointerLockTimerRef.current !== null) {
             window.clearTimeout(pointerLockTimerRef.current);
           }
