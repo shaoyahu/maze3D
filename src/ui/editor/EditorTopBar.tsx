@@ -10,21 +10,18 @@ import type { EditorTool } from '../../maze/types';
 import { useAutoSave } from '../../hooks/useAutoSave';
 import { useConfirm } from '../useConfirm';
 import { useLevelStore } from '../../store/levelStore';
+import { useT } from '../../i18n';
 
-// F-2026-06-12-H1: how long a `lastError` from the store stays visible
-// before the toolbar auto-clears it. Exported so the auto-clear test
-// pins this exact value instead of a magic 3050ms offset.
 export const LAST_ERROR_DISPLAY_MS = 3000;
 
-// Tool → human hint string shown in the topbar center.
-const TOOL_HINTS: Record<EditorTool, string> = {
-  select: '点击对象查看属性',
-  wall:   '在格子上点击放置墙体 · 右键拖动平移',
-  start:  '点击格子设置玩家起点',
-  exit:   '点击格子设置出口',
-  pickup: '点击格子放置拾取物',
-  enemy:  '点击格子放置敌人 · 选中后在右侧编辑路径',
-  pan:    '右键拖动平移视图',
+const TOOL_HINT_KEYS: Record<EditorTool, string> = {
+  select: 'editor.toolbar.hint.select',
+  wall:   'editor.toolbar.hint.wall',
+  start:  'editor.toolbar.hint.start',
+  exit:   'editor.toolbar.hint.exit',
+  pickup: 'editor.toolbar.hint.pickup',
+  enemy:  'editor.toolbar.hint.enemy',
+  pan:    'editor.toolbar.hint.pan',
 };
 
 type Status =
@@ -44,6 +41,7 @@ export interface EditorTopBarProps {
 }
 
 export function EditorTopBar({ onExit, onSaveAndExit }: EditorTopBarProps): React.ReactElement {
+  const t = useT();
   const confirm = useConfirm();
   const tool = useEditorStore((s) => s.tool);
   const level = useEditorStore((s) => s.level);
@@ -61,8 +59,8 @@ export function EditorTopBar({ onExit, onSaveAndExit }: EditorTopBarProps): Reac
   const [status, setStatus] = useState<Status>({ kind: 'idle' });
 
   useAutoSave({
-    onAutoSaved: (ts) => setStatus({ kind: 'ok', message: `已自动保存 ${formatHHMMSS(ts)}` }),
-    onAutoSaveError: (msg) => setStatus({ kind: 'error', message: `自动保存失败：${msg}` }),
+    onAutoSaved: (ts) => setStatus({ kind: 'ok', message: t('editor.toolbar.autoSaved', { time: formatHHMMSS(ts) }) }),
+    onAutoSaveError: (msg) => setStatus({ kind: 'error', message: t('editor.toolbar.autoSaveError', { msg }) }),
   });
 
   useEffect(() => {
@@ -82,40 +80,36 @@ export function EditorTopBar({ onExit, onSaveAndExit }: EditorTopBarProps): Reac
   const handleNew = async (): Promise<void> => {
     if (dirty) {
       const choice = await confirm({
-        title: '未保存的修改',
-        message: '当前关卡有未保存的修改，确定新建？',
+        title: t('editor.toolbar.dirtyExitTitle'),
+        message: t('editor.toolbar.dirtyNewMessage'),
         actions: [
-          { label: '取消', value: 'cancel', variant: 'secondary' },
-          { label: '确定', value: 'ok', variant: 'primary' },
+          { label: t('common.cancel'), value: 'cancel', variant: 'secondary' },
+          { label: t('editor.toolbar.ok'), value: 'ok', variant: 'primary' },
         ],
       });
       if (choice !== 'ok') return;
     }
     newLevel(15, 15);
-    setStatus({ kind: 'ok', message: '已新建 15×15 空关卡' });
+    setStatus({ kind: 'ok', message: t('editor.toolbar.newEmpty') });
   };
 
   const handleSave = (): void => {
     const result = saveLevel();
     if (result.ok) {
       useLevelStore.getState().saveCustom(result.level);
-      setStatus({ kind: 'ok', message: '已保存' });
+      setStatus({ kind: 'ok', message: t('editor.toolbar.saved') });
     } else {
-      setStatus({ kind: 'error', message: `保存失败：${result.error}` });
+      setStatus({ kind: 'error', message: t('editor.toolbar.saveError', { reason: result.error }) });
     }
   };
 
   const handleSaveAndExit = (): void => {
     const result = saveLevel();
     if (!result.ok) {
-      setStatus({ kind: 'error', message: `保存失败：${result.error}` });
+      setStatus({ kind: 'error', message: t('editor.toolbar.saveError', { reason: result.error }) });
       return;
     }
     useLevelStore.getState().saveCustom(result.level);
-    // Prefer onSaveAndExit, fall back to onExit. The previous
-    // `onSaveAndExit?.() ?? onExit?.()` form was buggy: a void function
-    // returns undefined, and `undefined ?? x` evaluates `x`, so when
-    // both props were defined BOTH callbacks fired. Branch explicitly.
     if (onSaveAndExit) onSaveAndExit();
     else onExit?.();
   };
@@ -124,7 +118,7 @@ export function EditorTopBar({ onExit, onSaveAndExit }: EditorTopBarProps): Reac
     const json = exportJson();
     const filename = `${sanitizeFilename(level.name) || 'level'}.maze3d.json`;
     downloadAsJsonFile(filename, json);
-    setStatus({ kind: 'ok', message: `已导出 ${filename}` });
+    setStatus({ kind: 'ok', message: t('editor.toolbar.exported', { filename }) });
   };
 
   const handleImportClick = (): void => {
@@ -137,11 +131,11 @@ export function EditorTopBar({ onExit, onSaveAndExit }: EditorTopBarProps): Reac
     if (!file) return;
     if (dirty) {
       const choice = await confirm({
-        title: '未保存的修改',
-        message: '当前关卡有未保存的修改，确定导入？',
+        title: t('editor.toolbar.dirtyExitTitle'),
+        message: t('editor.toolbar.dirtyImportMessage'),
         actions: [
-          { label: '取消', value: 'cancel', variant: 'secondary' },
-          { label: '确定', value: 'ok', variant: 'primary' },
+          { label: t('common.cancel'), value: 'cancel', variant: 'secondary' },
+          { label: t('editor.toolbar.ok'), value: 'ok', variant: 'primary' },
         ],
       });
       if (choice !== 'ok') return;
@@ -149,10 +143,10 @@ export function EditorTopBar({ onExit, onSaveAndExit }: EditorTopBarProps): Reac
     try {
       const raw = await readJsonFile(file);
       importJson(raw);
-      setStatus({ kind: 'ok', message: `已导入 ${file.name}` });
+      setStatus({ kind: 'ok', message: t('editor.toolbar.imported', { filename: file.name }) });
     } catch (err) {
       const msg = err instanceof ImportError ? err.message : String(err);
-      setStatus({ kind: 'error', message: `导入失败：${msg}` });
+      setStatus({ kind: 'error', message: t('editor.toolbar.importError', { msg }) });
     }
   };
 
@@ -181,25 +175,25 @@ export function EditorTopBar({ onExit, onSaveAndExit }: EditorTopBarProps): Reac
             updateName(sanitized);
           }}
           maxLength={64}
-          title="最长 64 字符，换行会被替换成空格"
+          title={t('editor.toolbar.nameTitle')}
           data-testid="tool-name-input"
-          aria-label="关卡名"
+          aria-label={t('editor.toolbar.nameAria')}
           className="editor-topbar__name"
         />
         {dirty ? (
           <span data-testid="tool-dirty" role="status" aria-live="polite" className="editor-topbar__dirty">
             <span className="editor-topbar__dirty__dot" aria-hidden />
-            未保存
+            {t('editor.toolbar.unsaved')}
           </span>
         ) : lastSavedAt != null ? (
-          <span className="editor-topbar__saved">已保存 · {formatHHMMSS(lastSavedAt)}</span>
+          <span className="editor-topbar__saved">{t('editor.toolbar.savedTime', { time: formatHHMMSS(lastSavedAt) })}</span>
         ) : null}
       </div>
 
       <div className="editor-topbar__hint" data-testid="tool-hint">
         <span className="editor-topbar__hint__tool">{tool.toUpperCase()}</span>
         {' · '}
-        {TOOL_HINTS[tool]}
+        {t(TOOL_HINT_KEYS[tool])}
       </div>
 
       <div className="editor-topbar__actions">
@@ -213,10 +207,10 @@ export function EditorTopBar({ onExit, onSaveAndExit }: EditorTopBarProps): Reac
           </span>
         )}
         <button type="button" onClick={handleNew} data-testid="tool-new" className="editor-topbar__btn editor-topbar__btn--ghost">
-          新建
+          {t('editor.toolbar.new')}
         </button>
         <button type="button" onClick={handleSave} data-testid="tool-save" className="editor-topbar__btn">
-          保存
+          {t('editor.toolbar.save')}
         </button>
         <button
           type="button"
@@ -224,10 +218,10 @@ export function EditorTopBar({ onExit, onSaveAndExit }: EditorTopBarProps): Reac
           data-testid="tool-save-exit"
           className="editor-topbar__btn editor-topbar__btn--primary"
         >
-          保存并退出
+          {t('editor.toolbar.saveAndExit')}
         </button>
         <button type="button" onClick={handleExport} data-testid="tool-export" className="editor-topbar__btn">
-          导出
+          {t('editor.toolbar.export')}
         </button>
         <button
           type="button"
@@ -235,16 +229,16 @@ export function EditorTopBar({ onExit, onSaveAndExit }: EditorTopBarProps): Reac
           data-testid="tool-import"
           className="editor-topbar__btn"
         >
-          导入
+          {t('editor.toolbar.import')}
         </button>
         <button
           type="button"
           onClick={() => onExit?.()}
           data-testid="tool-exit"
           className="editor-topbar__btn editor-topbar__btn--danger"
-          title="退出编辑器"
+          title={t('editor.toolbar.exitTitle')}
         >
-          退出
+          {t('editor.toolbar.exit')}
         </button>
         <input
           ref={fileInputRef}
@@ -252,7 +246,7 @@ export function EditorTopBar({ onExit, onSaveAndExit }: EditorTopBarProps): Reac
           accept=".json,.maze3d.json,application/json"
           onChange={handleImportChange}
           data-testid="tool-import-input"
-          aria-label="导入关卡文件"
+          aria-label={t('editor.toolbar.importAria')}
           style={{ display: 'none' }}
         />
       </div>
