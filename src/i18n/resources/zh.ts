@@ -381,4 +381,5 @@ export const zh: Translations = {
   'common.back': '返回',
   'common.save': '保存',
   'common.delete': '删除',
+  'common.moreSuffix': ' 等 {count} 项',
 };

@@ -368,4 +368,5 @@ export const en: Translations = {
   'common.back': 'Back',
   'common.save': 'Save',
   'common.delete': 'Delete',
+  'common.moreSuffix': ' (+{count} more)',
 };

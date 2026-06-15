@@ -19,6 +19,7 @@ import { ConfirmProvider } from './ui/useConfirm';
 import { LevelLoadError, clampErrorValue } from './utils/errors';
 import type { MazeData, StartLevelOptions } from './maze/types';
 import { buildGameSearchParams, parseGameSearchParams } from './utils/gameUrl';
+import { useT } from './i18n';
 
 // F-project-review-2026-06-13-D-10: build a human-readable toast message
 // from the init-time loss summary. Each part of the summary (per-row
@@ -27,24 +28,24 @@ import { buildGameSearchParams, parseGameSearchParams } from './utils/gameUrl';
 // sees both, in order of severity. The id lists are trimmed to a
 // reasonable cap so a wholesale-storage-corruption case (e.g. 200
 // dropped customs) doesn't blow up the toast to the size of the screen.
-function buildLoadSummaryMessage(s: NonNullable<ReturnType<typeof useLevelStore.getState>['lastLoadSummary']>): string {
+function buildLoadSummaryMessage(t: (key: string, vars?: Record<string, string | number>) => string, s: NonNullable<ReturnType<typeof useLevelStore.getState>['lastLoadSummary']>): string {
   const MAX_IDS = 5;
   const parts: string[] = [];
   if (s.recordsMigrationError) {
-    parts.push(`最佳成绩加载失败：${s.recordsMigrationError}`);
+    parts.push(t('app.error.recordsMigration', { msg: s.recordsMigrationError }));
   }
   if (s.customsMigrationError) {
-    parts.push(`自定义关卡加载失败：${s.customsMigrationError}`);
+    parts.push(t('app.error.customsMigration', { msg: s.customsMigrationError }));
   }
   if (s.recordsDroppedKeys.length > 0) {
     const ids = s.recordsDroppedKeys.slice(0, MAX_IDS).join('、');
-    const more = s.recordsDroppedKeys.length > MAX_IDS ? ` 等 ${s.recordsDroppedKeys.length} 项` : '';
-    parts.push(`${s.recordsDroppedKeys.length} 个最佳成绩因格式不兼容而跳过：${ids}${more}`);
+    const more = s.recordsDroppedKeys.length > MAX_IDS ? t('common.moreSuffix', { count: s.recordsDroppedKeys.length }) : '';
+    parts.push(t('app.error.recordsDropped', { count: s.recordsDroppedKeys.length, ids, more }));
   }
   if (s.customsDroppedKeys.length > 0) {
     const ids = s.customsDroppedKeys.slice(0, MAX_IDS).join('、');
-    const more = s.customsDroppedKeys.length > MAX_IDS ? ` 等 ${s.customsDroppedKeys.length} 项` : '';
-    parts.push(`${s.customsDroppedKeys.length} 个自定义关卡因格式不兼容而跳过：${ids}${more}`);
+    const more = s.customsDroppedKeys.length > MAX_IDS ? t('common.moreSuffix', { count: s.customsDroppedKeys.length }) : '';
+    parts.push(t('app.error.customsDropped', { count: s.customsDroppedKeys.length, ids, more }));
   }
   return parts.join('；');
 }
@@ -71,6 +72,7 @@ async function loadAllLevels(
 // Shell that wires the dark-mode side-effect + level-list loader + toast
 // once at the router root. Children render the routed page.
 function AppShell({ children }: { children: React.ReactNode }) {
+  const t = useT();
   const darkMode = useSettingsStore((s) => s.darkMode);
   const customLevels = useLevelStore((s) => s.customLevels);
   const lastLoadSummary = useLevelStore((s) => s.lastLoadSummary);
@@ -116,13 +118,13 @@ function AppShell({ children }: { children: React.ReactNode }) {
           }}
         >
           <span style={{ flex: 1, fontSize: 14, lineHeight: 1.4 }}>
-            {buildLoadSummaryMessage(lastLoadSummary)}
+            {buildLoadSummaryMessage(t, lastLoadSummary)}
           </span>
           <button
             data-testid="load-summary-toast-dismiss"
             type="button"
             onClick={dismissLoadSummary}
-            aria-label="关闭提示"
+            aria-label={t('app.error.bannerCloseAria')}
             style={{
               padding: '4px 10px',
               fontSize: 13,
@@ -133,7 +135,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
               cursor: 'pointer',
             }}
           >
-            关闭
+            {t('app.error.bannerClose')}
           </button>
         </div>
       )}
