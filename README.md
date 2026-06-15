@@ -290,7 +290,36 @@ npm run test:e2e        # 端到端（Playwright，自动启动 dev server）
 
 ---
 
-## 12. 贡献
+## 12. 部署
+
+通过 GitHub Actions 自动部署到 **GitHub Pages**(https://shaoyahu.github.io/maze3D/)。
+
+工作流定义在 `.github/workflows/deploy.yml`,触发条件:
+
+- push 到 `main` 分支(自动部署)
+- 手动触发(`Actions` 标签页 → `Deploy to GitHub Pages` → `Run workflow`)
+
+### 一次性配置
+
+在 GitHub 仓库页面 **Settings → Pages → Build and deployment → Source** 选 **GitHub Actions**(不是 "Deploy from a branch")。这是新版 `actions/deploy-pages@v4` 部署方式的前置条件 —— 工作流会构建 + 上传 artifact,GitHub Pages 直接发布该 artifact,不再需要 `gh-pages` 分支。
+
+### 关键细节
+
+- **Vite `base`**:`vite.config.ts` 已设 `base: '/maze3D/'`,与仓库名一致,资产路径才能正确解析。
+- **SPA 404 兜底**:工作流在 `npm run build` 之后追加一步 `cp dist/index.html dist/404.html`。项目用 `BrowserRouter` 且 URL 是关卡身份规范来源(`/game?seed=…`);用户分享 / 刷新 / 后退到任意深路径时,GitHub Pages 没有对应 HTML,会回退到 404.html —— 把它做成 index.html 的副本,SPA 启动后由 React Router 接管,`useSearchParams` 仍能读到原本 URL 上的关卡查询串。
+- **权限**:工作流显式声明 `permissions: contents: read / pages: write / id-token: write`,符合 least-privilege 原则。
+- **Node 版本**:固定 `node-version: 20`,与项目 `package.json` 兼容(Node 18+ 即可,但 CI 锁 20 以求稳定)。
+- **依赖安装**:用 `npm ci` 而非 `npm install`,配合 `package-lock.json` 在 CI 中更可靠。
+
+### 故障排查
+
+- **部署后页面 404 / 资源 404** → 确认 GitHub Pages Source 是 "GitHub Actions";清空浏览器缓存再访问(`shaoyahu.github.io/maze3D/`,不要漏掉尾斜杠)。
+- **`/game?seed=…` 链接打开后看到 404 页而非游戏** → 检查 `Actions` 日志确认 `Add SPA fallback (404.html)` 这一步执行成功。
+- **工作流没有自动跑** → Settings → Actions → General → Workflow permissions 选 "Read and write permissions"(若选了 "Read repository contents and packages permissions" 也能跑,但日志调试会受限)。
+
+---
+
+## 13. 贡献
 
 - 一次只做一个增量（见 `docs/roadmap.md`）
 - 任务完成后立即勾选 + 更新路线图「已完成」「下一个任务」「最后更新」+ commit + 等用户确认
@@ -298,6 +327,6 @@ npm run test:e2e        # 端到端（Playwright，自动启动 dev server）
 
 ---
 
-## 13. 许可证
+## 14. 许可证
 
 本仓库当前未声明开源许可证，使用前请与作者确认。

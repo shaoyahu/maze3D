@@ -1,0 +1,58 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: ['main']   # 如果你默认分支是 master，改成 'master'
+  workflow_dispatch:     # 允许手动触发
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: 'pages'
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci   # 比 npm install 更快更可靠，适合 CI
+
+      - name: Build
+        run: npm run build
+
+      # SPA 兜底：把 dist/index.html 复制为 dist/404.html。
+      # 项目用 BrowserRouter，URL 是关卡身份的规范来源(/game?seed=…);
+      # 用户分享 / 刷新 / 后退到任意深路径时，GitHub Pages 没有对应
+      # 的 HTML 文件，会回退到 404.html；把它做成 index.html 的副本，
+      # SPA 启动后由 React Router 接管，BrowserRouter + useSearchParams
+      # 仍然能读到原本 URL 上的关卡查询串。
+      - name: Add SPA fallback (404.html)
+        run: cp dist/index.html dist/404.html
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './dist'   # 你的构建输出目录，Vite 默认是 dist
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
