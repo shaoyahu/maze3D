@@ -12,7 +12,7 @@ import { useConfirm } from '../useConfirm';
 import { useLevelStore } from '../../store/levelStore';
 import { useT } from '../../i18n';
 
-export const LAST_ERROR_DISPLAY_MS = 3000;
+const LAST_ERROR_DISPLAY_MS = 3000;
 
 const TOOL_HINT_KEYS: Record<EditorTool, string> = {
   select: 'editor.toolbar.hint.select',

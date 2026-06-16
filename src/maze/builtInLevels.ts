@@ -40,7 +40,7 @@ export function builtInIdFromPath(path: string): string {
  * unwrap `.default` when present and fall back to the module itself.
  * Exported for tests; the production path doesn't need it.
  */
-export function makeBuiltInLoader(loader: () => Promise<unknown>): MazeLoader {
+function makeBuiltInLoader(loader: () => Promise<unknown>): MazeLoader {
   return async () => {
     const mod = await loader();
     return (mod as { default?: unknown }).default ?? mod;

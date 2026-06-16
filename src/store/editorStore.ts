@@ -46,7 +46,7 @@ export type { EditorSelection } from './editorHistory';
 // gameStore) because the editor's pan/zoom is independent from the
 // in-game player camera. The viewport is 2D (no 3D orbit) — `x`/`y` are
 // pan offsets in screen pixels and `zoom` is the CSS scale factor.
-export interface EditorCamera {
+interface EditorCamera {
   x: number;
   y: number;
   zoom: number;
@@ -69,7 +69,7 @@ export interface EditorCamera {
  *    editor decoupled from the validator's error class while preserving
  *    the message detail that the previous `boolean` return type used to
  *    discard. */
-export type SaveResult = { ok: true; level: MazeData } | { ok: false; error: string };
+type SaveResult = { ok: true; level: MazeData } | { ok: false; error: string };
 
 // Local alias: only the slice fields we replace on each commit. We pass
 // this to `set(...)` to keep the per-action code uniform.
@@ -81,7 +81,7 @@ type LevelSlice = {
   dirty: boolean;
 };
 
-export interface EditorStoreState {
+interface EditorStoreState {
   level: MazeData;
   tool: EditorTool;
   // The EditorSelection union is exported from ./editorHistory

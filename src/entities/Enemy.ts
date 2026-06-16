@@ -1,11 +1,11 @@
 import { resolveMove, type WallGrid } from '../engine/Collision';
 import type { EnemySpawn, EnemyState } from '../maze/types';
 
-export const ENEMY_DWELL_TIME_DEFAULT = 1.0;
-export const ENEMY_FOV_RANGE_DEFAULT = 3;
-export const ENEMY_FOV_ANGLE_DEG_DEFAULT = 60;
-export const ENEMY_PATROL_SPEED_RATIO = 0.6;
-export const ENEMY_CHASE_ALERT_SECONDS = 0.5;
+const ENEMY_DWELL_TIME_DEFAULT = 1.0;
+const ENEMY_FOV_RANGE_DEFAULT = 3;
+const ENEMY_FOV_ANGLE_DEG_DEFAULT = 60;
+const ENEMY_PATROL_SPEED_RATIO = 0.6;
+const ENEMY_CHASE_ALERT_SECONDS = 0.5;
 export const ENEMY_RADIUS = 0.35;
 export const ENEMY_HEIGHT = 1.6;
 

@@ -199,7 +199,6 @@ export const SPAWN_SCHEDULE_DEFAULT: SpawnSchedule = {
 // already hard-codes `enabled: true` but does not bound the progressive
 // upper cap (engine-side it's clamped per-tick). The UI exposes a max
 // input that mirrors ENEMY_COUNT_MIN/MAX/DEFAULT naming.
-export const SPAWN_PROGRESSIVE_MAX_MIN = 1;
 export const SPAWN_PROGRESSIVE_MAX_DEFAULT = 10;
 
 export function clampEnemyCount(value: number | undefined): number {
@@ -255,24 +254,7 @@ export type EditorTool =
   | 'enemy'
   | 'pan';
 
-// Bump this when MazeData gains a breaking field. ExportEnvelope consumers
-// reject anything whose schemaVersion is not exactly this value. Initial
-// release = 1, the version that introduces EditorTool / Pickup.id /
-// ExportEnvelope.
+// reject anything whose schemaVersion is not exactly this value.
 export const SCHEMA_VERSION = 1 as const;
 export type SchemaVersion = typeof SCHEMA_VERSION;
 
-// On-disk / on-clipboard envelope for a hand-edited or exported level. The
-// `level` field is the same MazeData the engine consumes; the envelope
-// wrapper leaves room for future cross-cutting fields (signature, author)
-// without breaking readers that know only the current schema.
-export interface ExportEnvelope {
-  schemaVersion: SchemaVersion;
-  level: MazeData;
-}
-
-// Prefix for ids of custom (user-edited) levels. Custom ids are scoped
-// with this prefix so the editor's localStorage store can never collide
-// with a built-in level id; downstream code can use startsWith() to
-// distinguish the two universes without a separate registry.
-export const CUSTOM_LEVEL_PREFIX = 'custom-';

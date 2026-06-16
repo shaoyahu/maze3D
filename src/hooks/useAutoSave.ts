@@ -27,7 +27,7 @@ export const DEFAULT_AUTOSAVE_INTERVAL_MS = 30_000;
 //   - successful save → failure count back to 0, next attempt at base interval
 //   - dirty toggles false (user reverted) → reset so a fresh failure on the
 //     next dirty cycle fires immediately
-export function computeAutoSaveBackoffMs(consecutiveFailures: number): number {
+function computeAutoSaveBackoffMs(consecutiveFailures: number): number {
   if (consecutiveFailures <= 1) return 60_000;
   if (consecutiveFailures === 2) return 120_000;
   return 300_000;

@@ -78,9 +78,9 @@ export interface GameBridge {
 // (Game.setFov, called from GameCanvas's settings subscriber) is the last
 // line of defense. NaN / ±Infinity collapse to 60 (the engine default in
 // createCamera) instead of poisoning camera.fov → projectionMatrix.
-export const FOV_MIN = 30;
-export const FOV_MAX = 120;
-export const FOV_DEFAULT = 60;
+const FOV_MIN = 30;
+const FOV_MAX = 120;
+const FOV_DEFAULT = 60;
 export function clampFov(degrees: number): number {
   if (!Number.isFinite(degrees)) return FOV_DEFAULT;
   if (degrees < FOV_MIN) return FOV_MIN;
