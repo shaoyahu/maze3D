@@ -18,6 +18,7 @@ export const VICTORY_TYPE_VALUES: readonly VictoryType[] = [
   'reach-exit',
   'survive',
   'time-trial',
+  'caught-by-enemy',
 ];
 export const LEVEL_SOURCE_VALUES: readonly LevelSource[] = [
   'teaching',
@@ -91,6 +92,14 @@ export interface LevelRules {
   maxHealth: number;
   victory: VictoryType;
   timeOnPickup: number;
+  // P2-11: optional per-level enemy aggression override. When set, the
+  // engine uses this value instead of `settingsStore.enemyAggression`.
+  // Used by 哨兵回廊 to lock the chase speed to 'medium' (1.5x) regardless
+  // of the user's global settings choice.
+  enemyAggression?: EnemyAggression;
+  // P2-11: when true, the player must collect every pickup before
+  // `crossesExit` reports success. Used by 最终试炼.
+  requireAllPickups?: boolean;
 }
 
 export interface MazeData {
@@ -109,7 +118,48 @@ export interface MazeData {
   pickups: Pickup[];
   rules: LevelRules;
   enemies: EnemySpawn[];
+  // P2-11: when true, the runtime skips rendering the Minimap. Used by
+  // 哨兵回廊 to hide the map during the chase.
+  hideMinimap?: boolean;
+  // P2-11: ordered list of tutorial steps. When present, the
+  // TutorialBanner component renders a step-by-step walkthrough driven
+  // by events from the engine (mouse-look / key-pressed / pickup /
+  // exit / timeout). See `TutorialStep` + `TutorialTrigger`.
+  tutorialSteps?: TutorialStep[];
 }
+
+// ---------------------------------------------------------------------------
+// P2-11: tutorial step system
+// ---------------------------------------------------------------------------
+
+// One step in a teaching level's guided walkthrough. `messageKey` is an
+// i18n key (`tutorial.teaching01.step1`-style). The `trigger` defines
+// which engine event causes advancement to the next step; `timeoutSec`
+// is an optional fallback that fires `advance()` after N seconds so the
+// tutorial never deadlocks if the player never performs the trigger.
+//
+// All tutorial steps are optional in MazeData — production / custom
+// levels just omit the field and no banner is rendered.
+export interface TutorialStep {
+  id: string;
+  messageKey: string;
+  trigger: TutorialTrigger;
+}
+
+export type TutorialTrigger =
+  // Cumulative mouse yaw+pitch since the step started. Engine accumulates
+  // per-frame deltas and emits a single `mouse-look` event when the
+  // threshold (~0.3 rad) is crossed; no further events fire for this
+  // step after that.
+  | { type: 'mouse-look'; timeoutSec?: number }
+  // Any key from `keys` pressed. Single event per step.
+  | { type: 'key-pressed'; keys: string[]; timeoutSec?: number }
+  // The Nth pickup was collected (default N=1, i.e. first pickup).
+  | { type: 'pickup-collected'; count?: number; timeoutSec?: number }
+  // Player walked through the exit cell.
+  | { type: 'reached-exit'; timeoutSec?: number }
+  // Pure timer; `timeoutSec` is required.
+  | { type: 'timeout'; timeoutSec: number };
 
 export interface MazeProvider {
   load(id: string): Promise<MazeData>;

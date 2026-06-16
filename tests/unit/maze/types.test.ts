@@ -165,7 +165,7 @@ describe('enemyChaseMultiplier (P2-4a)', () => {
 // ---------------------------------------------------------------------------
 
 const PICKUP_TYPES: readonly PickupType[] = ['time', 'health', 'key'];
-const VICTORY_TYPES: readonly VictoryType[] = ['reach-exit', 'survive', 'time-trial'];
+const VICTORY_TYPES: readonly VictoryType[] = ['reach-exit', 'survive', 'time-trial', 'caught-by-enemy'];
 const LEVEL_SOURCES: readonly LevelSource[] = ['teaching', 'random', 'custom', 'seed'];
 const MAZE_SIZES: readonly MazeSize[] = [15, 30, 50];
 
