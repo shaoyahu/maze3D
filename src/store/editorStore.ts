@@ -169,6 +169,13 @@ interface EditorStoreState {
 
   // placement actions (push history)
   placeWall: (x: number, z: number) => void;
+  // F-P2-9: dedicated erase / carve tool. `placeErase` sets a cell to
+  // floor (0); `placeWall` sets to wall (1). Previously `placeWall`
+  // was a toggle (`c === 1 ? 0 : 1`) which contradicted its label and
+  // the in-toolbar hint. Splitting the two makes the UI match the
+  // user's expectation: "wall tool" places walls, "erase tool" carves
+  // passages.
+  placeErase: (x: number, z: number) => void;
   placeStart: (x: number, z: number) => void;
   placeExit: (x: number, z: number) => void;
   placePickup: (x: number, z: number) => void;
@@ -479,6 +486,12 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
     clearStorageFull: () => set({ storageFull: false, lastDraftError: null }),
 
     // ---- placement actions ----
+    // F-P2-9: placeWall is now strictly set-to-1 (no toggle). Clicking
+    // an existing wall is a no-op (the wall is already there). For the
+    // inverse action ("carve this wall back into a passage"), use the
+    // new `placeErase` action via the dedicated `erase` tool. This
+    // matches the toolbar label ("墙体") and the hint ("在格子上点击
+    // 放置墙体") which both promised a place-a-wall semantic.
     placeWall: (x, z) => {
       const { level } = get();
       if (!inBounds(x, z, level.size.width, level.size.depth)) return;
@@ -500,8 +513,43 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
         set({ lastError: null, lastErrorKey: 'editor.lastError.wallOnExit' });
         return;
       }
+      // F-P2-9: set-to-1. A click on an existing wall is now a no-op
+      // (avoids redundant history entries and an unexpected "wall
+      // disappears" surprise that the legacy toggle caused).
+      if (level.walls[z]![x] === 1) {
+        set({ lastError: null });
+        return;
+      }
       const nextWalls = level.walls.map((r, zi) =>
-        zi === z ? r.map((c, xi) => (xi === x ? ((c === 1 ? 0 : 1) as CellType) : c)) : r,
+        zi === z ? r.map((c, xi) => (xi === x ? (1 as CellType) : c)) : r,
+      );
+      const nextLevel: MazeData = { ...level, walls: nextWalls };
+      set({ ...commitLevel(get(), nextLevel), lastError: null });
+    },
+
+    // F-P2-9: dedicated carve / erase tool. Inverse of placeWall.
+    // Clicking a wall cell turns it into floor (0); clicking a floor
+    // cell is a no-op. Same start/exit guard contract as placeWall
+    // (you can't erase the player's start or the level's exit — those
+    // cells must remain floor so validateMaze accepts the level).
+    placeErase: (x, z) => {
+      const { level } = get();
+      if (!inBounds(x, z, level.size.width, level.size.depth)) return;
+      if (x === level.start.x && z === level.start.z) {
+        set({ lastError: null, lastErrorKey: 'editor.lastError.eraseOnStart' });
+        return;
+      }
+      if (x === level.exit.x && z === level.exit.z) {
+        set({ lastError: null, lastErrorKey: 'editor.lastError.eraseOnExit' });
+        return;
+      }
+      // No-op on already-floor cells (avoid spurious history entries).
+      if (level.walls[z]![x] === 0) {
+        set({ lastError: null });
+        return;
+      }
+      const nextWalls = level.walls.map((r, zi) =>
+        zi === z ? r.map((c, xi) => (xi === x ? (0 as CellType) : c)) : r,
       );
       const nextLevel: MazeData = { ...level, walls: nextWalls };
       set({ ...commitLevel(get(), nextLevel), lastError: null });
@@ -560,7 +608,16 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
 
     placePickup: (x, z) => {
       const { level } = get();
-      if (!isFloor(level, x, z)) return;
+      // F-P2-9: surface the silent-reject so the user knows the click
+      // was dropped, mirroring the contract of placeWall / placeStart
+      // / placeExit (each of which sets lastErrorKey on rejection).
+      // Without this, clicking on a wall in the pickup tool produces
+      // a level of silence that left designers wondering why their
+      // pickup never appeared.
+      if (!isFloor(level, x, z)) {
+        set({ lastError: null, lastErrorKey: 'editor.lastError.pickupOnWall' });
+        return;
+      }
       // Match the runtime: never let a pickup sit on the start cell.
       if (level.start.x === x && level.start.z === z) return;
       // F-2026-06-15-C-1: also mirror the runtime exit-cell rejection
@@ -793,6 +850,19 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
       // on the canvas), add is a discrete click and an OOB click is
       // a logic error, not a UX input.
       if (x < 0 || z < 0 || x >= level.size.width || z >= level.size.depth) {
+        return;
+      }
+      // F-P2-9: also silently reject duplicates of the last node.
+      // The properties-panel "+ Add node" button computes a default
+      // coordinate along the last-segment direction; if that
+      // direction would land OOB it falls back to spawn coords —
+      // which is identical to path[0]. Without this guard the UI
+      // fallback would re-introduce the very zero-length path
+      // segment this P2-9 increment was supposed to eliminate.
+      const target = level.enemies.find((e) => e.id === enemyId);
+      if (!target) return;
+      const last = target.path[target.path.length - 1];
+      if (last && last.x === x && last.z === z) {
         return;
       }
       const nextEnemies = level.enemies.map((e) =>

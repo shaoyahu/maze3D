@@ -211,11 +211,15 @@ describe('EditorPropertiesPanel (P2-4b #12)', () => {
     resetEditor(makeMaze({ pickups: [pickup] }));
     useEditorStore.setState({ selection: { kind: 'pickup', id: 'p1' } });
     render(<EditorPropertiesPanel />);
-    fireEvent.click(screen.getByText('删除拾取物'));
+    fireEvent.click(screen.getByText('删除道具'));
     expect(useEditorStore.getState().level.pickups).toEqual([]);
   });
 
-  it('enemy path node add button calls addEnemyNode', () => {
+  // F-P2-9: default coord for "+ node" used to be `enemy.x, enemy.z`
+  // (spawn), producing a zero-length path segment. New behaviour
+  // extends one cell past the last node along the last-segment
+  // direction. Path [(2,2), (3,2)] → last segment +x → new node (4,2).
+  it('enemy path node add button extends one cell past the last node (no zero-length segment)', () => {
     const enemy: EnemySpawn = {
       id: 'e1',
       x: 2,
@@ -226,7 +230,29 @@ describe('EditorPropertiesPanel (P2-4b #12)', () => {
     useEditorStore.setState({ selection: { kind: 'enemy', id: 'e1' } });
     render(<EditorPropertiesPanel />);
     fireEvent.click(screen.getByTestId('enemy-path-add'));
-    expect(useEditorStore.getState().level.enemies[0]!.path).toHaveLength(3);
+    const path = useEditorStore.getState().level.enemies[0]!.path;
+    expect(path).toHaveLength(3);
+    expect(path[2]).toEqual({ x: 4, z: 2 });
+    // Regression: the new node must NOT be the spawn coords.
+    expect(path[2]).not.toEqual({ x: 2, z: 2 });
+  });
+
+  it('enemy path node add button falls back to spawn when the extension would land OOB', () => {
+    const enemy: EnemySpawn = {
+      id: 'e1',
+      x: 2,
+      z: 2,
+      // Last segment goes +x, last node is at the right edge.
+      path: [{ x: 2, z: 2 }, { x: 4, z: 2 }],
+    };
+    resetEditor(makeMaze({ enemies: [enemy] }));
+    useEditorStore.setState({ selection: { kind: 'enemy', id: 'e1' } });
+    render(<EditorPropertiesPanel />);
+    fireEvent.click(screen.getByTestId('enemy-path-add'));
+    // The store's addEnemyNode rejects OOB coords (width=5 → x+1=5 invalid),
+    // so path length stays 2.
+    const path = useEditorStore.getState().level.enemies[0]!.path;
+    expect(path).toHaveLength(2);
   });
 
   it('enemy path node remove button (when >2 nodes) calls removeEnemyNode', () => {

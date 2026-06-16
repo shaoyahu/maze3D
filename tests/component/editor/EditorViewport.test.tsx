@@ -67,15 +67,20 @@ describe('EditorViewport (P2-4b #11)', () => {
     expect(screen.getByTestId('exit-4-3')).toBeInTheDocument();
   });
 
-  it('clicking a wall with the wall tool toggles it to a floor (placeWall)', () => {
+  // F-P2-9: placeWall is now strictly set-to-1 (no toggle). A click on
+  // an already-wall cell is a no-op (was "toggles 1→0" in the buggy
+  // toggle implementation that contradicted the toolbar label).
+  it('clicking an existing wall with the wall tool is a no-op (set-to-1)', () => {
     useEditorStore.setState({ tool: 'wall' });
     render(<EditorViewport />);
+    // (1,1) is a wall in the default fixture.
     fireEvent.click(screen.getByTestId('cell-1-1'));
     const lvl = useEditorStore.getState().level;
-    expect(lvl.walls[1]![1]).toBe(0);
+    expect(lvl.walls[1]![1]).toBe(1);
+    expect(useEditorStore.getState().past).toHaveLength(0);
   });
 
-  it('clicking a floor with the wall tool toggles it to a wall', () => {
+  it('clicking a floor with the wall tool sets it to a wall', () => {
     useEditorStore.setState({ tool: 'wall' });
     render(<EditorViewport />);
     // (1,0) is a floor in the fixture, but not the start (0,0) or exit
@@ -83,14 +88,15 @@ describe('EditorViewport (P2-4b #11)', () => {
     fireEvent.click(screen.getByTestId('cell-1-0'));
     const lvl = useEditorStore.getState().level;
     expect(lvl.walls[0]![1]).toBe(1);
+    expect(useEditorStore.getState().past).toHaveLength(1);
   });
 
-  // F-2026-06-12-H2: regression test — clicking the start cell with the
-  // wall tool must NOT toggle it to a wall. The guard in `placeWall`
+  // F-2026-06-12-H2 + P2-9: regression test — clicking the start cell with the
+  // wall tool must NOT place a wall on it. The guard in `placeWall`
   // silently rejects the click so the level remains saveable. Verify
   // both that the wall is unchanged AND that no history/dirty side
   // effect leaked through.
-  it('wall tool refuses to toggle the start cell (level remains saveable)', () => {
+  it('wall tool refuses to wall the start cell (level remains saveable)', () => {
     useEditorStore.setState({ tool: 'wall' });
     render(<EditorViewport />);
     // Act
@@ -101,6 +107,41 @@ describe('EditorViewport (P2-4b #11)', () => {
     // And no history entry was created.
     expect(useEditorStore.getState().past).toHaveLength(0);
     expect(useEditorStore.getState().dirty).toBe(false);
+  });
+
+  // F-P2-9: dedicated erase tool. Inverse of wall: 1→0.
+  it('clicking a wall with the erase tool sets it to a floor (placeErase)', () => {
+    useEditorStore.setState({ tool: 'erase' });
+    render(<EditorViewport />);
+    fireEvent.click(screen.getByTestId('cell-1-1'));
+    const lvl = useEditorStore.getState().level;
+    expect(lvl.walls[1]![1]).toBe(0);
+    expect(useEditorStore.getState().past).toHaveLength(1);
+  });
+
+  it('clicking a floor with the erase tool is a no-op', () => {
+    useEditorStore.setState({ tool: 'erase' });
+    render(<EditorViewport />);
+    fireEvent.click(screen.getByTestId('cell-1-0'));
+    const lvl = useEditorStore.getState().level;
+    expect(lvl.walls[0]![1]).toBe(0);
+    expect(useEditorStore.getState().past).toHaveLength(0);
+  });
+
+  it('erase tool refuses to erase the start cell', () => {
+    useEditorStore.setState({ tool: 'erase' });
+    render(<EditorViewport />);
+    fireEvent.click(screen.getByTestId('cell-0-0'));
+    expect(useEditorStore.getState().lastErrorKey).toBe('editor.lastError.eraseOnStart');
+    expect(useEditorStore.getState().past).toHaveLength(0);
+  });
+
+  it('erase tool refuses to erase the exit cell', () => {
+    useEditorStore.setState({ tool: 'erase' });
+    render(<EditorViewport />);
+    fireEvent.click(screen.getByTestId('cell-4-3'));
+    expect(useEditorStore.getState().lastErrorKey).toBe('editor.lastError.eraseOnExit');
+    expect(useEditorStore.getState().past).toHaveLength(0);
   });
 
   it('clicking a cell with the start tool moves start to that cell', () => {

@@ -224,10 +224,14 @@ export const en: Translations = {
   // editor.toolbar.*
   // ============================================================
   'editor.toolbar.hint.select': 'Click an object to inspect its properties',
-  'editor.toolbar.hint.wall': 'Click a cell to place a wall · right-click drag to pan',
+  // F-P2-9: hint text no longer repeats "right-click drag to pan" —
+  // surfaced separately via the persistent pan-hint banner that
+  // appears whenever the pan tool is active (see EditorViewport.tsx).
+  'editor.toolbar.hint.wall': 'Click a cell to place a wall',
+  'editor.toolbar.hint.erase': 'Click a wall cell to carve a passage (turn it into floor)',
   'editor.toolbar.hint.start': 'Click a cell to set the player start',
   'editor.toolbar.hint.exit': 'Click a cell to set the exit',
-  'editor.toolbar.hint.pickup': 'Click a cell to place a pickup',
+  'editor.toolbar.hint.pickup': 'Click a floor cell to place an item',
   'editor.toolbar.hint.enemy': 'Click a cell to place an enemy · edit its path on the right',
   'editor.toolbar.hint.pan': 'Right-click drag to pan',
 
@@ -274,7 +278,10 @@ export const en: Translations = {
   'editor.status.problems': 'Issues',
   'editor.status.warnings': 'Warnings',
   'editor.status.walls': 'Walls',
-  'editor.status.pickups': 'Pickups',
+  // F-P2-9: status-bar counter chip relabeled from "Pickups" →
+  // "Items" to match the toolbar tool label and the properties-panel
+  // card label.
+  'editor.status.pickups': 'Items',
   'editor.status.enemies': 'Enemies',
   'editor.status.storageHintCloseAria': 'Got it — dismiss storage notice',
 
@@ -303,10 +310,12 @@ export const en: Translations = {
 
   'editor.properties.panelTitle': 'Level Properties',
 
-  'editor.properties.pickupCard': 'Pickup',
+  // F-P2-9: properties-panel card relabeled from "Pickup" → "Item" for
+  // consistency with the toolbar / status-bar labels.
+  'editor.properties.pickupCard': 'Item',
   'editor.properties.field.type': 'Type',
   'editor.properties.field.value': 'Value',
-  'editor.properties.deletePickup': 'Delete pickup',
+  'editor.properties.deletePickup': 'Delete item',
 
   'editor.properties.enemyCard': 'Enemy',
   'editor.properties.field.spawn': 'Spawn',
@@ -323,7 +332,9 @@ export const en: Translations = {
   'editor.properties.deleteWall': 'Delete wall',
 
   'editor.properties.selectionMissing': 'The selected {thing} no longer exists.',
-  'editor.properties.selection.pickup': 'pickup',
+  // F-P2-9: missing-selection chip text relabeled from "pickup" →
+  // "item" to match the new toolbar label.
+  'editor.properties.selection.pickup': 'item',
   'editor.properties.selection.enemy': 'enemy',
 
   'editor.properties.minusAria': 'Decrease',
@@ -362,11 +373,68 @@ export const en: Translations = {
 
   'editor.lastError.wallOnStart': "Can't place a wall on the start cell",
   'editor.lastError.wallOnExit': "Can't place a wall on the exit cell",
+  // F-P2-9: dedicated erase / carve tool error channels. Mirror the
+  // wallOnStart / wallOnExit keys so the toolbar chip surfaces the
+  // i18n key consistently.
+  'editor.lastError.eraseOnStart': "Can't erase the start cell (start must stay on floor)",
+  'editor.lastError.eraseOnExit': "Can't erase the exit cell (exit must stay on floor)",
+  // F-P2-9: pickup-on-wall now surfaces via lastErrorKey instead of
+  // the previous silent reject.
+  'editor.lastError.pickupOnWall': 'Pickups can only be placed on floor cells — use the Erase tool to carve a passage first',
   'editor.lastError.startOutOfBounds': 'Start is out of grid bounds',
   'editor.lastError.exitOutOfBounds': 'Exit is out of grid bounds',
   'editor.lastError.startOnExit': "Start can't overlap the exit cell",
   'editor.lastError.exitOnStart': "Exit can't overlap the start cell",
   'editor.lastError.pathOutOfBounds': 'Path node is out of grid bounds',
+
+  // ============================================================
+  // editor.help.* — Level editor user manual (EditorHelpDrawer copy)
+  // ============================================================
+  'editor.help.title': 'Level Editor · User Manual',
+  'editor.help.closeAria': 'Close the user manual',
+  'editor.help.section.tools': '① Tools',
+  'editor.help.section.toolsIntro': 'Pick a tool from the left rail, then click a cell on the canvas to place or modify it. Right-click drag to pan; scroll to zoom.',
+  'editor.help.section.shortcuts': '② Shortcuts',
+  'editor.help.section.flow': '③ Common workflow',
+  'editor.help.section.checklist': '④ Pre-save checklist',
+  'editor.help.col.tool': 'Tool',
+  'editor.help.col.shortcut': 'Shortcut',
+  'editor.help.col.action': 'Action',
+  'editor.help.col.wheel': 'Mouse wheel',
+
+  'editor.help.tool.select': 'Select',
+  'editor.help.tool.selectDesc': 'Click an object to inspect it; click empty space to clear',
+  'editor.help.tool.wall': 'Wall',
+  'editor.help.tool.wallDesc': 'Set a cell to wall; no-op if already a wall',
+  'editor.help.tool.erase': 'Erase',
+  'editor.help.tool.eraseDesc': 'Carve a wall back to floor; start/exit cannot be erased',
+  'editor.help.tool.start': 'Start',
+  'editor.help.tool.startDesc': 'Move the player start to the clicked cell (auto-carves walls)',
+  'editor.help.tool.exit': 'Exit',
+  'editor.help.tool.exitDesc': 'Move the exit to the clicked cell (auto-carves walls)',
+  'editor.help.tool.pickup': 'Item',
+  'editor.help.tool.pickupDesc': 'Drop an item on a floor cell; tweak type and value on the right',
+  'editor.help.tool.enemy': 'Enemy',
+  'editor.help.tool.enemyDesc': 'Place an enemy; click it again to edit its patrol path on the right',
+  'editor.help.tool.pan': 'Pan',
+  'editor.help.tool.panDesc': 'Hold left or right mouse button and drag to pan; scroll to zoom',
+
+  'editor.help.shortcut.esc': 'Exit current tool / clear selection',
+  'editor.help.shortcut.undo': 'Undo',
+  'editor.help.shortcut.redo': 'Redo',
+  'editor.help.shortcut.wheel': 'Zoom in / out around the cursor',
+
+  'editor.help.flow.step1': '[New] Click "New" in the top bar for a fresh 15×15 all-wall canvas. Start is at the top-left, exit at the bottom-right.',
+  'editor.help.flow.step2': '[Carve paths] Switch to the Erase tool, then click cells to carve corridors and branches.',
+  'editor.help.flow.step3': '[Drop items] Switch to the Item tool and place time / health / key pickups along the corridors. Tweak values on the right.',
+  'editor.help.flow.step4': '[Spawn enemies] Switch to the Enemy tool and click to spawn. Click an existing enemy to edit its patrol waypoints on the right.',
+  'editor.help.flow.step5': '[Save] Click "Save" to add the level to "My Levels"; "Save & Exit" returns to the main menu.',
+
+  'editor.help.checklist.reachable': 'Start and exit are connected by an open path (status-bar warnings will flag this).',
+  'editor.help.checklist.wallsClosed': 'Walls form a closed perimeter so the player cannot walk off the map.',
+  'editor.help.checklist.pickups': 'At least 1-2 pickups so there is something to collect.',
+  'editor.help.checklist.enemyPath': 'Each enemy has at least 2 patrol waypoints, otherwise the enemy gets stuck.',
+  'editor.help.checklist.rules': 'Victory mode, initial time, and max health are set to sensible values (defaults are fine).',
 
   // ============================================================
   // common.*

@@ -101,7 +101,8 @@ describe('EditorStatusBar (P2-4b #14)', () => {
     // status bar.
     const bar = screen.getByTestId('editor-status-bar');
     expect(bar.textContent).toMatch(/2[\s\S]*墙/);
-    expect(bar.textContent).toMatch(/2[\s\S]*拾取/);
+    // F-P2-9: status-bar chip relabeled from "拾取" → "道具".
+    expect(bar.textContent).toMatch(/2[\s\S]*道具/);
     expect(bar.textContent).toMatch(/1[\s\S]*敌人/);
   });
 

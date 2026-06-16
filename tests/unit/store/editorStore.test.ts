@@ -370,26 +370,12 @@ describe('useEditorStore', () => {
   // 5. placeWall
   // -----------------------------------------------------------------------
   describe('placeWall', () => {
-    // F-2026-06-12-T2-b: tests use (2, 1) instead of (0, 0) so they don't depend on
-    // the buggy behavior of toggling the START cell into a wall. The
-    // dedicated no-op tests below pin the new "refuse to wall start/exit"
-    // invariant.
-    it('toggles walls[z][x] from 1→0, sets dirty, and pushes history', () => {
-      // Arrange
-      useEditorStore.setState({
-        level: makeMaze(),
-        past: [],
-      });
-      // Act — (2,1) is neither start (0,0) nor exit (4,3) in makeMaze.
-      useEditorStore.getState().placeWall(2, 1);
-      // Assert
-      expect(useEditorStore.getState().level.walls[1]![2]).toBe(0);
-      expect(useEditorStore.getState().dirty).toBe(true);
-      expect(useEditorStore.getState().past.length).toBe(1);
-    });
-
-    it('toggles walls[z][x] back from 0→1 on a second call (one history entry per call)', () => {
-      // Arrange — start with a floor cell.
+    // F-P2-9: placeWall is now strictly set-to-1 (no toggle). The
+    // previous "toggles 1→0" test was a relic of the buggy toggle
+    // behaviour that contradicted the toolbar label "墙体" and the
+    // hint "在格子上点击放置墙体".
+    it('sets walls[z][x] from 0→1, sets dirty, and pushes history', () => {
+      // Arrange — start with a floor cell at (2,1).
       useEditorStore.setState({
         level: makeMaze({
           walls: [
@@ -401,11 +387,31 @@ describe('useEditorStore', () => {
         }),
         past: [],
       });
-      // Act — (2,1) is a floor cell that is not start/exit.
+      // Act — (2,1) is a floor cell, not start (0,0) nor exit (4,3).
       useEditorStore.getState().placeWall(2, 1);
       // Assert
       expect(useEditorStore.getState().level.walls[1]![2]).toBe(1);
+      expect(useEditorStore.getState().dirty).toBe(true);
       expect(useEditorStore.getState().past.length).toBe(1);
+    });
+
+    // F-P2-9: a click on an already-wall cell is now a strict no-op
+    // (avoids redundant history entries and surprises). Legacy toggle
+    // tests asserted "0→1 on second call"; the new contract asserts
+    // the cell stays 1 and no history entry is pushed.
+    it('is a no-op when the cell is already a wall (no toggle, no history, no dirty flip)', () => {
+      // Arrange — start with all walls.
+      useEditorStore.setState({
+        level: makeMaze(),
+        past: [],
+        dirty: false,
+      });
+      // Act — (2,1) is already a wall in makeMaze.
+      useEditorStore.getState().placeWall(2, 1);
+      // Assert
+      expect(useEditorStore.getState().level.walls[1]![2]).toBe(1);
+      expect(useEditorStore.getState().dirty).toBe(false);
+      expect(useEditorStore.getState().past.length).toBe(0);
     });
 
     // F-2026-06-12-T2-c: the editor must never let the user click "wall" on the
@@ -504,6 +510,88 @@ describe('useEditorStore', () => {
       // click coordinates are already clamped). Pinning null here
       // guards against a future "always set lastError" refactor.
       expect(useEditorStore.getState().lastError).toBeNull();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // 5b. placeErase (P2-9 dedicated carve / erase tool)
+  // -----------------------------------------------------------------------
+  describe('placeErase', () => {
+    // F-P2-9: dedicated carve tool. Inverse of placeWall: 1→0.
+    it('sets walls[z][x] from 1→0, sets dirty, and pushes history', () => {
+      // Arrange — start with a wall cell at (2,1).
+      useEditorStore.setState({
+        level: makeMaze(),
+        past: [],
+      });
+      // Act
+      useEditorStore.getState().placeErase(2, 1);
+      // Assert
+      expect(useEditorStore.getState().level.walls[1]![2]).toBe(0);
+      expect(useEditorStore.getState().dirty).toBe(true);
+      expect(useEditorStore.getState().past.length).toBe(1);
+    });
+
+    it('is a no-op when the cell is already floor (no toggle, no history, no dirty flip)', () => {
+      // Arrange — start with (2,1) already a floor cell.
+      useEditorStore.setState({
+        level: makeMaze({
+          walls: [
+            [1, 1, 1, 1, 1],
+            [1, 1, 0, 1, 1],
+            [1, 1, 1, 1, 1],
+            [1, 1, 1, 1, 1],
+          ],
+        }),
+        past: [],
+        dirty: false,
+      });
+      // Act
+      useEditorStore.getState().placeErase(2, 1);
+      // Assert
+      expect(useEditorStore.getState().level.walls[1]![2]).toBe(0);
+      expect(useEditorStore.getState().dirty).toBe(false);
+      expect(useEditorStore.getState().past.length).toBe(0);
+    });
+
+    it('placeErase on the start cell is a no-op and sets lastErrorKey', () => {
+      // Use the default makeMaze fixture where start (0,0) sits on a
+      // wall (walls[0][0] === 1) — placeErase must reject without
+      // changing it.
+      useEditorStore.setState({
+        level: makeMaze(),
+        past: [],
+        dirty: false,
+        lastError: null,
+        lastErrorKey: null,
+      });
+      useEditorStore.getState().placeErase(0, 0);
+      expect(useEditorStore.getState().level.walls[0]![0]).toBe(1); // start cell stays wall
+      expect(useEditorStore.getState().lastErrorKey).toBe('editor.lastError.eraseOnStart');
+      expect(useEditorStore.getState().past.length).toBe(0);
+    });
+
+    it('placeErase on the exit cell is a no-op and sets lastErrorKey', () => {
+      useEditorStore.setState({
+        level: makeMaze(),
+        past: [],
+        dirty: false,
+        lastError: null,
+        lastErrorKey: null,
+      });
+      useEditorStore.getState().placeErase(4, 3);
+      expect(useEditorStore.getState().level.walls[3]![4]).toBe(1); // exit cell stays wall
+      expect(useEditorStore.getState().lastErrorKey).toBe('editor.lastError.eraseOnExit');
+      expect(useEditorStore.getState().past.length).toBe(0);
+    });
+
+    it('placeErase on an out-of-bounds cell is a silent no-op', () => {
+      useEditorStore.setState({ past: [], dirty: false });
+      const wallsBefore = useEditorStore.getState().level.walls;
+      useEditorStore.getState().placeErase(99, -3);
+      expect(useEditorStore.getState().level.walls).toBe(wallsBefore);
+      expect(useEditorStore.getState().dirty).toBe(false);
+      expect(useEditorStore.getState().past.length).toBe(0);
     });
   });
 
@@ -654,6 +742,25 @@ describe('useEditorStore', () => {
       useEditorStore.getState().placePickup(1, 1);
       // Assert
       expect(useEditorStore.getState().selection).toBeNull();
+    });
+
+    // F-P2-9: pickup-on-wall was a silent reject previously; the new
+    // contract surfaces lastErrorKey so the toolbar chip can show
+    // "拾取物只能放在地面上（请先用「通道」工具凿出地面再放拾取）".
+    it('on a wall cell is a no-op and sets lastErrorKey (pickupOnWall)', () => {
+      useEditorStore.setState({
+        level: makeMaze(), // default all-walls grid
+        past: [],
+        dirty: false,
+        lastError: null,
+        lastErrorKey: null,
+      });
+      // (2,1) is a wall in the default grid.
+      useEditorStore.getState().placePickup(2, 1);
+      expect(useEditorStore.getState().level.pickups).toHaveLength(0);
+      expect(useEditorStore.getState().lastErrorKey).toBe('editor.lastError.pickupOnWall');
+      expect(useEditorStore.getState().dirty).toBe(false);
+      expect(useEditorStore.getState().past.length).toBe(0);
     });
   });
 
@@ -1062,24 +1169,37 @@ describe('useEditorStore', () => {
   // 12. undo / redo
   // -----------------------------------------------------------------------
   describe('undo / redo', () => {
+    // F-P2-9: placeWall is set-to-1 (no toggle). Tests now use a
+    // floor cell as the starting state so placeWall produces a real
+    // change (0 → 1) that undo can roll back.
+    function floorMaze(): ReturnType<typeof makeMaze> {
+      return makeMaze({
+        walls: [
+          [1, 0, 1, 1, 1],
+          [1, 1, 1, 1, 1],
+          [1, 1, 1, 1, 1],
+          [1, 1, 1, 1, 1],
+        ],
+      });
+    }
+
     it('undo restores the previous wall state after placeWall', () => {
-      // Arrange
+      // Arrange — (1,0) starts as floor (0).
       useEditorStore.setState({
-        level: makeMaze(), // (1,0) is 1
+        level: floorMaze(),
         past: [],
       });
       useEditorStore.getState().placeWall(1, 0);
-      expect(useEditorStore.getState().level.walls[0]![1]).toBe(0);
+      expect(useEditorStore.getState().level.walls[0]![1]).toBe(1);
       // Act
       useEditorStore.getState().undo();
       // Assert
-      expect(useEditorStore.getState().level.walls[0]![1]).toBe(1);
+      expect(useEditorStore.getState().level.walls[0]![1]).toBe(0);
     });
 
     it('redo replays the undone action', () => {
-      // Arrange
       useEditorStore.setState({
-        level: makeMaze(),
+        level: floorMaze(),
         past: [],
       });
       useEditorStore.getState().placeWall(1, 0);
@@ -1087,7 +1207,7 @@ describe('useEditorStore', () => {
       // Act
       useEditorStore.getState().redo();
       // Assert
-      expect(useEditorStore.getState().level.walls[0]![1]).toBe(0);
+      expect(useEditorStore.getState().level.walls[0]![1]).toBe(1);
     });
 
     // F-2026-06-12-B2: dirty is no longer a monotonic boolean — it is
@@ -1096,10 +1216,7 @@ describe('useEditorStore', () => {
     // the last-saved snapshot), not the unconditional `true` the
     // previous implementation forced.
     it('undo back to the saved state clears dirty (state matches last-saved hash)', () => {
-      // Arrange — set the level, mark it as the "saved" baseline by
-      // hashing it and storing that as lastSavedHash. The state right
-      // now is in sync with the saved snapshot, so dirty=false.
-      const baseline = makeMaze();
+      const baseline = floorMaze();
       const baselineHash = JSON.stringify(baseline);
       useEditorStore.setState({
         level: baseline,
@@ -1107,18 +1224,15 @@ describe('useEditorStore', () => {
         dirty: false,
         lastSavedHash: baselineHash,
       });
-      // Act — user makes an edit, then undoes it.
       useEditorStore.getState().placeWall(1, 0);
       expect(useEditorStore.getState().dirty).toBe(true);
       useEditorStore.getState().undo();
-      // Assert — the level is back to baseline, so dirty must be false.
       expect(useEditorStore.getState().level).toEqual(baseline);
       expect(useEditorStore.getState().dirty).toBe(false);
     });
 
     it('redo from the saved state restores dirty=true (state diverges again)', () => {
-      // Arrange — same setup as above.
-      const baseline = makeMaze();
+      const baseline = floorMaze();
       useEditorStore.setState({
         level: baseline,
         past: [],
@@ -1128,30 +1242,35 @@ describe('useEditorStore', () => {
       useEditorStore.getState().placeWall(1, 0);
       useEditorStore.getState().undo();
       expect(useEditorStore.getState().dirty).toBe(false);
-      // Act
       useEditorStore.getState().redo();
-      // Assert
       expect(useEditorStore.getState().dirty).toBe(true);
     });
 
     it('a new push after undo clears the future stack (branch is cut)', () => {
-      // Arrange
-      useEditorStore.setState({ level: makeMaze(), past: [] });
-      useEditorStore.getState().placeWall(0, 0); // future: []
-      useEditorStore.getState().placeWall(1, 0); // future: []
-      useEditorStore.getState().undo(); // future: [2nd]
+      // Use a maze where (0,0), (1,0), (2,0) are all floor so each
+      // placeWall is a real edit (not a no-op on already-wall).
+      useEditorStore.setState({
+        level: makeMaze({
+          walls: [
+            [0, 0, 0, 1, 1],
+            [1, 1, 1, 1, 1],
+            [1, 1, 1, 1, 1],
+            [1, 1, 1, 1, 1],
+          ],
+        }),
+        past: [],
+      });
+      useEditorStore.getState().placeWall(0, 0);
+      useEditorStore.getState().placeWall(1, 0);
+      useEditorStore.getState().undo();
       const futureLen = useEditorStore.getState().future.length;
       expect(futureLen).toBeGreaterThan(0);
-      // Act
       useEditorStore.getState().placeWall(2, 0);
-      // Assert
       expect(useEditorStore.getState().future).toEqual([]);
     });
 
     it('canUndo / canRedo reflect the current history state', () => {
-      // Arrange
-      useEditorStore.setState({ level: makeMaze(), past: [] });
-      // Act / Assert
+      useEditorStore.setState({ level: floorMaze(), past: [] });
       expect(useEditorStore.getState().canUndo()).toBe(false);
       expect(useEditorStore.getState().canRedo()).toBe(false);
       useEditorStore.getState().placeWall(1, 0);

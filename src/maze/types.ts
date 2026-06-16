@@ -248,6 +248,12 @@ export function enemyChaseMultiplier(aggression: EnemyAggression): number {
 export type EditorTool =
   | 'select'
   | 'wall'
+  // F-P2-9: dedicated erase / carve tool. `wall` is set-to-1 (place a
+  // wall); `erase` is set-to-0 (carve a floor / passage). Splitting
+  // these is what makes the tools predictable: previously `placeWall`
+  // was a toggle, which contradicted the label and led designers to
+  // draw walls by clicking and then "undo" their work.
+  | 'erase'
   | 'start'
   | 'exit'
   | 'pickup'

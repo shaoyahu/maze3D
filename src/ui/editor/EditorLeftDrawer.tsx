@@ -13,6 +13,10 @@ interface ToolEntry {
 const TOOLS: readonly ToolEntry[] = [
   { tool: 'select', label: '选择',   shortcut: 'V', icon: '↖' },
   { tool: 'wall',   label: '墙体',   shortcut: 'W', icon: '▦' },
+  // F-P2-9: dedicated erase / carve tool. `B` shortcut chosen to avoid
+  // collision with existing V/W/S/E/P/M/H. Icon is a small eraser
+  // glyph; the label "通道" reads as "carve a passage / corridor".
+  { tool: 'erase',  label: '通道',   shortcut: 'B', icon: '⌫' },
   { tool: 'start',  label: '起点',   shortcut: 'S', icon: '▲' },
   // Exit: render a small SVG flag mirroring the in-grid marker so the
   // drawer icon and the cell marker read as the same thing.

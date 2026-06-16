@@ -237,10 +237,17 @@ export const zh: Translations = {
   // editor.toolbar.* — 编辑器工具栏
   // ============================================================
   'editor.toolbar.hint.select': '点击对象查看属性',
-  'editor.toolbar.hint.wall': '在格子上点击放置墙体 · 右键拖动平移',
+  // F-P2-9: hint text no longer repeats "右键拖动平移" — that's
+  // surfaced separately via the persistent pan-hint banner that
+  // appears whenever the pan tool is active (see EditorViewport.tsx).
+  'editor.toolbar.hint.wall': '点击格子放置墙体',
+  'editor.toolbar.hint.erase': '点击格子凿出通道（把墙变路）',
   'editor.toolbar.hint.start': '点击格子设置玩家起点',
   'editor.toolbar.hint.exit': '点击格子设置出口',
-  'editor.toolbar.hint.pickup': '点击格子放置拾取物',
+  // F-P2-9: "拾取物" relabeled to "道具" so the toolbar chip is
+  // consistent with the in-cell color icons (⏱ ♥ ⚷) and the
+  // properties-panel card label.
+  'editor.toolbar.hint.pickup': '点击格子放置道具',
   'editor.toolbar.hint.enemy': '点击格子放置敌人 · 选中后在右侧编辑路径',
   'editor.toolbar.hint.pan': '右键拖动平移视图',
 
@@ -287,7 +294,9 @@ export const zh: Translations = {
   'editor.status.problems': '问题',
   'editor.status.warnings': '警告',
   'editor.status.walls': '墙',
-  'editor.status.pickups': '拾取',
+  // F-P2-9: status-bar counter chip relabeled from "拾取" → "道具" to
+  // match the toolbar tool label and the properties-panel card label.
+  'editor.status.pickups': '道具',
   'editor.status.enemies': '敌人',
   'editor.status.storageHintCloseAria': '知道了，关闭存储提示',
 
@@ -316,10 +325,12 @@ export const zh: Translations = {
 
   'editor.properties.panelTitle': '关卡属性',
 
-  'editor.properties.pickupCard': '拾取物',
+  // F-P2-9: properties-panel card relabeled from "拾取物" → "道具"
+  // for consistency with the toolbar / status-bar labels.
+  'editor.properties.pickupCard': '道具',
   'editor.properties.field.type': '类型',
   'editor.properties.field.value': '数值',
-  'editor.properties.deletePickup': '删除拾取物',
+  'editor.properties.deletePickup': '删除道具',
 
   'editor.properties.enemyCard': '敌人',
   'editor.properties.field.spawn': '出生点',
@@ -336,7 +347,9 @@ export const zh: Translations = {
   'editor.properties.deleteWall': '删除墙体',
 
   'editor.properties.selectionMissing': '选中的{thing}已不存在。',
-  'editor.properties.selection.pickup': '拾取物',
+  // F-P2-9: missing-selection chip text relabeled from "拾取物" →
+  // "道具" to match the new toolbar label.
+  'editor.properties.selection.pickup': '道具',
   'editor.properties.selection.enemy': '敌人',
 
   'editor.properties.minusAria': '减小',
@@ -375,11 +388,69 @@ export const zh: Translations = {
 
   'editor.lastError.wallOnStart': '无法在起点放置墙（墙不能覆盖起点）',
   'editor.lastError.wallOnExit': '无法在终点放置墙（墙不能覆盖终点）',
+  // F-P2-9: dedicated erase / carve tool error channels. Mirror the
+  // wallOnStart / wallOnExit keys so the toolbar chip surfaces the
+  // i18n key consistently.
+  'editor.lastError.eraseOnStart': '无法擦除起点（起点必须是地面）',
+  'editor.lastError.eraseOnExit': '无法擦除终点（终点必须是地面）',
+  // F-P2-9: pickup-on-wall now surfaces via lastErrorKey instead of
+  // the previous silent reject, matching the wall / start / exit
+  // placement-actions contract.
+  'editor.lastError.pickupOnWall': '拾取物只能放在地面上（请先用「通道」工具凿出地面再放拾取）',
   'editor.lastError.startOutOfBounds': '起点位置超出网格范围',
   'editor.lastError.exitOutOfBounds': '终点位置超出网格范围',
   'editor.lastError.startOnExit': '起点不能与终点重叠',
   'editor.lastError.exitOnStart': '终点不能与起点重叠',
   'editor.lastError.pathOutOfBounds': '路径节点超出网格范围',
+
+  // ============================================================
+  // editor.help.* — 编辑器使用手册（EditorHelpDrawer 内容）
+  // ============================================================
+  'editor.help.title': '关卡编辑器 · 使用手册',
+  'editor.help.closeAria': '关闭使用手册',
+  'editor.help.section.tools': '① 工具总览',
+  'editor.help.section.toolsIntro': '左侧工具栏点选工具后，在画布上点格子即可放置或修改。右键拖动画布可平移视图；滚轮缩放。',
+  'editor.help.section.shortcuts': '② 快捷键',
+  'editor.help.section.flow': '③ 常用流程',
+  'editor.help.section.checklist': '④ 保存前自检',
+  'editor.help.col.tool': '工具',
+  'editor.help.col.shortcut': '快捷键',
+  'editor.help.col.action': '作用',
+  'editor.help.col.wheel': '鼠标滚轮',
+
+  'editor.help.tool.select': '选择',
+  'editor.help.tool.selectDesc': '点对象查看属性；点空白处清空选择',
+  'editor.help.tool.wall': '墙体',
+  'editor.help.tool.wallDesc': '点格子设为墙；已为墙则无操作',
+  'editor.help.tool.erase': '通道',
+  'editor.help.tool.eraseDesc': '把墙凿为路；起点/终点不能擦除',
+  'editor.help.tool.start': '起点',
+  'editor.help.tool.startDesc': '移动玩家起点到点击的格子（自动凿墙）',
+  'editor.help.tool.exit': '终点',
+  'editor.help.tool.exitDesc': '移动出口到点击的格子（自动凿墙）',
+  'editor.help.tool.pickup': '道具',
+  'editor.help.tool.pickupDesc': '在地面格子放道具；右侧面板调整类型与数值',
+  'editor.help.tool.enemy': '敌人',
+  'editor.help.tool.enemyDesc': '放敌人；选中后右侧编辑巡逻路径',
+  'editor.help.tool.pan': '平移',
+  'editor.help.tool.panDesc': '按住左/右键拖动平移视图；滚轮缩放',
+
+  'editor.help.shortcut.esc': '退出当前工具 / 清空选择',
+  'editor.help.shortcut.undo': '撤销',
+  'editor.help.shortcut.redo': '重做',
+  'editor.help.shortcut.wheel': '以鼠标为中心缩放视图',
+
+  'editor.help.flow.step1': '【新建】点工具栏「新建」得到一张 15×15 全墙的画布，起点在左上、终点在右下',
+  'editor.help.flow.step2': '【凿通道】切到「通道」工具，在画布上依次点击出迷宫的主干道与分支',
+  'editor.help.flow.step3': '【放道具】切到「道具」工具，在通道上点格子放时间/生命/钥匙；右侧面板调整数值',
+  'editor.help.flow.step4': '【放敌人】切到「敌人」工具点格子放敌人；点击已放敌人后，可在右侧编辑巡逻路径',
+  'editor.help.flow.step5': '【保存】点「保存」把当前关卡加入「我的关卡」；「保存并退出」同时返回主菜单',
+
+  'editor.help.checklist.reachable': '起点到终点之间存在通路（状态栏 ⚠ 警告会提醒）',
+  'editor.help.checklist.wallsClosed': '墙体闭合、外圈有墙（避免玩家走出地图）',
+  'editor.help.checklist.pickups': '至少放 1-2 个道具，否则游玩没有收集乐趣',
+  'editor.help.checklist.enemyPath': '每个敌人至少有 2 个巡逻点，否则敌人会卡住',
+  'editor.help.checklist.rules': '胜利模式、初始时间、最大生命都设了合理值（默认即可）',
 
   // ============================================================
   // common.* — 跨组件通用按钮 / 操作

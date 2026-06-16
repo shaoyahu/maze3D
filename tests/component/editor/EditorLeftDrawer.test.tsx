@@ -29,18 +29,17 @@ function resetEditor(): void {
   });
 }
 
-// After the P3-Phase-2 split: EditorLeftDrawer owns the 7 tool buttons +
-// the undo/redo buttons. EditorToolbar.test.tsx's tool/undo/redo coverage
-// moved here.
-describe('EditorLeftDrawer (P3-Phase-2 split)', () => {
+// F-P2-9: the drawer now owns 8 tool buttons (added 'erase').
+describe('EditorLeftDrawer (P2-9: 8 tools + erase)', () => {
   beforeEach(() => {
     resetEditor();
   });
 
-  it('renders all 7 tool buttons', () => {
+  it('renders all 8 tool buttons', () => {
     render(<EditorLeftDrawer />);
     expect(screen.getByTestId('tool-select')).toBeInTheDocument();
     expect(screen.getByTestId('tool-wall')).toBeInTheDocument();
+    expect(screen.getByTestId('tool-erase')).toBeInTheDocument();
     expect(screen.getByTestId('tool-start')).toBeInTheDocument();
     expect(screen.getByTestId('tool-exit')).toBeInTheDocument();
     expect(screen.getByTestId('tool-pickup')).toBeInTheDocument();
@@ -59,6 +58,12 @@ describe('EditorLeftDrawer (P3-Phase-2 split)', () => {
     render(<EditorLeftDrawer />);
     fireEvent.click(screen.getByTestId('tool-pickup'));
     expect(useEditorStore.getState().tool).toBe('pickup');
+  });
+
+  it('clicking the new erase button dispatches setTool(erase)', () => {
+    render(<EditorLeftDrawer />);
+    fireEvent.click(screen.getByTestId('tool-erase'));
+    expect(useEditorStore.getState().tool).toBe('erase');
   });
 
   it('Undo is disabled when past is empty', () => {

@@ -119,11 +119,18 @@ Playwright 配置:`fullyParallel: false`、`workers: 1`、`retries: 0`、`baseUR
 
 每次完成 code review 后,把发现以 markdown 形式存到 `docs/reviews/`,遵循以下规范。
 
-### 文件命名
+### 评审范围(强制)
 
-- **格式**:`YYYY-MM-DD-<slug>.md`(日期前缀 + 短语 slug,kebab-case)
-- **slug 选词**:体现评审范围或类型,如 `full-code-review` / `project-review` / `local-review` / `full-bug-scan` / `fresh-full-review`
-- **同一天多份**:slug 区分主题,例如 `2026-06-15-fresh-full-review.md` + `2026-06-15-full-bug-scan.md`
+- **默认范围 = 整个项目**。除非用户在评审请求中**明确指出** review 范围(如 "只 review `src/store/`"、"只看编辑器"),否则必须从项目根目录开始,**从头到尾 review 全量代码**(包括 `src/`、`tests/`、`public/`、`docs/`、配置文件、CI workflow 等),不允许自行缩小范围。
+- 明确指出范围时,引用用户原话并锁定到具体文件 / 模块 / 增量 ID,不得擅自外扩。
+- 全量评审的产物文件名 slug 建议包含 `full-` 前缀(如 `full-code-review`、`full-bug-scan`、`fresh-full-review`),与局部评审(`local-review`、`editor-review` 等)在目录里自然分层。
+
+### 存储位置 & 命名风格(强制)
+
+- **保存位置固定为 `docs/reviews/`**(主报告在根,分项 finding 在 `docs/reviews/findings/`)。不允许写到仓库其他位置(如 `docs/audit/`、`docs/code-review/`、项目根),也不允许写到仓库外。
+- **命名风格必须统一**:严格遵守下方「文件命名」小节的 `YYYY-MM-DD-<slug>.md` 格式 + kebab-case slug 约定。**禁止**自创格式(如 `Review_2026.md`、`projectReview.md`、`2026-06 review.md`、`review-final.md` 等)。
+- slug 选词需语义清晰,与已有 review 集合保持一致风格(全量评审带 `full-` 前缀、局部评审带局部范围关键词);新增 slug 前先 `ls docs/reviews/` 确认不与已有命名重复或冲突。
+- 同一天多份 review 用不同 slug 区分主题,不得靠后缀 `-v2`/`-final`/`-new` 区分同一份报告的迭代(迭代应通过 git 历史追溯)。
 - **目的**:`ls` 默认排序即按日期升序,无需额外索引
 
 ### 目录结构

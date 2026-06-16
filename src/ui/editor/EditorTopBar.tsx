@@ -17,6 +17,8 @@ const LAST_ERROR_DISPLAY_MS = 3000;
 const TOOL_HINT_KEYS: Record<EditorTool, string> = {
   select: 'editor.toolbar.hint.select',
   wall:   'editor.toolbar.hint.wall',
+  // F-P2-9: dedicated hint for the new erase tool.
+  erase:  'editor.toolbar.hint.erase',
   start:  'editor.toolbar.hint.start',
   exit:   'editor.toolbar.hint.exit',
   pickup: 'editor.toolbar.hint.pickup',

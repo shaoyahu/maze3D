@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useEditorStore } from '../../store/editorStore';
 import type { EnemySpawn, Pickup, PickupType } from '../../maze/types';
+import { EditorHelpDrawer } from './EditorHelpDrawer';
+import { useT } from '../../i18n';
 
 // CSS-side counterpart of src/entities/Pickup.ts PICKUP_COLORS, so the
 // editor matches the 3D view's per-type palette without importing three.
@@ -50,12 +52,16 @@ function minimapCellStyle(x: number, z: number, width: number, depth: number): R
 }
 
 export function EditorViewport(): React.ReactElement {
+  const t = useT();
   const level = useEditorStore((s) => s.level);
   const tool = useEditorStore((s) => s.tool);
   const selection = useEditorStore((s) => s.selection);
   const camera = useEditorStore((s) => s.camera);
   const setCamera = useEditorStore((s) => s.setCamera);
   const placeWall = useEditorStore((s) => s.placeWall);
+  // F-P2-9: dedicated erase / carve action. Pairs with `placeWall`
+  // (set-to-1) so the toolbar has one tool per direction.
+  const placeErase = useEditorStore((s) => s.placeErase);
   const placeStart = useEditorStore((s) => s.placeStart);
   const placeExit = useEditorStore((s) => s.placeExit);
   const placePickup = useEditorStore((s) => s.placePickup);
@@ -104,6 +110,12 @@ export function EditorViewport(): React.ReactElement {
     if (tool !== 'pan') setHasPanned(false);
   }, [tool]);
 
+  // F-P2-9: local UI state for the help-drawer toggle. Kept in the
+  // viewport (rather than the editor store) because the drawer's
+  // open/closed bit is purely cosmetic — it must not affect dirty,
+  // history, or save behaviour.
+  const [helpOpen, setHelpOpen] = useState(false);
+
   const { pickupByCell, enemyByCell } = useMemo(() => buildLookups(level), [level]);
   const panStateRef = useRef<{ x: number; y: number } | null>(null);
 
@@ -142,6 +154,7 @@ export function EditorViewport(): React.ReactElement {
       return;
     }
     if (tool === 'wall') placeWall(x, z);
+    else if (tool === 'erase') placeErase(x, z);
     else if (tool === 'start') placeStart(x, z);
     else if (tool === 'exit') placeExit(x, z);
     else if (tool === 'pickup') placePickup(x, z);
@@ -296,6 +309,23 @@ export function EditorViewport(): React.ReactElement {
   return (
     <div className="editor-viewport-shell" data-testid="editor-viewport-shell">
       <div className="editor-viewport-bg" aria-hidden />
+
+      {/* F-P2-9: top-right `?` toggle button. Opens the cheat-sheet
+          drawer with full tool / shortcut / workflow / checklist docs.
+          The button is absolutely positioned inside the viewport
+          shell so it tracks the viewport regardless of the sidebar
+          widths. */}
+      <button
+        type="button"
+        data-testid="editor-help-toggle"
+        aria-label={helpOpen ? t('editor.help.closeAria') : t('editor.help.title')}
+        aria-pressed={helpOpen}
+        title={t('editor.help.title')}
+        className="editor-help-toggle"
+        onClick={() => setHelpOpen((v) => !v)}
+      >
+        ?
+      </button>
 
       <div
         data-testid="editor-viewport"
@@ -570,6 +600,10 @@ export function EditorViewport(): React.ReactElement {
           )}
         </div>
       </div>
+
+      {/* F-P2-9: cheat-sheet drawer. Re-renders on language change
+          because every string flows through useT(). */}
+      <EditorHelpDrawer open={helpOpen} onClose={() => setHelpOpen(false)} />
     </div>
   );
 }

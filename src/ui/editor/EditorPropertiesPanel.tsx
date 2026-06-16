@@ -420,6 +420,9 @@ function PickupForm({ pickup }: { pickup: Pickup }): React.ReactElement {
 
 function EnemyForm({ enemy }: { enemy: EnemySpawn }): React.ReactElement {
   const t = useT();
+  // F-P2-9: read `level` so the "+ node" button can compute in-bounds
+  // defaults based on the current grid size (used in the onClick below).
+  const level = useEditorStore((s) => s.level);
   const updateEnemy = useEditorStore((s) => s.updateEnemy);
   const moveEnemyNode = useEditorStore((s) => s.moveEnemyNode);
   const addEnemyNode = useEditorStore((s) => s.addEnemyNode);
@@ -487,7 +490,32 @@ function EnemyForm({ enemy }: { enemy: EnemySpawn }): React.ReactElement {
         ))}
         <button
           type="button"
-          onClick={() => addEnemyNode(enemy.id, enemy.x, enemy.z)}
+          // F-P2-9: default-coord for "+ node" used to be `enemy.x, enemy.z`
+          // (the spawn cell), which is always identical to `path[0]` and
+          // therefore produced a zero-length path segment — breaking the
+          // patrol AI and the SVG marker-end orientation. Compute a
+          // sensible default: extend one cell past the current last node
+          // along the direction of the last segment. If the extension
+          // would land OOB / coincide with the last node, do nothing
+          // (silently no-op) rather than falling back to spawn — falling
+          // back to spawn re-introduces the same duplicate-node bug we
+          // were trying to fix.
+          onClick={() => {
+            const path = enemy.path;
+            const last = path[path.length - 1];
+            const prev = path[path.length - 2];
+            if (!last || !prev) return;
+            const dx = Math.sign(last.x - prev.x);
+            const dz = Math.sign(last.z - prev.z);
+            const candidate = { x: last.x + dx, z: last.z + dz };
+            const w = level.size.width;
+            const d = level.size.depth;
+            const inBounds =
+              candidate.x >= 0 && candidate.x < w && candidate.z >= 0 && candidate.z < d;
+            const notOverlap = candidate.x !== last.x || candidate.z !== last.z;
+            if (!inBounds || !notOverlap) return;
+            addEnemyNode(enemy.id, candidate.x, candidate.z);
+          }}
           data-testid="enemy-path-add"
           className="editor-properties__path-add"
         >
