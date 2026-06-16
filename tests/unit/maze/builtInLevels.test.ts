@@ -8,10 +8,10 @@ import { BUILT_IN_JSON_PROVIDER } from '../../../src/maze/builtInLevels';
 import { BUILT_IN_JSON_PROVIDER as BUILT_IN_JSON_PROVIDER_AGAIN } from '../../../src/maze/builtInLevels';
 
 const EXPECTED_BUILT_IN_IDS = [
-  'level-tiny',
-  'level-tiny-enemy',
-  'level-tiny-pickups',
-  'level-small',
+  'teaching-01',
+  'teaching-02',
+  'teaching-03',
+  'teaching-04',
 ] as const;
 
 describe('BUILT_IN_JSON_PROVIDER (F-project-review-2026-06-13-A-HIGH-4)', () => {

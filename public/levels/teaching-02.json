@@ -1,0 +1,26 @@
+{
+  "id": "teaching-02",
+  "name": "路过拾遗",
+  "i18n": { "en": "Pickup on the Way" },
+  "size": { "width": 5, "depth": 1 },
+  "cellSize": 2,
+  "start": { "x": 0, "z": 0 },
+  "exit": { "x": 4, "z": 0 },
+  "walls": [
+    [0, 0, 0, 0, 0]
+  ],
+  "pickups": [
+    { "id": "00000000-0000-0000-0000-000000000001", "x": 2, "z": 0, "type": "health", "value": 1 }
+  ],
+  "rules": {
+    "initialTime": 30,
+    "maxHealth": 3,
+    "victory": "reach-exit",
+    "timeOnPickup": 10
+  },
+  "enemies": [],
+  "tutorialSteps": [
+    { "id": "pickup", "messageKey": "tutorial.teaching02.step1", "trigger": { "type": "pickup-collected", "count": 1 } },
+    { "id": "exit", "messageKey": "tutorial.teaching02.step2", "trigger": { "type": "reached-exit" } }
+  ]
+}

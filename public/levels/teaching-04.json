@@ -1,0 +1,38 @@
+{
+  "id": "teaching-04",
+  "name": "最终试炼",
+  "i18n": { "en": "Final Trial" },
+  "size": { "width": 10, "depth": 10 },
+  "cellSize": 2,
+  "start": { "x": 0, "z": 0 },
+  "exit": { "x": 9, "z": 9 },
+  "walls": [
+    [0,1,1,1,1,1,1,1,1,1],
+    [0,0,0,0,1,0,0,0,0,1],
+    [1,0,1,0,1,0,1,1,0,1],
+    [1,0,1,0,0,0,0,1,0,1],
+    [1,0,1,1,1,1,0,1,0,1],
+    [1,0,0,0,0,1,0,0,0,1],
+    [1,1,1,1,0,1,1,1,0,1],
+    [1,0,0,0,0,0,0,0,0,1],
+    [1,0,1,1,1,1,1,1,0,0],
+    [1,1,1,1,1,1,1,1,1,0]
+  ],
+  "pickups": [
+    { "id": "00000000-0000-0000-0000-000000000010", "x": 3, "z": 1, "type": "time", "value": 15 },
+    { "id": "00000000-0000-0000-0000-000000000011", "x": 6, "z": 5, "type": "time", "value": 15 }
+  ],
+  "rules": {
+    "initialTime": 60,
+    "maxHealth": 3,
+    "victory": "reach-exit",
+    "timeOnPickup": 15,
+    "requireAllPickups": true
+  },
+  "enemies": [],
+  "tutorialSteps": [
+    { "id": "intro", "messageKey": "tutorial.teaching04.step1", "trigger": { "type": "timeout", "timeoutSec": 2 } },
+    { "id": "collected", "messageKey": "tutorial.teaching04.step2", "trigger": { "type": "pickup-collected", "count": 2 } },
+    { "id": "exit", "messageKey": "tutorial.teaching04.step3", "trigger": { "type": "reached-exit" } }
+  ]
+}

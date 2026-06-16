@@ -1,0 +1,46 @@
+{
+  "id": "teaching-03",
+  "name": "哨兵回廊",
+  "i18n": { "en": "Sentry Corridor" },
+  "size": { "width": 7, "depth": 7 },
+  "cellSize": 2,
+  "start": { "x": 1, "z": 1 },
+  "exit": { "x": 5, "z": 5 },
+  "walls": [
+    [1, 1, 1, 1, 1, 1, 1],
+    [1, 0, 0, 0, 0, 0, 1],
+    [1, 0, 1, 0, 1, 0, 1],
+    [1, 0, 0, 0, 0, 0, 1],
+    [1, 0, 1, 0, 1, 0, 1],
+    [1, 0, 0, 0, 0, 0, 1],
+    [1, 1, 1, 1, 1, 1, 1]
+  ],
+  "pickups": [],
+  "rules": {
+    "initialTime": 60,
+    "maxHealth": 3,
+    "victory": "caught-by-enemy",
+    "timeOnPickup": 10,
+    "enemyAggression": "medium"
+  },
+  "hideMinimap": true,
+  "enemies": [
+    {
+      "id": "00000000-0000-0000-0000-000000000020",
+      "x": 5,
+      "z": 5,
+      "dwellTime": 0,
+      "path": [
+        { "x": 5, "z": 5 },
+        { "x": 5, "z": 1 },
+        { "x": 1, "z": 1 },
+        { "x": 1, "z": 5 },
+        { "x": 5, "z": 5 }
+      ]
+    }
+  ],
+  "tutorialSteps": [
+    { "id": "patrol", "messageKey": "tutorial.teaching03.step1", "trigger": { "type": "timeout", "timeoutSec": 1.5 } },
+    { "id": "chase", "messageKey": "tutorial.teaching03.step2", "trigger": { "type": "timeout", "timeoutSec": 4 } }
+  ]
+}
