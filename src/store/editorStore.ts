@@ -468,13 +468,22 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
     },
 
     // ---- UI state (no history push) ----
-    setTool: (tool) => set({ tool }),
+    // F-2026-06-16-L-1: switching the tool is a clear "I want to do
+    // something new" gesture, so any error message left over from a
+    // previous rejection (e.g. "can't place a wall on the start cell")
+    // is no longer relevant. Clear both fields on tool change so the
+    // toolbar chip doesn't keep showing a stale message for 3 seconds.
+    setTool: (tool) => set({ tool, lastError: null, lastErrorKey: null }),
 
     setCamera: (patch) => set({ camera: { ...get().camera, ...patch } }),
 
-    select: (sel) => set({ selection: sel }),
+    // F-2026-06-16-L-1: pair selection actions with the same lastError
+    // cleanup as the placement actions. Picking a new object (or
+    // clearing the selection) means the user is moving on; a stale
+    // "wallOnStart" chip would be misleading.
+    select: (sel) => set({ selection: sel, lastError: null, lastErrorKey: null }),
 
-    clearSelection: () => set({ selection: null }),
+    clearSelection: () => set({ selection: null, lastError: null, lastErrorKey: null }),
 
     clearLastError: () => set({ lastError: null, lastErrorKey: null }),
 
@@ -517,14 +526,14 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
       // (avoids redundant history entries and an unexpected "wall
       // disappears" surprise that the legacy toggle caused).
       if (level.walls[z]![x] === 1) {
-        set({ lastError: null });
+        set({ lastError: null, lastErrorKey: null });
         return;
       }
       const nextWalls = level.walls.map((r, zi) =>
         zi === z ? r.map((c, xi) => (xi === x ? (1 as CellType) : c)) : r,
       );
       const nextLevel: MazeData = { ...level, walls: nextWalls };
-      set({ ...commitLevel(get(), nextLevel), lastError: null });
+      set({ ...commitLevel(get(), nextLevel), lastError: null, lastErrorKey: null });
     },
 
     // F-P2-9: dedicated carve / erase tool. Inverse of placeWall.
@@ -545,14 +554,14 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
       }
       // No-op on already-floor cells (avoid spurious history entries).
       if (level.walls[z]![x] === 0) {
-        set({ lastError: null });
+        set({ lastError: null, lastErrorKey: null });
         return;
       }
       const nextWalls = level.walls.map((r, zi) =>
         zi === z ? r.map((c, xi) => (xi === x ? (0 as CellType) : c)) : r,
       );
       const nextLevel: MazeData = { ...level, walls: nextWalls };
-      set({ ...commitLevel(get(), nextLevel), lastError: null });
+      set({ ...commitLevel(get(), nextLevel), lastError: null, lastErrorKey: null });
     },
 
     placeStart: (x, z) => {
@@ -579,7 +588,7 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
         );
       }
       const nextLevel: MazeData = { ...level, start: { x, z }, walls: nextWalls };
-      set({ ...commitLevel(get(), nextLevel), lastError: null });
+      set({ ...commitLevel(get(), nextLevel), lastError: null, lastErrorKey: null });
     },
 
     placeExit: (x, z) => {
@@ -603,7 +612,7 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
         );
       }
       const nextLevel: MazeData = { ...level, exit: { x, z }, walls: nextWalls };
-      set({ ...commitLevel(get(), nextLevel), lastError: null });
+      set({ ...commitLevel(get(), nextLevel), lastError: null, lastErrorKey: null });
     },
 
     placePickup: (x, z) => {
@@ -625,6 +634,17 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
       // pickup on exit; validateMaze then rejects at save time, leaving the
       // user confused about what happened.
       if (level.exit.x === x && level.exit.z === z) return;
+      // F-2026-06-16-M-2: reject same-cell duplicates at click time.
+      // Without this guard two clicks on the same floor cell stack two
+      // pickups with identical (x, z); `validateMaze` (JsonMazeProvider
+      // line ~181) then refuses the level with "pickup (x, z) collides
+      // with another pickup" at save time, and the user has no idea
+      // which save attempt was the bad one. Surface the rejection
+      // immediately with a stable i18n key.
+      if (level.pickups.some((p) => p.x === x && p.z === z)) {
+        set({ lastError: null, lastErrorKey: 'editor.lastError.pickupDuplicate' });
+        return;
+      }
       const newPickup: Pickup = {
         id: generateId(),
         x,
@@ -634,7 +654,7 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
       };
       const nextLevel: MazeData = { ...level, pickups: [...level.pickups, newPickup] };
       // Per spec: placePickup also clears the selection.
-      set(commitLevel(get(), nextLevel, null));
+      set({ ...commitLevel(get(), nextLevel, null), lastError: null, lastErrorKey: null });
     },
 
     placeEnemy: (x, z, width) => {
@@ -675,7 +695,11 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
       const nextLevel: MazeData = { ...level, walls: nextWalls, enemies: [...level.enemies, newEnemy] };
       // Auto-select the freshly placed enemy so the user lands in the
       // path-planning UX (panel opens, subsequent clicks add path nodes).
-      set(commitLevel(get(), nextLevel, { kind: 'enemy', id: newEnemy.id }));
+      set({
+        ...commitLevel(get(), nextLevel, { kind: 'enemy', id: newEnemy.id }),
+        lastError: null,
+        lastErrorKey: null,
+      });
     },
 
     // Append a node to an enemy's patrol path. The first click after
@@ -707,7 +731,7 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
         e.id === enemyId ? { ...e, path: [...e.path, { x: nx, z: nz }] } : e,
       );
       const nextLevel: MazeData = { ...level, walls: nextWalls, enemies: nextEnemies };
-      set({ ...commitLevel(get(), nextLevel, { kind: 'enemy', id: enemyId }), lastError: null });
+      set({ ...commitLevel(get(), nextLevel, { kind: 'enemy', id: enemyId }), lastError: null, lastErrorKey: null });
     },
 
     // ---- patch actions (mark dirty; no immediate history push) ----
@@ -728,7 +752,17 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
       // happens to produce a value already equal to the saved snapshot
       // (e.g. typing the same character that was there before) leaves
       // dirty=false.
-      set({ level: nextLevel, dirty: levelHash(nextLevel) !== get().lastSavedHash });
+      set({
+        level: nextLevel,
+        dirty: levelHash(nextLevel) !== get().lastSavedHash,
+        // F-2026-06-16-L-1: clear the error chip on every successful
+        // property patch. Editing the pickup value, the enemy fov, or
+        // any rule field is a clear "I accepted the previous state"
+        // signal — keeping `editor.lastError.*` on screen would be
+        // misleading and stale.
+        lastError: null,
+        lastErrorKey: null,
+      });
     },
 
     updateEnemy: (id, patch) => {
@@ -742,7 +776,17 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
       if (!touched) return;
       const nextLevel: MazeData = { ...level, enemies: nextEnemies };
       // F-2026-06-12-B2: hash-based dirty — see updatePickup.
-      set({ level: nextLevel, dirty: levelHash(nextLevel) !== get().lastSavedHash });
+      set({
+        level: nextLevel,
+        dirty: levelHash(nextLevel) !== get().lastSavedHash,
+        // F-2026-06-16-L-1: clear the error chip on every successful
+        // property patch. Editing the pickup value, the enemy fov, or
+        // any rule field is a clear "I accepted the previous state"
+        // signal — keeping `editor.lastError.*` on screen would be
+        // misleading and stale.
+        lastError: null,
+        lastErrorKey: null,
+      });
     },
 
     updateRule: (patch) => {
@@ -750,14 +794,34 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
       const nextRules: LevelRules = { ...level.rules, ...patch };
       const nextLevel: MazeData = { ...level, rules: nextRules };
       // F-2026-06-12-B2: hash-based dirty — see updatePickup.
-      set({ level: nextLevel, dirty: levelHash(nextLevel) !== get().lastSavedHash });
+      set({
+        level: nextLevel,
+        dirty: levelHash(nextLevel) !== get().lastSavedHash,
+        // F-2026-06-16-L-1: clear the error chip on every successful
+        // property patch. Editing the pickup value, the enemy fov, or
+        // any rule field is a clear "I accepted the previous state"
+        // signal — keeping `editor.lastError.*` on screen would be
+        // misleading and stale.
+        lastError: null,
+        lastErrorKey: null,
+      });
     },
 
     updateName: (name) => {
       const { level } = get();
       const nextLevel: MazeData = { ...level, name };
       // F-2026-06-12-B2: hash-based dirty — see updatePickup.
-      set({ level: nextLevel, dirty: levelHash(nextLevel) !== get().lastSavedHash });
+      set({
+        level: nextLevel,
+        dirty: levelHash(nextLevel) !== get().lastSavedHash,
+        // F-2026-06-16-L-1: clear the error chip on every successful
+        // property patch. Editing the pickup value, the enemy fov, or
+        // any rule field is a clear "I accepted the previous state"
+        // signal — keeping `editor.lastError.*` on screen would be
+        // misleading and stale.
+        lastError: null,
+        lastErrorKey: null,
+      });
     },
 
     updateSize: (width, depth) => {
@@ -782,10 +846,31 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
         { x: startX, z: startZ },
         { x: exitX, z: exitZ },
       ]);
+      // F-2026-06-16-M-1: filter pickups and enemies that landed outside
+      // the new bounds. The all-walls grid above doesn't remove them
+      // from `level`, so a shrinking resize could leave a pickup at
+      // (7,7) on a 5×5 grid — which `validateMaze` then rejects with
+      // "pickup (7,7) is out of bounds", leaving the user confused
+      // about which save was failing. Drop the OOB entries up front.
+      // Enemy path nodes use the same bounds check: any node outside
+      // the new grid would put the patrol path in undefined territory.
+      const filteredPickups = level.pickups.filter(
+        (p) => p.x >= 0 && p.x < width && p.z >= 0 && p.z < depth,
+      );
+      const filteredEnemies = level.enemies.filter(
+        (e) =>
+          e.x >= 0 &&
+          e.x < width &&
+          e.z >= 0 &&
+          e.z < depth &&
+          e.path.every((n) => n.x >= 0 && n.x < width && n.z >= 0 && n.z < depth),
+      );
       const nextLevel: MazeData = {
         ...level,
         size: { width, depth },
         walls,
+        pickups: filteredPickups,
+        enemies: filteredEnemies,
         start: { x: startX, z: startZ },
         exit: { x: exitX, z: exitZ },
       };
@@ -806,7 +891,7 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
           if (!nextLevel.enemies.some((e) => e.id === sel.id)) nextSelection = null;
         }
       }
-      set(commitLevel(get(), nextLevel, nextSelection));
+      set({ ...commitLevel(get(), nextLevel, nextSelection), lastError: null, lastErrorKey: null });
     },
 
     // ---- enemy path edits ----
@@ -828,7 +913,17 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
       // here because the panel may call moveEnemyNode repeatedly while
       // the user drags; an edit that lands on the saved snapshot must
       // leave dirty=false so we don't show "● 未保存" spuriously.
-      set({ level: nextLevel, dirty: levelHash(nextLevel) !== get().lastSavedHash });
+      set({
+        level: nextLevel,
+        dirty: levelHash(nextLevel) !== get().lastSavedHash,
+        // F-2026-06-16-L-1: clear the error chip on every successful
+        // property patch. Editing the pickup value, the enemy fov, or
+        // any rule field is a clear "I accepted the previous state"
+        // signal — keeping `editor.lastError.*` on screen would be
+        // misleading and stale.
+        lastError: null,
+        lastErrorKey: null,
+      });
     },
 
     // F-N1: explicit history commit for the path-node editing flow.
@@ -869,7 +964,7 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
         e.id === enemyId ? { ...e, path: [...e.path, { x, z }] } : e,
       );
       const nextLevel: MazeData = { ...level, enemies: nextEnemies };
-      set(commitLevel(get(), nextLevel));
+      set({ ...commitLevel(get(), nextLevel), lastError: null, lastErrorKey: null });
     },
 
     removeEnemyNode: (enemyId, nodeIndex) => {
@@ -895,7 +990,7 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
           : e,
       );
       const nextLevel: MazeData = { ...level, enemies: nextEnemies };
-      set(commitLevel(get(), nextLevel));
+      set({ ...commitLevel(get(), nextLevel), lastError: null, lastErrorKey: null });
     },
 
     // ---- selection-driven delete ----
@@ -929,7 +1024,7 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
         const _exhaustive: never = selection;
         throw new Error(`deleteSelected: unhandled selection kind ${String(_exhaustive)}`);
       }
-      set(commitLevel(get(), nextLevel, nextSelection));
+      set({ ...commitLevel(get(), nextLevel, nextSelection), lastError: null, lastErrorKey: null });
     },
 
     // ---- history ----

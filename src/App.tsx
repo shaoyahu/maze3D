@@ -486,6 +486,7 @@ function GamePage() {
         <WinOverlay
           onRetry={() => activeMaze && startLevel(activeMaze.id, activeOptions)}
           onQuit={quitToMenu}
+          onLevels={() => navigate('/levels')}
         />
       )}
     </>

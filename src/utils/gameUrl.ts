@@ -179,8 +179,14 @@ export function buildGameSearchParams(
   if (options.mode === 'survive' && typeof options.enemyCount === 'number') {
     params.set(ENEMIES_QUERY, String(options.enemyCount));
   }
-  if (options.spawnSchedule && options.spawnSchedule.enabled) {
-    params.set(PROGRESSIVE_QUERY, '1');
+  if (options.spawnSchedule) {
+    // F-2026-06-16-H-2: round-trip the disabled case too. Previously this
+    // only wrote '1' on enabled, so a user who turned progressive OFF
+    // and shared the URL would have the param dropped on write, then
+    // the parser would leave spawnSchedule undefined, and startLevel
+    // would fall back to SPAWN_SCHEDULE_DEFAULT (enabled: true) —
+    // silently re-enabling progressive on every page load.
+    params.set(PROGRESSIVE_QUERY, options.spawnSchedule.enabled ? '1' : '0');
   }
   return params;
 }

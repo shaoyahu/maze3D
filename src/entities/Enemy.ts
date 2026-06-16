@@ -63,8 +63,18 @@ export class Enemy {
     this.patrolSpeed = options.playerSpeed * ENEMY_PATROL_SPEED_RATIO;
     this.chaseMultiplier = options.chaseMultiplier;
     this.chaseSpeed = options.playerSpeed * options.chaseMultiplier;
-    this.currentTarget = 0;
-    this.heading = headingToward(this.position, this.path[0]);
+    // F-2026-06-16-L-3: start with path[1] (the second node), not
+    // path[0]. path[0] is the spawn cell and is identical to
+    // this.position, so `headingToward(this.position, this.path[0])`
+    // would see a zero distance and fall back to the {x:1, z:0} east
+    // default. That meant the enemy's FOV cone pointed east regardless
+    // of where the patrol actually went — the first tickPatrol step
+    // would update the heading, but for the first frame (and any frame
+    // the enemy sat at a node waiting for the next path step) the
+    // FOV was wrong. path[1] is guaranteed to exist because the
+    // constructor above rejects `spawn.path.length < 2`.
+    this.currentTarget = 1;
+    this.heading = headingToward(this.position, this.path[1]);
     this.grid = grid;
   }
 
