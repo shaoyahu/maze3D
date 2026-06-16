@@ -70,7 +70,21 @@ export interface GameBridge {
   // enemy. The store's 0.5s invulnerable window collapses the per-frame
   // burst into one logical hit. Wired to gameStore.damage in GameCanvas.
   onEnemyContact: (damage: number) => void;
+  // P2-11: tutorial event fan-out. Fired by Game.update() with the
+  // current mouse delta / just-pressed keys / pickup count / exit cross.
+  // Wired to tutorialStore.dispatch in GameCanvas. Optional — production
+  // levels without `tutorialSteps` simply omit it.
+  onTutorialEvent?: (event: TutorialEvent) => void;
 }
+
+// P2-11: events emitted by the engine to drive the tutorial store. The
+// shape mirrors `useTutorialStore.TutorialEvent` so the wire is a pure
+// passthrough; Game.ts does not import the store directly (per DoD §14.2).
+export type TutorialEvent =
+  | { kind: 'mouse-look'; deltaYaw: number; deltaPitch: number }
+  | { kind: 'key-pressed'; key: string }
+  | { kind: 'pickup-collected'; total: number }
+  | { kind: 'reached-exit' };
 
 // F10: clampFov — single source of truth for "is this a safe FOV value
 // for the perspective camera?". settingsStore.sanitizeSettings /
@@ -343,7 +357,21 @@ export class Game {
     this.bridge.onTick(dt);
     if (!this.bridge.isPlaying()) return;
 
-    applyLook(this.player, this.input.consumeMouseDelta());
+    // P2-11: capture mouse delta BEFORE applyLook consumes it, so we can
+    // emit a tutorial event with this frame's exact rotation. The store
+    // decides whether the cumulative rotation has crossed its threshold.
+    const mouseDelta = this.input.consumeMouseDelta();
+    applyLook(this.player, mouseDelta);
+    if (this.bridge.onTutorialEvent && (mouseDelta.x !== 0 || mouseDelta.y !== 0)) {
+      this.bridge.onTutorialEvent({ kind: 'mouse-look', deltaYaw: mouseDelta.x, deltaPitch: mouseDelta.y });
+    }
+
+    // P2-11: edge-triggered key presses → `key-pressed` tutorial events.
+    if (this.bridge.onTutorialEvent) {
+      for (const key of this.input.consumeJustPressedKeys()) {
+        this.bridge.onTutorialEvent({ kind: 'key-pressed', key });
+      }
+    }
 
     const yaw = this.player.yaw;
     const sinY = Math.sin(yaw);
@@ -421,6 +449,14 @@ export class Game {
         for (const sib of mesh.userData.siblings) sib.visible = false;
       }
       const accepted = this.bridge.onPickupCollected(hit);
+      // P2-11: tutorial `pickup-collected` event after a successful pickup.
+      // `total` = how many pickups have been collected so far this level,
+      // which the store compares against `trigger.count`.
+      if (accepted) {
+        const initialTotal = this.currentMaze.pickups.length;
+        const collected = initialTotal - this.remainingPickups.length;
+        this.bridge.onTutorialEvent?.({ kind: 'pickup-collected', total: collected });
+      }
       if (!accepted) {
         // Store rejected the pickup (e.g. inventory full for a 'key').
         // Roll back the scene mutation so the pickup stays in the world.
@@ -440,6 +476,9 @@ export class Game {
       this.player.position.x = this.currentMaze.exit.x * cs + cs / 2;
       this.player.position.z = this.currentMaze.exit.z * cs + cs / 2;
       updatePlayerCamera(this.camera, this.player);
+      // P2-11: tutorial `reached-exit` event fires unconditionally —
+      // the store decides whether to advance based on the current step.
+      this.bridge.onTutorialEvent?.({ kind: 'reached-exit' });
       this.bridge.onReachExit();
       this.pauseLoop();
       this.renderer.render(this.sceneRefs.scene, this.camera);

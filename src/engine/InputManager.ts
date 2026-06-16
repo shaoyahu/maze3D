@@ -39,6 +39,7 @@ export class InputManager {
   // into the new level's first frame.
   clearKeys() {
     this.keys.clear();
+    this.justPressed = [];
   }
 
   dispose() {
@@ -114,8 +115,22 @@ export class InputManager {
     if (e.code === 'KeyP' && !e.repeat) this.togglePauseListener?.();
     if (e.code === 'Digit1' && !e.repeat) this.useItemListener?.(0);
     if (e.code === 'Digit2' && !e.repeat) this.useItemListener?.(1);
+    // P2-11: edge-triggered "just pressed" buffer for tutorial events.
+    if (!e.repeat) this.justPressed.push(e.code);
   };
   private onKeyUp = (e: KeyboardEvent) => { this.keys.delete(e.code); };
+
+  // P2-11: buffer of key codes pressed since the last `consumeJustPressedKeys`
+  // call. Used by Game.update() to emit `key-pressed` tutorial events.
+  // `clearKeys()` flushes it so a level boundary doesn't leak already-
+  // pressed keys into the next level's tutorial.
+  private justPressed: string[] = [];
+  consumeJustPressedKeys(): string[] {
+    if (this.justPressed.length === 0) return [];
+    const out = this.justPressed;
+    this.justPressed = [];
+    return out;
+  }
   // Clearing the buffer on lock acquire is necessary but not sufficient —
   // see the note in onMouseMove. skipNextMove drops the spurious event
   // that lands between this handler and the next frame.

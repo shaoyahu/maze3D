@@ -6,6 +6,7 @@ import {
   applyDamage,
   shouldSurviveWin,
   shouldProgressSpawn,
+  isPlayerCaughtByEnemy,
   ENEMY_INVULNERABLE_SECONDS,
 } from '../../src/game/Rules';
 import { SPAWN_SCHEDULE_DEFAULT } from '../../src/maze/types';
@@ -47,6 +48,54 @@ describe('Rules', () => {
 
     it('returns false when the segment does not touch the exit cell', () => {
       expect(crossesExit({ x: 1, z: 1 }, { x: 3, z: 3 }, maze)).toBe(false);
+    });
+
+    // P2-11: requireAllPickups gating for 最终试炼.
+    describe('with requireAllPickups (P2-11)', () => {
+      const gatedMaze: MazeData = {
+        ...maze,
+        pickups: [
+          { id: crypto.randomUUID(), x: 0, z: 1, type: 'time', value: 5 },
+          { id: crypto.randomUUID(), x: 1, z: 1, type: 'time', value: 5 },
+        ],
+        rules: { ...maze.rules, requireAllPickups: true },
+      };
+
+      it('returns false when not all pickups collected, even on the exit cell', () => {
+        expect(crossesExit({ x: 5, z: 3 }, { x: 5, z: 3 }, gatedMaze, 0)).toBe(false);
+        expect(crossesExit({ x: 5, z: 3 }, { x: 5, z: 3 }, gatedMaze, 1)).toBe(false);
+      });
+
+      it('returns true once every pickup is collected', () => {
+        expect(crossesExit({ x: 5, z: 3 }, { x: 5, z: 3 }, gatedMaze, 2)).toBe(true);
+      });
+
+      it('treats undefined collectedCount as 0 (fail closed)', () => {
+        expect(crossesExit({ x: 5, z: 3 }, { x: 5, z: 3 }, gatedMaze)).toBe(false);
+      });
+
+      it('leaves non-gated levels alone', () => {
+        expect(crossesExit({ x: 5, z: 3 }, { x: 5, z: 3 }, maze, 0)).toBe(true);
+      });
+    });
+  });
+
+  describe('isPlayerCaughtByEnemy (P2-11)', () => {
+    it('is true only when health is 0 and the hit was from an enemy', () => {
+      expect(isPlayerCaughtByEnemy(0, 'enemy')).toBe(true);
+    });
+
+    it('is false when health is still positive', () => {
+      expect(isPlayerCaughtByEnemy(1, 'enemy')).toBe(false);
+      expect(isPlayerCaughtByEnemy(2, 'enemy')).toBe(false);
+    });
+
+    it('is false when the killing blow was not from an enemy', () => {
+      expect(isPlayerCaughtByEnemy(0, 'other')).toBe(false);
+    });
+
+    it('is false when the player still has health from an enemy hit', () => {
+      expect(isPlayerCaughtByEnemy(2, 'other')).toBe(false);
     });
   });
 

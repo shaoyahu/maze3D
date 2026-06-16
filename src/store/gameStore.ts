@@ -94,6 +94,17 @@ export interface GameState {
   lastSpawnAt: number;
   lastPickupCountForSpawn: number;
 
+  // P2-11: source of the most recent damage event that actually changed
+  // health (i.e. wasn't absorbed by the invulnerability window). Used by
+  // `damage()` to decide whether a 0-health event routes to the
+  // 'caught-by-enemy' WinOverlay path (when the level's victory mode
+  // is also 'caught-by-enemy') or the regular 'game-over' path.
+  lastHitBy: 'enemy' | 'other';
+  // P2-11: distinguishes a reach-exit win from a caught-by-enemy win so
+  // WinOverlay can pick the right copy ("通关！" vs "被追上了 — 教学完成").
+  // Null when the player hasn't won yet.
+  lastWinKind: 'reach-exit' | 'caught-by-enemy' | null;
+
   startLevel: (maze: MazeData, options?: StartLevelOptions) => void;
   pause: () => void;
   resume: () => void;
@@ -102,7 +113,9 @@ export interface GameState {
   // P2-4a F5: `now` defaults to wall-clock seconds so backgrounded tabs
   // (rAF throttled to 1Hz) cannot freeze the invulnerability window. Tests
   // pass an explicit `now` to make the timing deterministic.
-  damage: (n: number, now?: number) => void;
+  // P2-11: `source` defaults to 'other' so existing callers (and tests)
+  // keep their behavior. The engine passes 'enemy' from onEnemyContact.
+  damage: (n: number, now?: number, source?: 'enemy' | 'other') => void;
   useItem: (slot: InventorySlot) => void;
   reachExit: (isNewRecord?: boolean) => void;
   goToMenu: () => void;
@@ -129,6 +142,10 @@ export const useGameStore = create<GameState>((set, get) => ({
   currentEnemyCount: 0,
   lastSpawnAt: 0,
   lastPickupCountForSpawn: 0,
+  // P2-11: defaults — lastHitBy 'other' so non-enemy damage paths don't
+  // accidentally trigger the caught-by-enemy branch on a stale value.
+  lastHitBy: 'other',
+  lastWinKind: null,
 
   startLevel: (maze, options) =>
     set((s) => {
@@ -179,6 +196,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         // level). Pickup trigger arms immediately via lastPickupCountForSpawn.
         lastSpawnAt: 0,
         lastPickupCountForSpawn: 0,
+        // P2-11: reset hit source + win kind on every level start so a
+        // previous run's `lastHitBy='enemy'` doesn't leak into a fresh
+        // reach-exit level and produce a false caught-by-enemy signal.
+        lastHitBy: 'other',
+        lastWinKind: null,
       };
     }),
 
@@ -320,9 +342,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     return false;
   },
 
-  damage: (n, now) => {
+  damage: (n, now, source) => {
     const s = get();
     if (s.screen !== 'playing') return;
+    // P2-11: default source is 'other' so existing 2-arg callers (and tests
+    // that never pass a source) keep their behavior. Only the engine's
+    // onEnemyContact path passes 'enemy', which is what unlocks the
+    // caught-by-enemy tutorial completion path below.
+    const hitSource: 'enemy' | 'other' = source ?? 'other';
     // P2-4a F4: bump the hit counter unconditionally. Even when the call
     // collapses into an invuln-window no-op (no health change), the UI
     // still needs to re-trigger the flash animation so a second contact
@@ -343,19 +370,37 @@ export const useGameStore = create<GameState>((set, get) => ({
       return;
     }
     if (result.health <= 0) {
+      // P2-11: caught-by-enemy tutorial completion. Only fires when ALL:
+      //   - the killing blow came from an enemy (lastHitBy === 'enemy')
+      //   - the level's victory mode is 'caught-by-enemy' (哨兵回廊)
+      // Other death causes (time-trial timeout, falling off world, etc.)
+      // and other levels keep the existing 'game-over' path.
+      if (hitSource === 'enemy' && s.currentMode === 'caught-by-enemy') {
+        set({
+          health: 0,
+          screen: 'win',
+          invulnerableUntil: result.invulnerableUntil,
+          hitCount: s.hitCount + 1,
+          lastHitBy: 'enemy',
+          lastWinKind: 'caught-by-enemy',
+        });
+        return;
+      }
       set({
         health: 0,
         screen: 'game-over',
         invulnerableUntil: result.invulnerableUntil,
         hitCount: s.hitCount + 1,
+        lastHitBy: hitSource,
       });
-    } else {
-      set({
-        health: result.health,
-        invulnerableUntil: result.invulnerableUntil,
-        hitCount: s.hitCount + 1,
-      });
+      return;
     }
+    set({
+      health: result.health,
+      invulnerableUntil: result.invulnerableUntil,
+      hitCount: s.hitCount + 1,
+      lastHitBy: hitSource,
+    });
   },
 
   useItem: (slot) => {
@@ -380,7 +425,10 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   reachExit: (isNewRecord) => {
-    if (get().screen === 'playing') set({ screen: 'win', lastWinIsNewRecord: isNewRecord ?? null });
+    // P2-11: tag the win kind so WinOverlay can render "通关！" instead
+    // of "被追上了" for the reach-exit path. The caught-by-enemy path
+    // sets lastWinKind directly inside damage().
+    if (get().screen === 'playing') set({ screen: 'win', lastWinIsNewRecord: isNewRecord ?? null, lastWinKind: 'reach-exit' });
   },
 
   goToMenu: () =>

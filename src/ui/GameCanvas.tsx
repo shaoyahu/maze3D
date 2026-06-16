@@ -3,6 +3,8 @@ import { Game, type GameBridge } from '../engine/Game';
 import { useGameStore } from '../store/gameStore';
 import { useLevelStore } from '../store/levelStore';
 import { useSettingsStore } from '../store/settingsStore';
+import { useTutorialStore } from '../store/tutorialStore';
+import { validateTutorialSteps } from '../utils/tutorialValidator';
 import { Crosshair } from './components/Crosshair';
 import { Minimap } from './components/Minimap';
 import type { MazeData, StartLevelOptions } from '../maze/types';
@@ -90,7 +92,7 @@ export function GameCanvas({ maze, options }: { maze: MazeData; options?: StartL
       // collapse into hitCount-only no-ops, letting the HealthBar /
       // InvulnerableFlash UI still re-trigger their flash animation
       // without dropping health a second time.
-      onEnemyContact: (n) => useGameStore.getState().damage(n),
+      onEnemyContact: (n) => useGameStore.getState().damage(n, undefined, 'enemy'),
     };
     const game = new Game(bridge);
     game.init(ref.current);
@@ -140,6 +142,16 @@ export function GameCanvas({ maze, options }: { maze: MazeData; options?: StartL
       // The store has already been seeded by App.tsx; we don't call
       // store.startLevel here to avoid double-seeding.
       gameRef.current.startLevel(maze, optionsRef.current);
+      // P2-11: start the tutorial store with this level's steps (if any).
+      // Production levels without `tutorialSteps` get `[]` and the banner
+      // stays hidden. Steps are validated; invalid input is silently dropped
+      // (the validator returns `ok: false` and we just don't start).
+      const validation = validateTutorialSteps(maze.tutorialSteps);
+      if (validation.ok) {
+        useTutorialStore.getState().start(validation.steps);
+      } else {
+        useTutorialStore.getState().reset();
+      }
     }
     // gameRef.current is set by Effect 1 before Effect 2 runs (declaration order).
   }, [maze.id, restartKey]);

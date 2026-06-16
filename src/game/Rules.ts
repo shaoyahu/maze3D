@@ -11,7 +11,19 @@ export function crossesExit(
   start: { x: number; z: number },
   end: { x: number; z: number },
   maze: MazeData,
+  // P2-11: when maze.rules.requireAllPickups is true, the caller must
+  // pass how many pickups the player has collected so far. The exit
+  // only counts as "crossed" once every pickup has been collected.
+  collectedCount?: number,
 ): boolean {
+  // P2-11: `requireAllPickups` gate. Only checked when explicitly
+  // enabled on the level (default off) — existing levels that don't
+  // set the field keep the previous behavior.
+  if (maze.rules.requireAllPickups) {
+    const total = maze.pickups.length;
+    const collected = collectedCount ?? 0;
+    if (collected < total) return false;
+  }
   // Sample start, end, and the midpoint so fast movement (dt spikes, debug
   // speed-up) cannot tunnel past the exit cell.
   const cs = maze.cellSize;
@@ -86,6 +98,29 @@ export function applyDamage(
 
 export function shouldSurviveWin(elapsedTime: number, surviveSeconds: number): boolean {
   return elapsedTime >= surviveSeconds;
+}
+
+// ---------------------------------------------------------------------------
+// P2-11: tutorial-level "caught by enemy" completion signal
+// ---------------------------------------------------------------------------
+
+// Source of the hit that drove the player's health to 0. Only `'enemy'`
+// qualifies for the tutorial `caught-by-enemy` WinOverlay path — falling
+// off the world or any non-enemy damage should still go through GameOver.
+// `lastHitBy: 'other'` is a deliberate catch-all so a future damage
+// source (e.g. timed trap) doesn't accidentally trigger the tutorial
+// completion path.
+export type HitSource = 'enemy' | 'other';
+
+// P2-11: returns true when the player has been caught by an enemy
+// (`health === 0` and the killing blow was from an enemy hit). Used by
+// Game.ts to branch into the `caught-by-enemy` WinOverlay path instead
+// of GameOver. Pure function; safe to call per damage event.
+export function isPlayerCaughtByEnemy(
+  health: number,
+  lastHitBy: HitSource,
+): boolean {
+  return health <= 0 && lastHitBy === 'enemy';
 }
 
 export interface SpawnTriggerInput {
