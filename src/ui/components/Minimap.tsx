@@ -100,7 +100,11 @@ const StaticMaze = memo(function StaticMaze({ maze }: { maze: MazeData }) {
 // position through React state on every frame (which would re-render
 // GameCanvas and everything inside it60x per second). The minimap
 // re-renders on its own at the polling cadence.
+//
+// P2-11: when `maze.hideMinimap` is true, return null. Used by the
+// 哨兵回廊 teaching level to hide the map during the chase.
 export function Minimap({ maze, gameRef }: MinimapProps) {
+ if (maze.hideMinimap) return null;
  useTickRef(gameRef,100);
  const p = gameRef.current?.getPlayerPosition() ?? {
  x: maze.start.x * maze.cellSize + maze.cellSize /2,

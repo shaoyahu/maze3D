@@ -6,6 +6,7 @@ import { useSettingsStore } from '../store/settingsStore';
 import { useTutorialStore } from '../store/tutorialStore';
 import { validateTutorialSteps } from '../utils/tutorialValidator';
 import { Crosshair } from './components/Crosshair';
+import { TutorialBanner } from './components/TutorialBanner';
 import { Minimap } from './components/Minimap';
 import type { MazeData, StartLevelOptions } from '../maze/types';
 import { useT } from '../i18n';
@@ -225,6 +226,8 @@ export function GameCanvas({ maze, options }: { maze: MazeData; options?: StartL
       }} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block' }} />
       {screen === 'playing' && <Crosshair />}
       {screen === 'playing' && <Minimap maze={maze} gameRef={gameRef} />}
+      {/* P2-11: tutorial banner — rendered only when this level has steps. The banner itself hides when currentStepId is null (tutorial finished), so we don't need a separate gate. */}
+      {screen === 'playing' && maze.tutorialSteps && maze.tutorialSteps.length > 0 && <TutorialBanner />}
       {pointerLockError && (
         <div role="alert" style={{
           position: 'absolute', top: 16, left: '50%', transform: 'translateX(-50%)',
