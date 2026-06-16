@@ -53,12 +53,14 @@ export const en: Translations = {
   'overlays.pause.backToMenu': 'Back to Main Menu',
 
   'overlays.win.title': 'Clear!',
+  'overlays.win.subtitle': 'You found the exit',
   'overlays.win.timeUsed': 'Time {time}',
   'overlays.win.pickups': 'Collected {collected} / {total}',
   'overlays.win.best': 'Personal best {time}',
   'overlays.win.newRecord': 'New record!',
   'overlays.win.retry': 'Replay',
   'overlays.win.next': 'Next Level',
+  'overlays.win.toLevels': 'Choose Level',
   'overlays.win.backToMenu': 'Back to Main Menu',
 
   'overlays.gameOver.titleSurvive': 'You fell',
@@ -381,6 +383,10 @@ export const en: Translations = {
   // F-P2-9: pickup-on-wall now surfaces via lastErrorKey instead of
   // the previous silent reject.
   'editor.lastError.pickupOnWall': 'Pickups can only be placed on floor cells — use the Erase tool to carve a passage first',
+  // F-2026-06-16-M-2: same-cell duplicate placement now surfaces a
+  // distinct i18n key so the toolbar message can name the actual
+  // problem (instead of a generic validator error at save time).
+  'editor.lastError.pickupDuplicate': 'A pickup already exists on this cell (only one pickup per cell)',
   'editor.lastError.startOutOfBounds': 'Start is out of grid bounds',
   'editor.lastError.exitOutOfBounds': 'Exit is out of grid bounds',
   'editor.lastError.startOnExit': "Start can't overlap the exit cell",

@@ -66,12 +66,14 @@ export const zh: Translations = {
   'overlays.pause.backToMenu': '返回主菜单',
 
   'overlays.win.title': '通关！',
+  'overlays.win.subtitle': '你找到了出口',
   'overlays.win.timeUsed': '用时 {time}',
   'overlays.win.pickups': '收集 {collected} / {total}',
   'overlays.win.best': '历史最佳 {time}',
   'overlays.win.newRecord': '新纪录！',
   'overlays.win.retry': '重玩',
   'overlays.win.next': '下一关',
+  'overlays.win.toLevels': '选择关卡',
   'overlays.win.backToMenu': '返回主菜单',
 
   'overlays.gameOver.titleSurvive': '坚持失败',
@@ -397,6 +399,10 @@ export const zh: Translations = {
   // the previous silent reject, matching the wall / start / exit
   // placement-actions contract.
   'editor.lastError.pickupOnWall': '拾取物只能放在地面上（请先用「通道」工具凿出地面再放拾取）',
+  // F-2026-06-16-M-2: same-cell duplicate placement now surfaces a
+  // distinct i18n key so the toolbar message can name the actual
+  // problem (instead of a generic validator error at save time).
+  'editor.lastError.pickupDuplicate': '该格子已有拾取物（每格只能放一个）',
   'editor.lastError.startOutOfBounds': '起点位置超出网格范围',
   'editor.lastError.exitOutOfBounds': '终点位置超出网格范围',
   'editor.lastError.startOnExit': '起点不能与终点重叠',
