@@ -167,3 +167,43 @@
 ## §8 Files Reviewed
 
 全项目 158 个文件 (`src/` 全部模块、`tests/` 全测试文件、`public/` 4 个 JSON、`docs/` 全文档、`vitest.config.ts` / `playwright.config.ts` / CI workflows) —— 按 CLAUDE.md 默认范围规则全量覆盖。
+
+---
+
+## §9 Fix Status (P2-10, 2026-06-16)
+
+所有 11 项 finding 已在 P2-10 增量中修复(commit 待用户执行;修改在 working tree 中未 stage)。每项 fix 在源码中留下稳定 tag `F-2026-06-16-{H,M,L}-{N}`,git blame 可定位回本 review 的对应行。
+
+| ID | 文件 : 行 | 修复要点 |
+|---|---|---|
+| **H-1** | `EditorPropertiesPanel.tsx:100` | 评审窗口时 clamp 已是正确形式 (`Math.max(min, Math.min(max, ...))`)；无需修改。`// F-2026-06-16-H-1` 注释保留作为锚点 |
+| **H-2** | `src/utils/gameUrl.ts:182-188` | `buildGameSearchParams` 始终输出 `progressive=0`/`=1`(不只在 enabled 时) |
+| **H-3** | `EditorPropertiesPanel.tsx:469-487` | 改用 `e.target.valueAsNumber` 而非 `Number(e.target.value)`(后者把 `''` 映射为 0,会接受清空输入为"0"edit) |
+| **M-1** | `editorStore.ts:785-822` | `updateSize` 在重建 all-walls 之前过滤 OOB 的 `pickups` / `enemies` + 路径节点 |
+| **M-2** | `editorStore.ts:636-647` + `i18n/zh.ts`、`en.ts` | `placePickup` 加同格重复检测,新增 i18n key `editor.lastError.pickupDuplicate` |
+| **M-3** | `EditorPropertiesPanel.tsx:246,248` | `Math.max(0, ...)` → `Math.max(1, ...)`(对齐 validator 的 `> 0` 规则) |
+| **M-4** | `EditorViewport.tsx:171-178` | `handleCellClick` 末尾加 `const _exhaustive: never = tool;` — tsc 编译期验证 |
+| **M-5** | `EditorPropertiesPanel.tsx:602-610` | `renderBody` 末尾加 `const _exhaustive: never = selection;` — tsc 编译期验证 |
+| **L-1** | `editorStore.ts`(多 action) | `setTool` / `select` / `clearSelection` / 7 个 commitLevel 成功路径同时清 `lastError` + `lastErrorKey` |
+| **L-2** | `EditorViewport.tsx:97` | ESC handler 加 `if (helpOpen) return;` 守卫,防止"关闭抽屉 + 清选择 + 切工具"三连击 |
+| **L-3** | `src/entities/Enemy.ts:65-78` | `currentTarget` 初始 1 而非 0,`heading = headingToward(spawn, path[1])` —— path[0]==spawn,旧版零距离导致 heading fallback 为 `{x:1, z:0}`(东),FOV 锥形方向错误 |
+
+**测试同步改动**:
+- `tests/unit/entities/Enemy.test.ts` — `makeSpawn` 默认 `path` 改为 `[{0,0}, {2,0}]`(path[0]=spawn)以匹配新 `currentTarget=1` 语义;重写 patrol 循环 + dwellTime 4 个测试;新增 L-3 `initial heading` describe 块
+- `tests/unit/collision.test.ts` — cross-node 巡逻测试的 path 同步调整
+- `tests/unit/store/editorStore.test.ts` — 新增 M-2 duplicate 检测测试 + L-1 setTool-clears-lastErrorKey 测试
+- `tests/unit/utils/gameUrl.test.ts` — 新增 H-2 disabled round-trip 测试
+- `tests/component/editor/EditorPropertiesPanel.test.tsx` — 新增 H-3 NaN 守卫测试 + M-3 validator-parity 2 个测试
+- `tests/component/editor/EditorViewport.test.tsx` — 新增 L-2 ESC describe 块(2 case: open/closed)
+- `tests/component/app.routing.test.tsx` — H-2 disabled URL 断言从 `not.toContain('progressive=')` 改为 `toContain('progressive=0')`(原断言是旧 bug 的行为)
+
+**验证结果**:
+- `npm run typecheck`: 0 error
+- `npm test`: 903 passed | 1 skipped | 0 failed(基线 893 / 3 / 0,本次净增 10 个 case)
+
+**验证为假阳性的子代理报告**:无。
+
+**跨切关注执行情况**:
+- §6 中 "建议在关键数值 UI 上加单测" → 本次 H-3 / M-3 测试已落地(EditorPropertiesPanel component suite)
+- §6 中 "建议抽 `clearLastErrorPair()` 辅助函数" → **未抽**;改为在每个成功路径显式展开 `{ lastError: null, lastErrorKey: null }`(共 9 个 set)。抽公共 helper 收益边际,且增加间接层 — 保持显式以保留类型推导与代码可读性
+- §7 "立即修 H-1" → H-1 评审窗口时已正确,无修改
