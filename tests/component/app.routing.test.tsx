@@ -74,9 +74,9 @@ describe('App routing', () => {
     // F-project-review-2026-06-14: deep-link should not require going
     // through the menu first. The GamePage renders the stubbed canvas
     // (mocked) and the gameStore flips to 'playing' once the level loads.
-    // level-tiny is shipped in public/levels/level-tiny.json — a real id
-    // the built-in provider can resolve without extra mocking.
-    renderAt(['/game?id=level-tiny']);
+    // P2-11: teaching-01 is shipped in public/levels/teaching-01.json —
+    // a real id the built-in provider can resolve without extra mocking.
+    renderAt(['/game?id=teaching-01']);
     await waitFor(() => expect(screen.getByTestId('game-canvas-stub')).toBeInTheDocument());
     await waitFor(() => expect(useGameStore.getState().screen).toBe('playing'));
   });

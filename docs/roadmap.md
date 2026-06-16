@@ -10,9 +10,9 @@
 
 | 字段 | 值 |
 |---|---|
-| 活跃增量 | **P2-11 教学关卡重设计**（spec + plan 已写，待用户批准开始实施） |
-| 已完成 | P2-2 14/14 ✅ + P2-3 14/14 ✅ + P2-4a 16/16 ✅ + P2-4b 20/20 ✅ + P2-5 16/16 ✅ + P2-6 10/10 ✅ + P2-7 8/8 ✅ + P2-9 ✅ + P2-10 11/11 ✅ |
-| 下一个任务 | 待用户批准 P2-11 实施；候选后续：①P2-8 i18n 完成(仍标 🔄 in-progress draft)；②roadmap §「已知未跟进的测试债务」中 8 处 e2e `skip`/`fixme` + 2 处 mainMenu.revamp skip(明确不在 P2-10 范围) |
+| 活跃增量 | （等待用户指派下一个增量 — 候选见下方） |
+| 已完成 | P2-2 14/14 ✅ + P2-3 14/14 ✅ + P2-4a 16/16 ✅ + P2-4b 20/20 ✅ + P2-5 16/16 ✅ + P2-6 10/10 ✅ + P2-7 8/8 ✅ + P2-9 ✅ + P2-10 11/11 ✅ + **P2-11 16/16 ✅** |
+| 下一个任务 | 待用户指派 · 候选：①P2-8 i18n 完成(仍标 🔄 in-progress draft)；②roadmap §「已知未跟进的测试债务」中 8 处 e2e `skip`/`fixme` + 2 处 mainMenu.revamp skip(明确不在 P2-10 范围) |
 | 最后更新 | 2026-06-16 |
 | 最近 commit | 见 `git log --oneline -1`（避免追尾，由 Claude 主动查） |
 
@@ -63,7 +63,7 @@
 | P2-8 | 第二语言支持（English） (自研轻量 i18n：`getT` + `useT` + `settingsStore.language`；中英资源 `src/i18n/resources/{zh,en}.ts`；`/settings` 实时切换；既有 279 行中文测试断言零迁移) | P1 | — | Medium | `docs/increments/p2-8-i18n/` | 🔄 in-progress (draft, 2026-06-15) |
 | P2-9 | 编辑器 UX 修复 + 使用手册 (拆分 wall/erase 两工具；修复 addEnemyNode 默认坐标；placePickup 加 lastErrorKey；"拾取"→"道具"重命名；新增 EditorHelpDrawer cheat-sheet 抽屉) | P1 | P2-4b | Small–Medium | `docs/increments/p2-9-editor-ux-fix-and-help/` | ✅ done (2026-06-16) |
 | P2-10 | 代码评审 11 项修复 (H1 Stepper clamp 颠倒 · H2 URL progressive 丢失 · H3 路径节点 NaN · M1 updateSize OOB · M2 重复拾取物 · M3 initialTime=0 · M4/M5 穷尽性检查 · L1 lastErrorKey 清理 · L2 ESC 冲突 · L3 敌人朝向) | P1 | P2-9 | Small | `docs/increments/p2-10-review-fixes/` | ✅ done (11/11) (2026-06-16) |
-| P2-11 | 教学关卡重设计（4 关重命名 + 教学步骤系统 + 哨兵回廊 回字形迷宫 + caught-by-enemy 胜利类型 + requireAllPickups 门控 + 编辑器 4 个新字段） | P1 | P2-4a, P2-8 | Medium | `docs/increments/p2-11-tutorial-revamp/` | 🔄 in-progress (spec+plan 2026-06-16) |
+| P2-11 | 教学关卡重设计（4 关重命名 + 教学步骤系统 + 哨兵回廊 回字形迷宫 + caught-by-enemy 胜利类型 + requireAllPickups 门控 + 编辑器 4 个新字段） | P1 | P2-4a, P2-8 | Medium | `docs/increments/p2-11-tutorial-revamp/` | ✅ done (16/16) (2026-06-16) |
 
 > **P2-1 已删除**：原计划"多关卡 JSON（中/大尺寸）"被 P2-3 算法生成取代。MVP 保留 `level-small.json` 作为"教学关"，`level-tiny.json` 留 E2E。
 > **P2-4 拆分**：原"敌人 + 编辑器"X-Large 拆成 P2-4a（敌人+survive mode，依赖 P2-3）和 P2-4b（编辑器，独立）。

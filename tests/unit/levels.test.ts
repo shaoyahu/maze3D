@@ -44,18 +44,18 @@ function isSolvable(
 }
 
 describe('level JSON files', () => {
-  it('level-small.json loads and validates via JsonMazeProvider', async () => {
-    const data = loadJson('level-small.json');
-    const provider = new JsonMazeProvider({ 'level-small': data });
-    const maze = await provider.load('level-small');
-    expect(maze.id).toBe('level-small');
+  it('teaching-04.json loads and validates via JsonMazeProvider', async () => {
+    const data = loadJson('teaching-04.json');
+    const provider = new JsonMazeProvider({ 'teaching-04': data });
+    const maze = await provider.load('teaching-04');
+    expect(maze.id).toBe('teaching-04');
     expect(maze.size).toEqual({ width: 10, depth: 10 });
     expect(maze.start).toEqual({ x: 0, z: 0 });
     expect(maze.exit).toEqual({ x: 9, z: 9 });
   });
 
-  it('level-small.json is solvable from start to exit', async () => {
-    const data = loadJson('level-small.json') as {
+  it('teaching-04.json is solvable from start to exit', async () => {
+    const data = loadJson('teaching-04.json') as {
       walls: number[][];
       start: { x: number; z: number };
       exit: { x: number; z: number };
@@ -63,18 +63,18 @@ describe('level JSON files', () => {
     expect(isSolvable(data.walls, data.start, data.exit)).toBe(true);
   });
 
-  it('level-tiny.json loads and validates via JsonMazeProvider', async () => {
-    const data = loadJson('level-tiny.json');
-    const provider = new JsonMazeProvider({ 'level-tiny': data });
-    const maze = await provider.load('level-tiny');
-    expect(maze.id).toBe('level-tiny');
+  it('teaching-01.json loads and validates via JsonMazeProvider', async () => {
+    const data = loadJson('teaching-01.json');
+    const provider = new JsonMazeProvider({ 'teaching-01': data });
+    const maze = await provider.load('teaching-01');
+    expect(maze.id).toBe('teaching-01');
     expect(maze.size).toEqual({ width: 3, depth: 3 });
     expect(maze.start).toEqual({ x: 0, z: 1 });
     expect(maze.exit).toEqual({ x: 2, z: 1 });
   });
 
-  it('level-tiny.json is solvable from start to exit', async () => {
-    const data = loadJson('level-tiny.json') as {
+  it('teaching-01.json is solvable from start to exit', async () => {
+    const data = loadJson('teaching-01.json') as {
       walls: number[][];
       start: { x: number; z: number };
       exit: { x: number; z: number };
