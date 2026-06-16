@@ -3019,11 +3019,15 @@
   opacity: 0.8;
 }
 
-/* ----- Mini readout (used in FOV row to draw a tiny frustum) ----- */
+/* ----- Mini readout (used in FOV row to draw a top-down corridor + fan) -----
+   The SVG viewBox is 80×48; the container is sized to match so the corridor
+   walls + fan stay proportional at any rendered scale. The fan stays inside
+   the viewBox even at fov=110° (half-angle 55° → max y extent 14.7 inside
+   the corridor walls at y=8/40), so the top half is never clipped. */
 
 .console-mini-frustum {
-  width: 56px;
-  height: 36px;
+  width: 80px;
+  height: 48px;
   display: block;
 }
 
@@ -3036,4 +3040,77 @@
   text-transform: uppercase;
   color: var(--fg-dim);
   margin-top: 6px;
+}
+
+/* ----- Home (main menu) -----
+   Full-viewport flex container; hero card centered with a clean
+   "Daylight Control Room" look. Lives in its own block so other
+   pages (level select / settings / editor) can keep their shells. */
+
+.home-shell {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  overflow: auto;
+}
+
+.home-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  width: 100%;
+  max-width: 560px;
+  padding: 48px 40px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-2);
+  text-align: center;
+}
+
+.home-hero__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 40px;
+  line-height: 1.15;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--fg);
+}
+
+.home-hero__tagline {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--fg-muted);
+}
+
+.home-hero__cta {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  margin-top: 8px;
+  width: 100%;
+}
+
+/* Equal-width buttons inside the home hero CTA group.
+   align-items: stretch is set above, but the Button component renders
+   as inline-flex with intrinsic sizing — force the children to fill
+   the column so all three are the same width. */
+.home-hero__cta > button,
+.home-hero__cta > a {
+  width: 100%;
+}
+
+@media (max-width: 480px) {
+  .home-shell { padding: 16px; }
+  .home-hero { padding: 32px 24px; gap: 16px; }
+  .home-hero__title { font-size: 32px; }
 }

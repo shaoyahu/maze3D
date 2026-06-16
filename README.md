@@ -305,7 +305,7 @@ npm run test:e2e        # 端到端（Playwright，自动启动 dev server）
 
 ### 关键细节
 
-- **Vite `base`**:`vite.config.ts` 已设 `base: '/maze3D/'`,与仓库名一致,资产路径才能正确解析。
+- **Vite `base`**:`vite.config.ts` 设 `base: './'`(相对路径)。dev 直接访问 `http://localhost:5173/` 即可;prod 部署到 `https://shaoyahu.github.io/maze3D/` 时,相对路径会从当前 URL 自动解析到该子路径下的资源。比绝对路径 `/maze3D/` 更便携 —— dev 不用记子路径、哪天换部署子路径也不用改 config。
 - **SPA 404 兜底**:工作流在 `npm run build` 之后追加一步 `cp dist/index.html dist/404.html`。项目用 `BrowserRouter` 且 URL 是关卡身份规范来源(`/game?seed=…`);用户分享 / 刷新 / 后退到任意深路径时,GitHub Pages 没有对应 HTML,会回退到 404.html —— 把它做成 index.html 的副本,SPA 启动后由 React Router 接管,`useSearchParams` 仍能读到原本 URL 上的关卡查询串。
 - **权限**:工作流显式声明 `permissions: contents: read / pages: write / id-token: write`,符合 least-privilege 原则。
 - **Node 版本**:固定 `node-version: 20`,与项目 `package.json` 兼容(Node 18+ 即可,但 CI 锁 20 以求稳定)。

@@ -26,16 +26,61 @@ const SECTIONS: ReadonlyArray<{ id: string; labelKey: string; codename: string; 
 ];
 
 function FovFrustum({ fov }: { fov: number }) {
+  // Half-angle in radians. Slider range is 40°–110°, so α ∈ [20°, 55°].
   const clamped = Math.max(40, Math.min(110, fov));
-  const t = (clamped - 40) / 70;
-  const w = 8 + t * 20;
-  const h = 14;
+  const alpha = ((clamped / 2) * Math.PI) / 180;
+
+  // Top-down view of a corridor: walls run along y=8 (top) and y=40
+  // (bottom). The player stands at (px, py) facing -x (left). The vision
+  // fan is r long; for r=18 the max y-extent at α=55° is 18·sin(55°)≈14.7,
+  // which lands at y≈9.3 (inside the top wall) — the fan fully fits in
+  // the viewBox even at 110° AND visually runs into the walls, which is
+  // the whole point: the user can see how much of the corridor width
+  // the FOV covers at the player's current setting.
+  const px = 62;
+  const py = 24;
+  const r = 18;
+  const farX = px - r * Math.cos(alpha);
+  const farYTop = py - r * Math.sin(alpha);
+  const farYBot = py + r * Math.sin(alpha);
+  const fmt = (n: number) => n.toFixed(2);
+
   return (
-    <svg className="console-mini-frustum" viewBox="0 0 56 36" aria-hidden="true" style={{ color: 'var(--accent)' }}>
-      <line x1="0" y1={h / 2} x2="56" y2={(h - w) / 2} stroke="currentColor" strokeWidth="0.6" opacity="0.55" />
-      <line x1="0" y1={h / 2} x2="56" y2={(h + w) / 2} stroke="currentColor" strokeWidth="0.6" opacity="0.55" />
-      <line x1="56" y1={(h - w) / 2} x2="56" y2={(h + w) / 2} stroke="currentColor" strokeWidth="0.6" opacity="0.55" />
-      <circle cx="0" cy={h / 2} r="2" fill="currentColor" opacity="0.85" />
+    <svg
+      className="console-mini-frustum"
+      viewBox="0 0 80 48"
+      aria-hidden="true"
+      style={{ color: 'var(--accent)' }}
+    >
+      {/* Corridor walls (top + bottom). Subdued so the fan stays the focus. */}
+      <line x1="0" y1="8"  x2="80" y2="8"  stroke="currentColor" strokeWidth="0.7" opacity="0.45" />
+      <line x1="0" y1="40" x2="80" y2="40" stroke="currentColor" strokeWidth="0.7" opacity="0.45" />
+      {/* Faint floor center-line — gives the corridor a sense of length. */}
+      <line
+        x1="0" y1="24" x2="80" y2="24"
+        stroke="currentColor" strokeWidth="0.3" opacity="0.18"
+        strokeDasharray="2 3"
+      />
+
+      {/* Vision fan: filled wedge + two rays + an arc at the far end. */}
+      <path
+        d={`M ${px} ${py} L ${fmt(farX)} ${fmt(farYTop)} A ${r} ${r} 0 0 0 ${fmt(farX)} ${fmt(farYBot)} Z`}
+        fill="currentColor"
+        opacity="0.18"
+      />
+      <line x1={px} y1={py} x2={farX} y2={farYTop} stroke="currentColor" strokeWidth="0.8" opacity="0.9" />
+      <line x1={px} y1={py} x2={farX} y2={farYBot} stroke="currentColor" strokeWidth="0.8" opacity="0.9" />
+      <path
+        d={`M ${fmt(farX)} ${fmt(farYTop)} A ${r} ${r} 0 0 0 ${fmt(farX)} ${fmt(farYBot)}`}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="0.8"
+        opacity="0.9"
+      />
+
+      {/* Player: head dot + a small tick pointing in the facing direction. */}
+      <circle cx={px} cy={py} r="1.6" fill="currentColor" opacity="0.95" />
+      <line x1={px - 1.5} y1={py} x2={px - 4} y2={py} stroke="currentColor" strokeWidth="1.2" opacity="0.95" />
     </svg>
   );
 }
