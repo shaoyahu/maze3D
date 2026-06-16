@@ -243,9 +243,9 @@ function LevelMetadataForm({ level }: { level: MazeData }): React.ReactElement {
     }, 300);
     return () => window.clearTimeout(id);
   }, [width, depth, updateSize]);
-  useDebouncedCommit(initialTime, (v) => updateRule({ initialTime: Math.max(0, Math.floor(v)) }), 300);
+  useDebouncedCommit(initialTime, (v) => updateRule({ initialTime: Math.max(1, Math.floor(v)) }), 300);
   useDebouncedCommit(maxHealth, (v) => updateRule({ maxHealth: Math.max(1, Math.floor(v)) }), 300);
-  useDebouncedCommit(timeOnPickup, (v) => updateRule({ timeOnPickup: Math.max(0, Math.floor(v)) }), 300);
+  useDebouncedCommit(timeOnPickup, (v) => updateRule({ timeOnPickup: Math.max(1, Math.floor(v)) }), 300);
   useDebouncedCommit(victory, (v) => {
     if (isVictoryType(v)) updateRule({ victory: v });
   }, 300);
@@ -466,7 +466,20 @@ function EnemyForm({ enemy }: { enemy: EnemySpawn }): React.ReactElement {
               value={node.x}
               aria-label={`node-${i}-x`}
               data-testid={`enemy-path-x-${i}`}
-              onChange={(e) => moveEnemyNode(enemy.id, i, Number(e.target.value), node.z)}
+              // F-2026-06-16-H-3: guard against non-numeric input. Read
+              // `valueAsNumber` (the browser/JSX canonical numeric form)
+              // instead of `Number(e.target.value)` — the latter maps an
+              // empty string to 0 and would happily accept the user
+              // clearing the field as a "0" edit. valueAsNumber is NaN
+              // whenever the value isn't a valid number (empty, "abc",
+              // "1.5e", …), so the `Number.isFinite` gate correctly drops
+              // the keystroke. Without this guard clamp(NaN, lo, hi)
+              // returns NaN and poisons the path's collision + render
+              // pipeline.
+              onChange={(e) => {
+                const v = e.target.valueAsNumber;
+                if (Number.isFinite(v)) moveEnemyNode(enemy.id, i, v, node.z);
+              }}
             />
             <input
               type="number"
@@ -474,7 +487,10 @@ function EnemyForm({ enemy }: { enemy: EnemySpawn }): React.ReactElement {
               value={node.z}
               aria-label={`node-${i}-z`}
               data-testid={`enemy-path-z-${i}`}
-              onChange={(e) => moveEnemyNode(enemy.id, i, node.x, Number(e.target.value))}
+              onChange={(e) => {
+                const v = e.target.valueAsNumber;
+                if (Number.isFinite(v)) moveEnemyNode(enemy.id, i, node.x, v);
+              }}
             />
             <button
               type="button"
@@ -602,7 +618,17 @@ function renderBody({ selection, level }: RenderBodyArgs): React.ReactNode {
     const enemy = level.enemies.find((e) => e.id === selection.id);
     return enemy ? <EnemyForm enemy={enemy} /> : <SelectionMissing kind="enemy" />;
   }
-  return <WallForm x={selection.x} z={selection.z} />;
+  if (selection.kind === 'wall') {
+    return <WallForm x={selection.x} z={selection.z} />;
+  }
+  // F-2026-06-16-M-5: exhaustiveness check. If a new EditorSelection
+  // variant is added (e.g. start-cell selection) without a branch
+  // above, the `never` assignment fails to compile, catching the
+  // missing branch at build time. The previous fallthrough returned
+  // `WallForm` with `selection.x` / `.z` (which would be `undefined`
+  // for a missing variant) and silently rendered a broken card.
+  const _exhaustive: never = selection;
+  throw new Error(`renderBody: unhandled selection kind ${String(_exhaustive)}`);
 }
 
 export function EditorPropertiesPanel(): React.ReactElement {

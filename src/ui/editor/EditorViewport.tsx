@@ -71,6 +71,15 @@ export function EditorViewport(): React.ReactElement {
   const clearSelection = useEditorStore((s) => s.clearSelection);
   const setTool = useEditorStore((s) => s.setTool);
 
+  // F-P2-9: local UI state for the help-drawer toggle. Kept in the
+  // viewport (rather than the editor store) because the drawer's
+  // open/closed bit is purely cosmetic — it must not affect dirty,
+  // history, or save behaviour. Declared before the ESC useEffect so
+  // the L-2 gate (`if (helpOpen) return;`) is in scope — F-2026-06-16-L-2
+  // closed the "ESC while the help drawer is open also resets the
+  // viewport state" double-action bug.
+  const [helpOpen, setHelpOpen] = useState(false);
+
   // F-2026-06-15-M-4.5: global Escape handler. Without this, the user
   // has no keyboard path to leave a non-select tool or to clear the
   // current selection. Pressing Escape clears any selection AND resets
@@ -88,12 +97,19 @@ export function EditorViewport(): React.ReactElement {
         const tag = t.tagName;
         if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t.isContentEditable) return;
       }
+      // F-2026-06-16-L-2: when the help drawer is open, ESC is owned by
+      // the drawer (closes it). Letting the viewport's listener also
+      // fire would clear the selection + reset the tool — a confusing
+      // "two actions for one keystroke" UX. e.stopPropagation() inside
+      // EditorHelpDrawer's own listener can't block a sibling listener
+      // on the same target, so the gating has to live here.
+      if (helpOpen) return;
       clearSelection();
       setTool('select');
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [clearSelection, setTool]);
+  }, [clearSelection, setTool, helpOpen]);
 
   // hoverCell lives in a child <HoverReadout> rather than here so each
   // mousemove only re-renders the small readout, not the entire grid.
@@ -110,11 +126,9 @@ export function EditorViewport(): React.ReactElement {
     if (tool !== 'pan') setHasPanned(false);
   }, [tool]);
 
-  // F-P2-9: local UI state for the help-drawer toggle. Kept in the
-  // viewport (rather than the editor store) because the drawer's
-  // open/closed bit is purely cosmetic — it must not affect dirty,
-  // history, or save behaviour.
-  const [helpOpen, setHelpOpen] = useState(false);
+  // (helpOpen / setHelpOpen are declared above the ESC useEffect so the
+  // L-2 gate can read them — see the F-P2-9 comment on the first
+  // declaration.)
 
   const { pickupByCell, enemyByCell } = useMemo(() => buildLookups(level), [level]);
   const panStateRef = useRef<{ x: number; y: number } | null>(null);
@@ -167,6 +181,14 @@ export function EditorViewport(): React.ReactElement {
         return;
       }
       placeEnemy(x, z, level.size.width);
+    } else {
+      // F-2026-06-16-M-4: exhaustiveness check. If a new EditorTool
+      // variant is added without a branch here, the `never` assignment
+      // fails to compile (tool narrows to `never` after every known
+      // case), catching the missing branch at build time instead of
+      // letting the click silently no-op for the new tool.
+      const _exhaustive: never = tool;
+      throw new Error(`handleCellClick: unhandled tool ${String(_exhaustive)}`);
     }
   };
 
