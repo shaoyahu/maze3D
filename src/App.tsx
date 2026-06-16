@@ -515,8 +515,16 @@ export function AppRoutes() {
 }
 
 export function App() {
+  // Pinned to vite's `base` so the basename follows the build target:
+  // dev  → '/'            (localhost:5173/)
+  // prod → '/maze3D/'     (https://<user>.github.io/maze3D/)
+  // React Router expects basename *without* a trailing slash, while
+  // import.meta.env.BASE_URL is delivered *with* one — strip it.
+  // Falling back to undefined keeps tests / non-vite consumers working
+  // when BASE_URL is just '/'.
+  const basename = import.meta.env.BASE_URL.replace(/\/$/, '') || undefined;
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={basename}>
       <AppRoutes />
     </BrowserRouter>
   );
