@@ -108,8 +108,12 @@ describe('playerVsEnemy', () => {
     // circle out of the negative cell index (which collidesAt treats as
     // a wall — pre-fix the enemy was pinned at the corner). With
     // patrolSpeed=2 and dt=0.5, one tick moves the enemy 1m to (1.5, 0.5).
+    // F-2026-06-16-L-3: with `currentTarget=1` initial, the enemy
+    // patrols from path[0] (= spawn) toward path[1]. Setting
+    // path[0] = (0.5, 0.5) and path[1] = (2.5, 0.5) keeps the
+    // +X-only direction so one tick lands at (1.5, 0.5) as before.
     const enemy = new Enemy(
-      { id: 'e1', x: 0.5, z: 0.5, path: [{ x: 2.5, z: 0.5 }, { x: 2.5, z: 2.5 }] },
+      { id: 'e1', x: 0.5, z: 0.5, path: [{ x: 0.5, z: 0.5 }, { x: 2.5, z: 0.5 }] },
       { playerSpeed: 2 / 0.6, chaseMultiplier: 1.5 },
       openGrid,
     );

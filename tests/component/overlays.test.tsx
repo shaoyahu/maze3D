@@ -90,8 +90,12 @@ describe('overlays', () => {
   it('WinOverlay shows time used from elapsedTime', () => {
     useGameStore.getState().startLevel(maze);
     useGameStore.setState({ elapsedTime: 25 });
-    render(<WinOverlay onRetry={() => {}} onQuit={() => {}} />);
-    expect(screen.getByText(/用时 00:25/)).toBeInTheDocument();
+    render(<WinOverlay onRetry={() => {}} onQuit={() => {}} onLevels={() => {}} />);
+    // F-P2-N (WinOverlay revamp): the time label and value are now in
+    // separate StatTile nodes; assert each one independently rather
+    // than a single regex across the whole string.
+    expect(screen.getByText('用时')).toBeInTheDocument();
+    expect(screen.getByText('00:25')).toBeInTheDocument();
   });
 
   it('WinOverlay shows elapsedTime when time pickups push timeRemaining past initialTime', () => {
@@ -99,15 +103,20 @@ describe('overlays', () => {
     // Player picked up a +15s time pickup, then played for 10s and reached the exit.
     // elapsedTime=10, timeRemaining=60-10+15=65 (past initialTime).
     useGameStore.setState({ timeRemaining: 65, elapsedTime: 10 });
-    render(<WinOverlay onRetry={() => {}} onQuit={() => {}} />);
-    expect(screen.getByText(/用时 00:10/)).toBeInTheDocument();
+    render(<WinOverlay onRetry={() => {}} onQuit={() => {}} onLevels={() => {}} />);
+    // F-P2-N: same split-stat-tile assertion as the test above.
+    expect(screen.getByText('用时')).toBeInTheDocument();
+    expect(screen.getByText('00:10')).toBeInTheDocument();
   });
 
   it('WinOverlay shows "新纪录！" when lastWinIsNewRecord is true (P2-4a FR-18)', () => {
     useGameStore.getState().startLevel(maze);
     useGameStore.setState({ elapsedTime: 30, lastWinIsNewRecord: true });
-    render(<WinOverlay onRetry={() => {}} onQuit={() => {}} />);
-    expect(screen.getByText('新纪录！')).toBeInTheDocument();
+    render(<WinOverlay onRetry={() => {}} onQuit={() => {}} onLevels={() => {}} />);
+    // F-P2-N: the new-record badge is prefixed with a ✦ glyph and
+    // wrapped in a pill; the text is split across the glyph + the
+    // label, so query by the dedicated testid instead of the string.
+    expect(screen.getByTestId('win-new-record')).toBeInTheDocument();
   });
 
   it('GameOverOverlay in survive mode shows 坚持时间 + 击中数 (P2-4a FR-18)', () => {

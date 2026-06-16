@@ -214,6 +214,28 @@ describe('buildGameSearchParams', () => {
     }
   });
 
+  // F-2026-06-16-H-2: buildGameSearchParams previously dropped the
+  // `progressive` param when enabled=false, so a user who disabled
+  // progressive would lose the setting on URL round-trip
+  // (parseGameSearchParams left spawnSchedule undefined → startLevel
+  // fell back to SPAWN_SCHEDULE_DEFAULT with enabled=true).
+  it('round-trips progressive=disabled (URL keeps `progressive=0` and the parsed options keep enabled=false)', () => {
+    const built = buildGameSearchParams(VALID_SEED_ID, {
+      mode: 'survive',
+      spawnSchedule: { ...SPAWN_SCHEDULE_DEFAULT, enabled: false },
+    });
+    // 1) The URL itself must contain the `progressive=0` key — otherwise
+    //    the disabled state is dropped on the wire.
+    expect(built.get(GAME_URL_QUERY_KEYS.PROGRESSIVE_QUERY)).toBe('0');
+    // 2) Round-tripping through parseGameSearchParams must yield
+    //    enabled=false on the parsed options, not fall back to enabled.
+    const parsed = parseGameSearchParams(built);
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) {
+      expect(parsed.parsed.options.spawnSchedule?.enabled).toBe(false);
+    }
+  });
+
   it('omits survive/enemies keys for non-survive modes (they are silently dropped)', () => {
     const built = buildGameSearchParams('teaching-001', {
       mode: 'reach-exit',

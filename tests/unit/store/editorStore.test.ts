@@ -333,6 +333,19 @@ describe('useEditorStore', () => {
       expect(useEditorStore.getState().past.length).toBe(past);
     });
 
+    // F-2026-06-16-L-1: switching the tool is a clear "I want to do
+    // something new" gesture — any error message left over from a
+    // previous rejection (e.g. "wallOnStart") is no longer relevant.
+    it('setTool clears lastErrorKey so the toolbar chip stops showing a stale error', () => {
+      useEditorStore.setState({
+        lastError: 'stale',
+        lastErrorKey: 'editor.lastError.wallOnStart',
+      });
+      useEditorStore.getState().setTool('wall');
+      expect(useEditorStore.getState().lastError).toBeNull();
+      expect(useEditorStore.getState().lastErrorKey).toBeNull();
+    });
+
     it('setCamera merges a partial patch and does NOT push history', () => {
       // Arrange
       useEditorStore.setState({ camera: { x: 0, y: 5, zoom: 1 } });
@@ -759,6 +772,34 @@ describe('useEditorStore', () => {
       useEditorStore.getState().placePickup(2, 1);
       expect(useEditorStore.getState().level.pickups).toHaveLength(0);
       expect(useEditorStore.getState().lastErrorKey).toBe('editor.lastError.pickupOnWall');
+      expect(useEditorStore.getState().dirty).toBe(false);
+      expect(useEditorStore.getState().past.length).toBe(0);
+    });
+
+    // F-2026-06-16-M-2: same-cell duplicate placement used to silently
+    // stack two pickups at the same (x, z); `validateMaze` then rejected
+    // the level at save time with no hint about which save attempt was
+    // the bad one. Mirror the wall/start/exit placement-actions contract
+    // and surface `pickupDuplicate` so the user can react immediately.
+    it('on a cell that already has a pickup is a no-op and sets lastErrorKey (pickupDuplicate)', () => {
+      useEditorStore.setState({
+        level: makeMaze({
+          walls: [
+            [0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0],
+          ],
+          pickups: [{ id: 'p-existing', x: 2, z: 2, type: 'time', value: 10 }],
+        }),
+        past: [],
+        dirty: false,
+        lastError: null,
+        lastErrorKey: null,
+      });
+      useEditorStore.getState().placePickup(2, 2);
+      expect(useEditorStore.getState().level.pickups).toHaveLength(1);
+      expect(useEditorStore.getState().lastErrorKey).toBe('editor.lastError.pickupDuplicate');
       expect(useEditorStore.getState().dirty).toBe(false);
       expect(useEditorStore.getState().past.length).toBe(0);
     });

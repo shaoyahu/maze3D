@@ -132,8 +132,12 @@ describe('buildGameSearchParams round-trip (smoke)', () => {
     expect(qs).toContain('mode=survive');
     expect(qs).toContain('survive=60');
     expect(qs).toContain('enemies=4');
-    // progressive is enabled=false → no query key, keeps the URL short.
-    expect(qs).not.toContain('progressive=');
+    // F-2026-06-16-H-2: the URL must round-trip the disabled case too.
+    // Previously the build helper dropped the `progressive` key when
+    // enabled=false, so refreshing the URL silently re-enabled
+    // progressive (parseGameSearchParams left spawnSchedule undefined
+    // and startLevel fell back to SPAWN_SCHEDULE_DEFAULT.enabled=true).
+    expect(qs).toContain('progressive=0');
   });
 
   it('serializes a hand-crafted id without seed-mode decorations', () => {

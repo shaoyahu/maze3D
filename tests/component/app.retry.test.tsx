@@ -151,10 +151,10 @@ describe('App onRetry (F9)', () => {
     await act(async () => {
       useGameStore.setState({ screen: 'win' });
     });
-    expect(screen.getByText('重玩')).toBeInTheDocument();
+    expect(screen.getByTestId('win-retry')).toBeInTheDocument();
 
     await act(async () => {
-      fireEvent.click(screen.getByText('重玩'));
+      fireEvent.click(screen.getByTestId('win-retry'));
     });
 
     const s = useGameStore.getState();

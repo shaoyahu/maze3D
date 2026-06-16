@@ -186,6 +186,26 @@ describe('EditorPropertiesPanel (P2-4b #12)', () => {
     expect(useEditorStore.getState().level.rules.initialTime).toBe(90);
   });
 
+  // F-2026-06-16-M-3: validator requires initialTime > 0 and
+  // timeOnPickup > 0. The UI used to clamp to `Math.max(0, ...)` which
+  // let the user type 0 and produce an unsaveable level — validateMaze
+  // would reject at save time with no hint about which field was the
+  // problem. Mirror the validator's lower bound in the editor so the
+  // 0 → 1 bump is silent and immediate.
+  it('initialTime input clamps to >= 1 (validator parity)', () => {
+    render(<EditorPropertiesPanel />);
+    fireEvent.change(screen.getByTestId('meta-initial-time'), { target: { value: '0' } });
+    act(() => vi.advanceTimersByTime(300));
+    expect(useEditorStore.getState().level.rules.initialTime).toBe(1);
+  });
+
+  it('timeOnPickup input clamps to >= 1 (validator parity)', () => {
+    render(<EditorPropertiesPanel />);
+    fireEvent.change(screen.getByTestId('meta-time-on-pickup'), { target: { value: '0' } });
+    act(() => vi.advanceTimersByTime(300));
+    expect(useEditorStore.getState().level.rules.timeOnPickup).toBe(1);
+  });
+
   it('change of pickup type debounces and calls updatePickup', () => {
     const pickup: Pickup = { id: 'p1', x: 1, z: 1, type: 'health', value: 5 };
     resetEditor(makeMaze({ pickups: [pickup] }));
@@ -295,6 +315,27 @@ describe('EditorPropertiesPanel (P2-4b #12)', () => {
     render(<EditorPropertiesPanel />);
     fireEvent.change(screen.getByTestId('enemy-path-x-1'), { target: { value: '4' } });
     expect(useEditorStore.getState().level.enemies[0]!.path[1]).toEqual({ x: 4, z: 2 });
+  });
+
+  // F-2026-06-16-H-3: NaN guard on the enemy path-node input. A blank or
+  // letter keystroke produces NaN/0 from `Number(...)`; the guard drops
+  // the keystroke so the store never holds a poisoned NaN coordinate.
+  it('enemy path node input rejects non-numeric input (no NaN in store)', () => {
+    const enemy: EnemySpawn = {
+      id: 'e1',
+      x: 2,
+      z: 2,
+      path: [{ x: 2, z: 2 }, { x: 3, z: 2 }],
+    };
+    resetEditor(makeMaze({ enemies: [enemy] }));
+    useEditorStore.setState({ selection: { kind: 'enemy', id: 'e1' } });
+    render(<EditorPropertiesPanel />);
+    // Type a non-numeric value; the store must not pick up a NaN.
+    fireEvent.change(screen.getByTestId('enemy-path-x-1'), { target: { value: 'abc' } });
+    const pathAfter = useEditorStore.getState().level.enemies[0]!.path[1]!;
+    expect(Number.isFinite(pathAfter.x)).toBe(true);
+    // The store still holds the pre-edit value.
+    expect(pathAfter.x).toBe(3);
   });
 
   it('change of enemy dwell time debounces and calls updateEnemy', () => {

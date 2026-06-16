@@ -23,9 +23,15 @@ function makeSpawn(overrides: Partial<EnemySpawn> = {}): EnemySpawn {
     id: 'e1',
     x: 0,
     z: 0,
+    // F-2026-06-16-L-3: with `currentTarget = 1` initial, the default
+    // spawn's first patrol hop is `path[0] -> path[1]`. Setting
+    // path[0] = spawn and path[1] = +X keeps the initial heading on
+    // (1, 0), matching the legacy semantics the chase / FOV / debounce
+    // tests below were written against. Tests that need a different
+    // geometry override `path` explicitly.
     path: [
+      { x: 0, z: 0 },
       { x: 2, z: 0 },
-      { x: 2, z: 2 },
     ],
     ...overrides,
   };
@@ -37,68 +43,94 @@ function makeEnemy(overrides: Partial<EnemySpawn> = {}, playerSpeed = 1, chaseMu
 
 describe('Enemy', () => {
   describe('patrol→dwell→patrol cycle', () => {
-    it('walks toward path[0], dwells, then advances to path[1]', () => {
-      // F2 (P0): spawn at (0.5, 0.5) (cell-center) so the enemy's ENEMY_RADIUS=0.35
-      // circle never overlaps a negative cell index — pre-fix tests put the
-      // enemy at (0,0) which the new wall-aware moveToward correctly treats
-      // as "out of bounds = wall" and refuses to leave. Path nodes shifted
-      // by the same +0.5 offset keep the relative geometry identical.
+    it('starts patrolling toward path[1] (not path[0]) and advances through the cycle', () => {
+      // F-2026-06-16-L-3: the enemy now starts with `currentTarget = 1`
+      // so the initial FOV cone points along the first patrol segment
+      // instead of the meaningless +X (headingToward(spawn, spawn) is
+      // zero-distance and falls back to {x:1, z:0}). Geometry mirrors
+      // the previous test: spawn (0.5, 0.5), path[(0, 1), (1, 1)] in
+      // cell-centre coords; first segment is +X (length 1).
       const e = makeEnemy(
-        { x: 0.5, z: 0.5, path: [{ x: 1.5, z: 0.5 }, { x: 1.5, z: 1.5 }] },
+        { x: 0.5, z: 0.5, path: [{ x: 0.5, z: 0.5 }, { x: 1.5, z: 0.5 }] },
         1,
         1.5,
       );
-      // patrolSpeed = 0.6; dwellTime = 1.0
       const far = player(1000, 1000); // never in FOV
 
-      // Frame 1: move 0.6 toward (1.5, 0.5). State still patrol.
+      // Frame 1: currentTarget=1 from the constructor, heading along
+      // +X (toward path[1]). Move 0.6 toward (1.5, 0.5). State stays
+      // patrol. Position advances from (0.5, 0.5) by 0.6 along +X.
       e.update(1, far);
       expect(e.state).toBe('patrol');
-      expect(e.currentTarget).toBe(0);
+      expect(e.currentTarget).toBe(1);
       expect(e.position.x).toBeCloseTo(1.1);
 
       // Frame 2: move 0.4 more (clamped to remaining 0.4). Reaches (1.5, 0.5). State -> dwell.
       e.update(1, far);
       expect(e.state).toBe('dwell');
-      expect(e.currentTarget).toBe(0);
+      expect(e.currentTarget).toBe(1);
       expect(e.position.x).toBeCloseTo(1.5);
 
       // Frame 3: tickDwell with dt=1. dwellTimer = 1 - 1 = 0 -> advance target.
       e.update(1, far);
       expect(e.state).toBe('patrol');
-      expect(e.currentTarget).toBe(1);
+      expect(e.currentTarget).toBe(0);
 
-      // Frame 4: move 0.6 toward (1.5, 1.5). heading now points +Z.
+      // Frame 4: move 0.6 toward (0.5, 0.5). heading now points -X.
       e.update(1, far);
       expect(e.state).toBe('patrol');
-      expect(e.position.z).toBeCloseTo(1.1);
+      expect(e.position.x).toBeCloseTo(0.9);
     });
 
-    it('wraps target index back to 0 after the last node', () => {
-      // F2 (P0): shift spawn off the (0,0) corner — see the comment in the
-      // "walks toward path[0]" test for why. Path geometry shifted by the
-      // same +0.5 offset to keep the wrap-around semantics identical.
+    it('wraps target index back to 1 after the last node (L-3 shifted initial target)', () => {
+      // F-2026-06-16-L-3: the wrap semantics still apply (path.length
+      // modular), but the test now exercises a path whose first segment
+      // matches the new initial currentTarget=1 behaviour: spawn (0.5,
+      // 0.5) at path[0], path[1] = (0.5, 0.5) = spawn, path[2] = (1.5,
+      // 0.5) so the enemy has a real first hop to test against. Three
+      // nodes keeps the wrap from collapsing to a single dwell tick.
       const e = makeEnemy(
-        { x: 0.5, z: 0.5, path: [{ x: 1.5, z: 0.5 }, { x: 0.5, z: 0.5 }] },
+        {
+          x: 0.5,
+          z: 0.5,
+          path: [
+            { x: 0.5, z: 0.5 },
+            { x: 0.5, z: 0.5 },
+            { x: 1.5, z: 0.5 },
+          ],
+        },
         2,
         1.5,
       );
-      // patrolSpeed = 1.2; path is 1 unit total, 2 nodes
+      // patrolSpeed = 1.2.
       const far = player(1000, 1000);
 
-      // Reach (1.5, 0.5) in 1 frame, then dwell 1s, then advance to (0.5, 0.5).
+      // Initial currentTarget=1; path[1] is the spawn cell so the
+      // first tick is an instant dwell.
       e.update(1, far);
       expect(e.state).toBe('dwell');
-      e.update(1, far); // dwellTimer expires
+      e.update(1, far); // dwellTimer expires -> advance to path[2]
       expect(e.state).toBe('patrol');
-      expect(e.currentTarget).toBe(1);
+      expect(e.currentTarget).toBe(2);
 
-      // Reach (0.5, 0.5), dwell, then wrap to target 0.
+      // Move 1 unit to (1.5, 0.5) and enter dwell.
       e.update(1, far);
       expect(e.state).toBe('dwell');
+      expect(e.position.x).toBeCloseTo(1.5);
+
+      // dwellTimer expires -> wrap to target 0, then path[1] (which is
+      // the spawn cell) is the next target — but the constructor init
+      // had us already past path[1], so we move to path[0] (= spawn)
+      // and dwell again.
       e.update(1, far);
       expect(e.state).toBe('patrol');
       expect(e.currentTarget).toBe(0);
+
+      e.update(1, far);
+      expect(e.state).toBe('dwell');
+      e.update(1, far);
+      expect(e.state).toBe('patrol');
+      expect(e.currentTarget).toBe(1);
     });
   });
 
@@ -191,9 +223,15 @@ describe('Enemy', () => {
 
   describe('dwellTime', () => {
     it('skips the dwell phase when dwellTime is 0', () => {
-      // F2 (P0): same +0.5 offset as the other patrol tests.
+      // F-2026-06-16-L-3: with `currentTarget = 1` initial, the enemy
+      // patrols from spawn (0.5, 0.5) toward path[1] (1.5, 0.5) — i.e.
+      // the second node. The path geometry keeps the same 1-unit hop
+      // so the patrolSpeed × dt math stays identical; only the
+      // "currentTarget after the hop" assertion shifts from 1 to 0
+      // because after the dwell-and-advance the target wraps to path[0]
+      // (the previous path[0] of the legacy test).
       const e = makeEnemy(
-        { x: 0.5, z: 0.5, path: [{ x: 1.5, z: 0.5 }, { x: 0.5, z: 0.5 }], dwellTime: 0 },
+        { x: 0.5, z: 0.5, path: [{ x: 0.5, z: 0.5 }, { x: 1.5, z: 0.5 }], dwellTime: 0 },
         2,
         1.5,
       );
@@ -203,7 +241,7 @@ describe('Enemy', () => {
       expect(e.state).toBe('dwell');
       e.update(0.001, far); // dwellTimer <= 0 -> advance target
       expect(e.state).toBe('patrol');
-      expect(e.currentTarget).toBe(1);
+      expect(e.currentTarget).toBe(0);
     });
   });
 
@@ -211,6 +249,32 @@ describe('Enemy', () => {
     it('throws when the path has fewer than 2 nodes', () => {
       expect(() => makeEnemy({ path: [{ x: 0, z: 0 }] })).toThrow(/at least 2 nodes/);
       expect(() => makeEnemy({ path: [] })).toThrow(/at least 2 nodes/);
+    });
+  });
+
+  // F-2026-06-16-L-3: the enemy's initial heading is now computed
+  // from spawn -> path[1], not spawn -> path[0]. path[0] is the spawn
+  // cell, so headingToward(spawn, spawn) is a zero-distance call that
+  // falls back to the {x:1, z:0} east default — meaning the FOV cone
+  // would point +x regardless of the actual patrol direction. Starting
+  // with currentTarget=1 fixes the FOV to point along the first real
+  // patrol segment.
+  describe('initial heading (F-2026-06-16-L-3)', () => {
+    it('initial heading points toward path[1], not the +X fallback', () => {
+      // path[1] is at (+1, -1) — heading should be the unit vector to
+      // the SE, never the {1, 0} east default that the old init produced.
+      const e = makeEnemy({ path: [{ x: 0, z: 0 }, { x: 1, z: -1 }] });
+      expect(e.heading.x).toBeCloseTo(Math.SQRT1_2);
+      expect(e.heading.z).toBeCloseTo(-Math.SQRT1_2);
+      // And: initial target is path[1], not path[0].
+      expect(e.currentTarget).toBe(1);
+    });
+
+    it('initial heading along a pure +Z patrol (not the legacy +X default)', () => {
+      const e = makeEnemy({ path: [{ x: 0, z: 0 }, { x: 0, z: 2 }] });
+      expect(e.heading.x).toBeCloseTo(0);
+      expect(e.heading.z).toBeCloseTo(1);
+      expect(e.currentTarget).toBe(1);
     });
   });
 
@@ -224,19 +288,20 @@ describe('Enemy', () => {
     it('does not chase through a wall when the player is on the far side', () => {
       // Wall column at cell (1, 0) — meters x range [1, 2], enemy starting
       // at x=0.5 (cell 0 center) and player at x=3.5 (cell 3 center).
-      // F2 (P0): path[0] must differ from the spawn position — otherwise
-      // moveToward returns true on dist=0 in the very first tickPatrol
-      // call and the enemy enters dwell (and never gets to chase). The
-      // first patrol hop is from (0.5, 0.5) to (2.5, 0.5) — same geometry
-      // as before, just with the path ordered target-first.
+      // F2 (P0): path[0] = spawn so the initial currentTarget=1 points
+      // at path[1] = (2.5, 0.5) (the real first hop). Same geometry as
+      // before — first patrol hop is +X by 2 cells.
+      // F-2026-06-16-L-3: this is the same wall-aware movement test;
+      // path[0] = spawn keeps the chase trigger geometry identical to
+      // the legacy version.
       const e = new Enemy(
         {
           id: 'e1',
           x: 0.5,
           z: 0.5,
           path: [
-            { x: 2.5, z: 0.5 },
             { x: 0.5, z: 0.5 },
+            { x: 2.5, z: 0.5 },
           ],
         },
         { playerSpeed: 1, chaseMultiplier: 1.5 },
@@ -267,14 +332,18 @@ describe('Enemy', () => {
       // dwell even though the wall prevents the move. With the fix, the
       // enemy stays in patrol because the resolved position never reaches
       // the target.
+      // F-2026-06-16-L-3: path[0] = spawn so the initial currentTarget=1
+      // points at path[1] = (2.5, 0.5) (the real first hop), matching
+      // the chase test's +X geometry. The wall is at cell (1, 0), so
+      // the enemy still can't reach path[1] and stays in patrol.
       const e = new Enemy(
         {
           id: 'e1',
           x: 0.5,
           z: 0.5,
           path: [
-            { x: 2.5, z: 0.5 },
             { x: 0.5, z: 0.5 },
+            { x: 2.5, z: 0.5 },
           ],
         },
         { playerSpeed: 1, chaseMultiplier: 1.5 },

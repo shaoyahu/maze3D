@@ -372,4 +372,31 @@ describe('EditorViewport (P2-4b #11)', () => {
       expect(useEditorStore.getState().selection).toEqual({ kind: 'wall', x: 1, z: 1 });
     });
   });
+
+  // F-2026-06-16-L-2: when the help drawer is open, ESC is owned by
+  // the drawer (closes it). The viewport's document-level listener
+  // must NOT also fire its reset-action, or one ESC key produces two
+  // visible effects: drawer closes + selection clears + tool resets.
+  describe('ESC key (global handler)', () => {
+    it('clears the selection and resets the tool to "select" when no drawer is open', () => {
+      useEditorStore.setState({ selection: { kind: 'wall', x: 1, z: 1 }, tool: 'wall' });
+      render(<EditorViewport />);
+      fireEvent.keyDown(document, { key: 'Escape' });
+      expect(useEditorStore.getState().selection).toBeNull();
+      expect(useEditorStore.getState().tool).toBe('select');
+    });
+
+    it('does NOT reset the selection or tool when the help drawer is open (L-2)', () => {
+      useEditorStore.setState({ selection: { kind: 'wall', x: 1, z: 1 }, tool: 'wall' });
+      render(<EditorViewport />);
+      // Open the help drawer via its toggle button.
+      fireEvent.click(screen.getByTestId('editor-help-toggle'));
+      // ESC while the drawer is open must be a no-op for the viewport
+      // handler — the drawer's own listener is responsible for closing
+      // the drawer; the viewport must not also fire.
+      fireEvent.keyDown(document, { key: 'Escape' });
+      expect(useEditorStore.getState().selection).toEqual({ kind: 'wall', x: 1, z: 1 });
+      expect(useEditorStore.getState().tool).toBe('wall');
+    });
+  });
 });
