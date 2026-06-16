@@ -119,6 +119,27 @@ describe('overlays', () => {
     expect(screen.getByTestId('win-new-record')).toBeInTheDocument();
   });
 
+  // P2-11: caught-by-enemy tutorial completion path. Different title +
+  // subtitle, suppresses the new-record badge (chase has no timer).
+  it('WinOverlay shows caught-by-enemy copy when lastWinKind is set (P2-11)', () => {
+    useGameStore.getState().startLevel(maze);
+    useGameStore.setState({
+      elapsedTime: 30,
+      lastWinKind: 'caught-by-enemy',
+      lastWinIsNewRecord: true,
+    });
+    render(<WinOverlay onRetry={() => {}} onQuit={() => {}} onLevels={() => {}} />);
+    expect(screen.getByTestId('win-title').textContent).toBe('被追上了 — 教学完成');
+    expect(screen.queryByTestId('win-new-record')).toBeNull();
+  });
+
+  it('WinOverlay falls back to reach-exit copy when lastWinKind is null (P2-11)', () => {
+    useGameStore.getState().startLevel(maze);
+    useGameStore.setState({ elapsedTime: 30, lastWinKind: null });
+    render(<WinOverlay onRetry={() => {}} onQuit={() => {}} onLevels={() => {}} />);
+    expect(screen.getByTestId('win-title').textContent).toBe('通关！');
+  });
+
   it('GameOverOverlay in survive mode shows 坚持时间 + 击中数 (P2-4a FR-18)', () => {
     useGameStore.getState().startLevel(maze, { mode: 'survive', surviveSeconds: 60 });
     useGameStore.setState({ elapsedTime: 17, pickupCount: { collected: 3, total: 5 } });

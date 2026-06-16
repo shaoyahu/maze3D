@@ -76,6 +76,10 @@ export const zh: Translations = {
   'overlays.win.toLevels': '选择关卡',
   'overlays.win.backToMenu': '返回主菜单',
 
+  // P2-11: caught-by-enemy tutorial completion path (哨兵回廊).
+  'overlays.win.caught.title': '被追上了 — 教学完成',
+  'overlays.win.caught.subtitle': '你体验了一次敌人的追逐。下一关：最终试炼',
+
   'overlays.gameOver.titleSurvive': '坚持失败',
   'overlays.gameOver.titleTimeTrial': '时间到！',
   'overlays.gameOver.survived': '坚持了 {time}',

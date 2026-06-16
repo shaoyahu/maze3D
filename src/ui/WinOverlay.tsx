@@ -23,7 +23,13 @@ export function WinOverlay({
   const currentLevelId = useGameStore((s) => s.currentLevelId);
   const timeUsed = useGameStore((s) => s.elapsedTime);
   const newRecord = useGameStore((s) => s.lastWinIsNewRecord);
+  const winKind = useGameStore((s) => s.lastWinKind);
   const best = useLevelStore((s) => (currentLevelId ? s.bestByLevel[currentLevelId] : undefined));
+  // P2-11: caught-by-enemy path picks different copy + skips the new-
+  // record badge (no timer competition in a chase). The "next" button
+  // remains available so the player can advance to the next teaching
+  // level without going back to LevelSelect.
+  const isCaughtByEnemy = winKind === 'caught-by-enemy';
 
   // Drive the entrance animation on mount. The card slides up + fades
   // in over 320ms; the stat tiles stagger 60ms after the card so the
@@ -46,13 +52,15 @@ export function WinOverlay({
         data-testid="win-overlay"
       >
         <div style={accentBarStyle} aria-hidden />
-        <div style={iconStyle} aria-hidden>🏆</div>
+        <div style={iconStyle} aria-hidden>{isCaughtByEnemy ? '👁' : '🏆'}</div>
         <h2 style={titleStyle} data-testid="win-title">
-          {t('overlays.win.title')}
+          {isCaughtByEnemy ? t('overlays.win.caught.title') : t('overlays.win.title')}
         </h2>
-        <p style={subtitleStyle}>{t('overlays.win.subtitle')}</p>
+        <p style={subtitleStyle}>
+          {isCaughtByEnemy ? t('overlays.win.caught.subtitle') : t('overlays.win.subtitle')}
+        </p>
 
-        {newRecord && (
+        {newRecord && !isCaughtByEnemy && (
           <div style={recordBadgeStyle} data-testid="win-new-record">
             ✦ {t('overlays.win.newRecord')}
           </div>

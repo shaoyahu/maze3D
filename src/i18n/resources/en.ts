@@ -63,6 +63,10 @@ export const en: Translations = {
   'overlays.win.toLevels': 'Choose Level',
   'overlays.win.backToMenu': 'Back to Main Menu',
 
+  // P2-11: caught-by-enemy tutorial completion path (哨兵回廊).
+  'overlays.win.caught.title': 'Caught — Tutorial Complete',
+  'overlays.win.caught.subtitle': 'You experienced the chase. Next: Final Trial',
+
   'overlays.gameOver.titleSurvive': 'You fell',
   'overlays.gameOver.titleTimeTrial': "Time's up!",
   'overlays.gameOver.survived': 'Survived {time}',
