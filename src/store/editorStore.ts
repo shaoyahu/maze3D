@@ -21,6 +21,7 @@ import type {
   EnemySpawn,
   LevelRules,
   CellType,
+  TutorialStep,
 } from '../maze/types';
 import {
   pushHistory,
@@ -166,6 +167,14 @@ interface EditorStoreState {
    *  level, etc.). The status bar reads these to render a red banner;
    *  the banner's dismissal handler invokes this. */
   clearStorageFull: () => void;
+
+  // P2-11: per-level P2-11 field setters. Each pushes a history snapshot
+  // so undo/redo captures the change. `setEnemyAggression(null)` clears
+  // the per-level override and falls back to settingsStore.enemyAggression.
+  setHideMinimap: (v: boolean) => void;
+  setEnemyAggression: (v: 'easy' | 'medium' | 'hard' | null) => void;
+  setRequireAllPickups: (v: boolean) => void;
+  setTutorialSteps: (steps: TutorialStep[] | undefined) => void;
 
   // placement actions (push history)
   placeWall: (x: number, z: number) => void;
@@ -486,6 +495,42 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
     clearSelection: () => set({ selection: null, lastError: null, lastErrorKey: null }),
 
     clearLastError: () => set({ lastError: null, lastErrorKey: null }),
+
+    // P2-11: per-level P2-11 fields. Each setter mutates the active draft
+    // and pushes a history snapshot so undo/redo works without extra
+    // wiring. `setEnemyAggression(null)` clears the override (falls back
+    // to settingsStore.enemyAggression); pass `'easy' | 'medium' | 'hard'`
+    // to override.
+    setHideMinimap: (v) => {
+      const s = get();
+      if (!s.draft) return;
+      const next = pushHistory(s.level, { ...s.draft, hideMinimap: v || undefined });
+      set({ level: next.level, draft: next.draft });
+    },
+    setEnemyAggression: (v) => {
+      const s = get();
+      if (!s.draft) return;
+      const rules = { ...s.draft.rules };
+      if (v === null) delete rules.enemyAggression;
+      else rules.enemyAggression = v;
+      const next = pushHistory(s.level, { ...s.draft, rules });
+      set({ level: next.level, draft: next.draft });
+    },
+    setRequireAllPickups: (v) => {
+      const s = get();
+      if (!s.draft) return;
+      const rules = { ...s.draft.rules };
+      if (!v) delete rules.requireAllPickups;
+      else rules.requireAllPickups = true;
+      const next = pushHistory(s.level, { ...s.draft, rules });
+      set({ level: next.level, draft: next.draft });
+    },
+    setTutorialSteps: (steps) => {
+      const s = get();
+      if (!s.draft) return;
+      const next = pushHistory(s.level, { ...s.draft, tutorialSteps: steps && steps.length > 0 ? steps : undefined });
+      set({ level: next.level, draft: next.draft });
+    },
 
     // F-project-review-2026-06-13-D-5/D-18: a successful levelStore
     // save (or a corrective edit that shrinks the draft below

@@ -4,6 +4,7 @@ import type { EnemySpawn, MazeData, Pickup, PickupType, VictoryType } from '../.
 import { isPickupType, isVictoryType, VICTORY_TYPE_VALUES } from '../../maze/types';
 import { Button } from '../components/Button';
 import { useT } from '../../i18n';
+import { validateTutorialSteps } from '../../utils/tutorialValidator';
 
 const PICKUP_TYPE_OPTIONS: readonly PickupType[] = ['time', 'health', 'key'];
 const PICKUP_TYPE_LABEL_KEYS: Record<PickupType, string> = {
@@ -339,6 +340,72 @@ function LevelMetadataForm({ level }: { level: MazeData }): React.ReactElement {
             testIdPrefix="meta-victory"
           />
         </div>
+      </Card>
+
+      {/* P2-11: per-level tutorial / HUD fields. Live in their own Card so
+          designers can leave them collapsed when editing combat levels. */}
+      <Card variant="meta" title="教程 / HUD (P2-11)" chip="tutorial">
+        <label className="editor-properties__field">
+          <input
+            type="checkbox"
+            data-testid="meta-hide-minimap"
+            checked={!!level.hideMinimap}
+            onChange={(e) => useEditorStore.getState().setHideMinimap(e.target.checked)}
+          />
+          <span className="editor-properties__field-label">隐藏 Minimap</span>
+        </label>
+        <label className="editor-properties__field">
+          <span className="editor-properties__field-label">敌人追击速度覆盖</span>
+          <select
+            data-testid="meta-enemy-aggression"
+            value={level.rules.enemyAggression ?? ''}
+            onChange={(e) => {
+              const v = e.target.value;
+              useEditorStore.getState().setEnemyAggression(
+                v === '' ? null : (v as 'easy' | 'medium' | 'hard'),
+              );
+            }}
+          >
+            <option value="">继承全局设置</option>
+            <option value="easy">简单 (1.2x)</option>
+            <option value="medium">中等 (1.5x)</option>
+            <option value="hard">困难 (1.8x)</option>
+          </select>
+        </label>
+        <label className="editor-properties__field">
+          <input
+            type="checkbox"
+            data-testid="meta-require-all-pickups"
+            checked={!!level.rules.requireAllPickups}
+            onChange={(e) => useEditorStore.getState().setRequireAllPickups(e.target.checked)}
+          />
+          <span className="editor-properties__field-label">必须收集全部拾取</span>
+        </label>
+        <label className="editor-properties__field">
+          <span className="editor-properties__field-label">教学步骤 (JSON)</span>
+          <textarea
+            data-testid="meta-tutorial-steps"
+            rows={4}
+            defaultValue={level.tutorialSteps ? JSON.stringify(level.tutorialSteps, null, 2) : ''}
+            onBlur={(e) => {
+              const raw = e.target.value.trim();
+              if (!raw) {
+                useEditorStore.getState().setTutorialSteps(undefined);
+                return;
+              }
+              try {
+                const parsed = JSON.parse(raw);
+                const validation = validateTutorialSteps(parsed);
+                if (validation.ok) {
+                  useEditorStore.getState().setTutorialSteps(validation.steps);
+                }
+              } catch {
+                // Invalid JSON — silently keep the text in the textarea so
+                // the user can fix it. No store mutation.
+              }
+            }}
+          />
+        </label>
       </Card>
     </div>
   );

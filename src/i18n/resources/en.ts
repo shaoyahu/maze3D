@@ -455,4 +455,18 @@ export const en: Translations = {
   'common.save': 'Save',
   'common.delete': 'Delete',
   'common.moreSuffix': ' (+{count} more)',
+
+  // ============================================================
+  // tutorial.teaching0N.stepM — tutorial banner copy
+  // ============================================================
+  'tutorial.teaching01.step1': 'Move the mouse to look around',
+  'tutorial.teaching01.step2': 'Press W A S D to move',
+  'tutorial.teaching01.step3': 'Walk to the exit to finish',
+  'tutorial.teaching02.step1': 'Pick up the item on the ground — touch it to collect',
+  'tutorial.teaching02.step2': 'Now head to the exit',
+  'tutorial.teaching03.step1': 'Enemies patrol — run around the ring',
+  'tutorial.teaching03.step2': 'They are faster — getting caught completes the lesson',
+  'tutorial.teaching04.step1': 'Final trial — collect every item before the exit counts',
+  'tutorial.teaching04.step2': 'All collected — head to the exit',
+  'tutorial.teaching04.step3': 'Cleared!',
 };

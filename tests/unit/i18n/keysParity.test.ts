@@ -23,7 +23,7 @@ describe('i18n resource parity', () => {
 
   it('every key uses the dotted namespace convention', () => {
     const validDomain =
-      /^(app|controls|hud|overlays|settings|levels|editor|common)(\.[a-zA-Z][a-zA-Z0-9]*)+$/;
+      /^(app|controls|hud|overlays|settings|levels|editor|common|tutorial)(\.[a-zA-Z][a-zA-Z0-9]*)+$/;
     for (const k of Object.keys(zh)) {
       expect(k, `key "${k}" must match dotted namespace`).toMatch(validDomain);
     }

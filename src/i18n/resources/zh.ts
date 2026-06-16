@@ -471,4 +471,18 @@ export const zh: Translations = {
   'common.save': '保存',
   'common.delete': '删除',
   'common.moreSuffix': ' 等 {count} 项',
+
+  // ============================================================
+  // tutorial.teaching0N.stepM — 教学步骤 HUD 横幅文案
+  // ============================================================
+  'tutorial.teaching01.step1': '移动鼠标转动视角',
+  'tutorial.teaching01.step2': '按 WASD 键移动',
+  'tutorial.teaching01.step3': '走到出口即可通关',
+  'tutorial.teaching02.step1': '地上的物品可以拾取，靠近自动获取',
+  'tutorial.teaching02.step2': '现在可以走向出口了',
+  'tutorial.teaching03.step1': '敌人在巡逻 — 绕回廊跑',
+  'tutorial.teaching03.step2': '它们比你快 — 被追上即通关',
+  'tutorial.teaching04.step1': '这是最终试炼 — 必须收集全部物品才能在终点通关',
+  'tutorial.teaching04.step2': '已收集全部 — 前往出口',
+  'tutorial.teaching04.step3': '通关！',
 };
