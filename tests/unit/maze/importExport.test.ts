@@ -80,6 +80,38 @@ describe('importExport', () => {
       // Assert — a newline after the opening brace signals pretty-print
       expect(json).toContain('\n  "schemaVersion"');
     });
+
+    // F-2026-06-17-D-L-4: explicit roundtrip coverage for the 5 P2-11
+    // fields. Without these, a future validator regression that swallows
+    // a P2-11 field would pass the existing "top-level fields" assertion
+    // because the top-level keys would still be present (just with
+    // `undefined` sub-fields). The pattern mirrors
+    // tests/unit/maze/levels.test.ts:108-139.
+    it.each([
+      ['i18n', { i18n: { en: 'Sentinel Corridor' } }, (lvl: MazeData) => lvl.i18n],
+      [
+        'tutorialSteps',
+        { tutorialSteps: [{ id: 's1', messageKey: 'tutorial.s1', trigger: { type: 'timeout', timeoutSec: 5 } }] },
+        (lvl: MazeData) => lvl.tutorialSteps,
+      ],
+      ['hideMinimap', { hideMinimap: true }, (lvl: MazeData) => lvl.hideMinimap],
+      [
+        'rules.enemyAggression',
+        { rules: { ...makeValidLevel().rules as object, enemyAggression: 'medium' } as MazeData['rules'] },
+        (lvl: MazeData) => lvl.rules.enemyAggression,
+      ],
+      [
+        'rules.requireAllPickups',
+        { rules: { ...makeValidLevel().rules as object, requireAllPickups: true } as MazeData['rules'] },
+        (lvl: MazeData) => lvl.rules.requireAllPickups,
+      ],
+    ])('roundtrips the P2-11 field %s (F-2026-06-17-D-L-4)', (_label, overrides, getter) => {
+      const level = makeValidLevel(overrides as Record<string, unknown>) as unknown as MazeData;
+      const json = exportLevel(level);
+      const { level: parsedLevel } = parseImport(json);
+      expect(getter(parsedLevel)).toBeDefined();
+      expect(getter(parsedLevel)).toEqual(getter(level));
+    });
   });
 
   describe('parseImport error handling', () => {

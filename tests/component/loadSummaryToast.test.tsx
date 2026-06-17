@@ -55,6 +55,7 @@ describe('App loadSummary toast (D-10)', () => {
         lastLoadSummary: {
           recordsDroppedKeys: [],
           customsDroppedKeys: ['custom-stale'],
+          foldersDroppedKeys: [],
           recordsMigrationError: null,
           customsMigrationError: null,
         },
@@ -75,6 +76,7 @@ describe('App loadSummary toast (D-10)', () => {
         lastLoadSummary: {
           recordsDroppedKeys: ['l1-old'],
           customsDroppedKeys: [],
+          foldersDroppedKeys: [],
           recordsMigrationError: null,
           customsMigrationError: null,
         },
@@ -92,6 +94,7 @@ describe('App loadSummary toast (D-10)', () => {
         lastLoadSummary: {
           recordsDroppedKeys: [],
           customsDroppedKeys: [],
+          foldersDroppedKeys: [],
           recordsMigrationError: 'schema v2 not supported',
           customsMigrationError: null,
         },
@@ -109,6 +112,7 @@ describe('App loadSummary toast (D-10)', () => {
         lastLoadSummary: {
           recordsDroppedKeys: ['l1'],
           customsDroppedKeys: ['custom-x'],
+          foldersDroppedKeys: [],
           recordsMigrationError: null,
           customsMigrationError: null,
         },

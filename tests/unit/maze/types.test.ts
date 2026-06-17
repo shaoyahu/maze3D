@@ -19,8 +19,10 @@ import {
   isMazeSize,
   isLevelSource,
   isSurviveSeconds,
+  isEnemyAggression,
   type EnemySpawn,
   type EnemyState,
+  type EnemyAggression,
   type LevelSource,
   type MazeSize,
   type PickupType,
@@ -287,5 +289,32 @@ describe('isSurviveSeconds (F-D-quality-D-16)', () => {
     expect(isSurviveSeconds(null)).toBe(false);
     expect(isSurviveSeconds(undefined)).toBe(false);
     expect(isSurviveSeconds(NaN)).toBe(false);
+  });
+});
+
+// F-2026-06-17-D-L-3: mirror the isVictoryType / isPickupType guard tests
+// for the P2-11 `enemyAggression` literal union. Validates the guard
+// catches the same edge cases (case-sensitivity, non-string garbage,
+// unknown values) the other guards pin.
+const ENEMY_AGGRESSION_LITERALS: readonly EnemyAggression[] = ['easy', 'medium', 'hard'];
+
+describe('isEnemyAggression (F-2026-06-17-D-L-3)', () => {
+  it.each(ENEMY_AGGRESSION_LITERALS)('accepts the documented %s literal', (a) => {
+    expect(isEnemyAggression(a)).toBe(true);
+  });
+
+  it('rejects unknown strings (case-sensitive)', () => {
+    expect(isEnemyAggression('Easy')).toBe(false);
+    expect(isEnemyAggression('MEDIUM')).toBe(false);
+    expect(isEnemyAggression('insane')).toBe(false);
+    expect(isEnemyAggression('')).toBe(false);
+  });
+
+  it('rejects non-string values', () => {
+    expect(isEnemyAggression(null)).toBe(false);
+    expect(isEnemyAggression(undefined)).toBe(false);
+    expect(isEnemyAggression(1)).toBe(false);
+    expect(isEnemyAggression({})).toBe(false);
+    expect(isEnemyAggression(['easy'])).toBe(false);
   });
 });

@@ -88,6 +88,11 @@
   --shadow-2: 0 4px 16px rgba(12, 17, 23, 0.08), 0 12px 32px rgba(12, 17, 23, 0.10);
 
   /* ----- Existing legacy tokens (kept so non-editor CSS still works) ----- */
+  /* F-2026-06-17-L-11: --panel is deprecated. New code should use
+     --bg-elevated directly. Kept here so existing non-editor CSS
+     (Dialog etc.) still renders the same color in both light and
+     dark modes. A future P3 cleanup pass should grep var(--panel)
+     and replace with var(--bg-elevated), then drop this entry. */
   --panel: var(--bg-elevated);
 }
 
@@ -4018,6 +4023,13 @@
 
 .dropdown__option--active {
   background: var(--bg-inset);
+  /* F-2026-06-17-L-12: outline for dark-mode visibility. The listbox
+     itself has outline:none (Popup pattern), so the active option
+     has to provide the focus indication visually. Without this, dark
+     mode's --bg-inset blends with the popup background and the
+     keyboard-active row is invisible. */
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 .dropdown__option--selected {

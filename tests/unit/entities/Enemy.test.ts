@@ -250,6 +250,20 @@ describe('Enemy', () => {
       expect(() => makeEnemy({ path: [{ x: 0, z: 0 }] })).toThrow(/at least 2 nodes/);
       expect(() => makeEnemy({ path: [] })).toThrow(/at least 2 nodes/);
     });
+
+    // F-2026-06-17-C-L-1: pin the chaseSpeed = playerSpeed * chaseMultiplier
+    // contract that the constructor sets on line 86. Without this, a
+    // future refactor that drops the multiplication (or off-by-Ns the
+    // order) would silently degrade the chase phase without any test
+    // failing. The dead-code concern (`chaseMultiplier` looks redundant
+    // since chaseSpeed is the only thing that reads it) is documented
+    // but the field is kept for SpawnSchedule serialization compatibility.
+    it('chaseSpeed equals playerSpeed * chaseMultiplier (F-2026-06-17-C-L-1)', () => {
+      const e = makeEnemy({}, 2, 1.5);
+      expect(e.chaseSpeed).toBe(3); // 2 * 1.5
+      const e2 = makeEnemy({}, 1.2, 1.8);
+      expect(e2.chaseSpeed).toBeCloseTo(2.16); // 1.2 * 1.8
+    });
   });
 
   // F-2026-06-16-L-3: the enemy's initial heading is now computed

@@ -2,49 +2,25 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, act } from '@testing-library/react';
 import { EditorStatusBar } from '../../../src/ui/editor/EditorStatusBar';
 import { useEditorStore } from '../../../src/store/editorStore';
-import { useLevelStore } from '../../../src/store/levelStore';
 import type { MazeData } from '../../../src/maze/types';
+import { makeMaze as makeBaseMaze } from '../../_helpers/makeMaze';
+import { resetEditor as baseResetEditor } from '../../_helpers/editorMocks';
 
+// F-2026-06-17-F-M-1: 走统一 helper;此测试需要带 2 个 obstacle 的 walls,
+// 用 thin wrapper 在 base 上叠加。
 function makeMaze(overrides: Partial<MazeData> = {}): MazeData {
-  return {
-    id: 'test-level',
-    name: 'Test',
-    size: { width: 5, depth: 4 },
-    cellSize: 2,
-    start: { x: 0, z: 0 },
-    exit: { x: 4, z: 3 },
+  return makeBaseMaze({
     walls: [
       [0, 0, 0, 0, 0],
       [0, 1, 0, 0, 0],
       [0, 0, 0, 1, 0],
       [0, 0, 0, 0, 0],
     ],
-    pickups: [],
-    enemies: [],
-    rules: { initialTime: 60, maxHealth: 3, victory: 'reach-exit', timeOnPickup: 10 },
     ...overrides,
-  };
-}
-
-function resetEditor(overrides: Partial<MazeData> = {}): void {
-  localStorage.clear();
-  useLevelStore.setState({ customLevels: {} });
-  useEditorStore.setState({
-    level: makeMaze(overrides),
-    tool: 'select',
-    selection: null,
-    camera: { x: 0, y: 0, zoom: 1 },
-    past: [],
-    future: [],
-    dirty: false,
-    lastSavedAt: null,
-    // F-project-review-2026-06-13-D-5/D-18: reset the draft-storage
-    // banner flags so a prior test that triggered a quota failure
-    // doesn't leak into this one.
-    storageFull: false,
-    lastDraftError: null,
   });
 }
+
+const resetEditor = (overrides: Partial<MazeData> = {}): void => baseResetEditor(makeMaze(overrides));
 
 describe('EditorStatusBar (P2-4b #14)', () => {
   beforeEach(() => {

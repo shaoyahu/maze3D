@@ -198,7 +198,12 @@ export function Dropdown<V extends string | number>(props: DropdownProps<V>): Re
       e.preventDefault();
       commit(activeIndex);
     } else if (e.key === 'Tab') {
+      // F-2026-06-17-L-7: preventDefault + return focus to trigger so
+      // keyboard users land back where they were when the popup
+      // closes. Esc already does this; Tab should behave consistently.
+      e.preventDefault();
       setOpen(false);
+      triggerRef.current?.focus();
     }
   };
 
@@ -343,7 +348,16 @@ export function Dropdown<V extends string | number>(props: DropdownProps<V>): Re
                   opt.desc ? 'dropdown__option--with-desc' : '',
                 ].filter(Boolean).join(' ')}
                 onMouseEnter={() => !opt.disabled && setActiveIndex(i)}
-                onClick={() => commit(i)}
+                onClick={() => {
+                  // F-2026-06-17-L-8: sync activeIndex to the clicked
+                  // option so the keyboard commit path uses the same
+                  // value the user just hovered. Previously the click
+                  // path called `commit(i)` directly while the
+                  // keyboard path used `commit(activeIndex)` — mixing
+                  // keyboard + mouse could submit a stale activeIndex.
+                  if (!opt.disabled) setActiveIndex(i);
+                  commit(activeIndex);
+                }}
               >
                 <span className="dropdown__option-main">
                   <span className="dropdown__option-label">{opt.label}</span>

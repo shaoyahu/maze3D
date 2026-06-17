@@ -51,7 +51,11 @@ const BACKDROP_STYLE: CSSProperties = {
 
 function makeCardStyle(danger: boolean): CSSProperties {
   return {
-    background: 'var(--panel)',
+    // F-2026-06-17-L-11: --panel → --bg-elevated. Identical color
+    // (--panel is defined as var(--bg-elevated) in theme.css), but
+    // using the canonical token avoids the legacy-rename debt when
+    // P3 eventually drops --panel.
+    background: 'var(--bg-elevated)',
     border: `1px solid ${danger ? 'var(--danger)' : 'var(--border)'}`,
     borderRadius: 8,
     padding: 20,

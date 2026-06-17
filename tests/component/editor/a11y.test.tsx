@@ -5,33 +5,11 @@ import { EditorToolbar } from '../../../src/ui/editor/EditorToolbar';
 import { EditorViewport } from '../../../src/ui/editor/EditorViewport';
 import { Button } from '../../../src/ui/components/Button';
 import { useEditorStore } from '../../../src/store/editorStore';
-import { useLevelStore } from '../../../src/store/levelStore';
 import { ConfirmProvider } from '../../../src/ui/useConfirm';
+import { resetEditor as baseResetEditor } from '../../_helpers/editorMocks';
 
-function resetEditor(): void {
-  localStorage.clear();
-  useLevelStore.setState({ customLevels: {} });
-  useEditorStore.setState({
-    level: {
-      id: 'custom-test-id',
-      name: 'Test',
-      size: { width: 5, depth: 4 },
-      cellSize: 2,
-      start: { x: 0, z: 0 },
-      exit: { x: 4, z: 3 },
-      walls: [[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0]],
-      pickups: [],
-      enemies: [],
-      rules: { initialTime: 60, maxHealth: 3, victory: 'reach-exit', timeOnPickup: 10 },
-    },
-    tool: 'select',
-    selection: null,
-    camera: { x: 0, y: 0, zoom: 1 },
-    past: [],
-    future: [],
-    dirty: false,
-  });
-}
+// F-2026-06-17-F-M-1: 走统一 helper;此测试硬编码 id='custom-test-id',其他用默认。
+const resetEditor = (): void => baseResetEditor({ id: 'custom-test-id' });
 
 // P3-Theme 2 — a11y hardening: each test pins one assistive-tech hook so
 // a future change can't silently drop it. After the P3-Phase-2 split, the

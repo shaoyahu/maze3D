@@ -316,6 +316,10 @@ export const zh: Translations = {
   'editor.leftPanel.untitledFolder': '未命名文件夹',
   'editor.leftPanel.renamePrompt': '重命名',
   'editor.leftPanel.renameLevelPrompt': '关卡名',
+  // F-2026-06-17-L-2: surface rename persist failures (FR-14 + FR-20 wired
+  // through the dedicated renameLevel action in levelStore.ts).
+  'editor.leftPanel.renameFailedTitle': '重命名失败',
+  'editor.leftPanel.renameFailedMessage': '无法保存新名称:{reason}',
   'editor.leftPanel.delete': '删除',
   'editor.leftPanel.rename': '重命名',
   'editor.leftPanel.moveTo': '移动到',

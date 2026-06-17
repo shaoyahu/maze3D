@@ -238,6 +238,24 @@ export interface SpawnSchedule {
 
 export type EnemyAggression = 'easy' | 'medium' | 'hard';
 
+// F-2026-06-17-D-L-3: runtime whitelist backing the type guard, mirroring
+// the PICKUP_TYPE_VALUES / VICTORY_TYPE_VALUES pattern. P2-11 added the
+// `enemyAggression` literal union but didn't ship a guard, so the
+// validator in JsonMazeProvider.ts:260-261 fell back to a hand-rolled
+// 3-branch `if`. This guard lets the validator and any future consumer
+// use a single check.
+export const ENEMY_AGGRESSION_VALUES: readonly EnemyAggression[] = [
+  'easy',
+  'medium',
+  'hard',
+];
+
+export function isEnemyAggression(v: unknown): v is EnemyAggression {
+  return (
+    typeof v === 'string' && (ENEMY_AGGRESSION_VALUES as readonly string[]).includes(v)
+  );
+}
+
 export const ENEMY_COUNT_MIN = 0;
 export const ENEMY_COUNT_MAX = 10;
 export const ENEMY_COUNT_DEFAULT = 3;

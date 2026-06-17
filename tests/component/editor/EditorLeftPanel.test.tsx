@@ -7,30 +7,16 @@ import { useLevelStore, DEFAULT_FOLDER_ID } from '../../../src/store/levelStore'
 import { useEditorStore } from '../../../src/store/editorStore';
 import { ConfirmProvider } from '../../../src/ui/useConfirm';
 import type { MazeData } from '../../../src/maze/types';
+import { makeMaze3x3 } from '../../_helpers/makeMaze';
+import { resetEditorWithFolder } from '../../_helpers/editorMocks';
 
+// F-2026-06-17-F-M-1: thin wrapper 保留旧 3-arg 签名,内部走统一 helper。
 function makeMaze(id: string, name: string, folderId?: string): MazeData {
-  return {
-    id,
-    name,
-    size: { width: 3, depth: 3 },
-    cellSize: 2,
-    start: { x: 0, z: 0 },
-    exit: { x: 2, z: 2 },
-    walls: [[0,0,0],[0,0,0],[0,0,0]],
-    pickups: [],
-    enemies: [],
-    rules: { initialTime: 60, maxHealth: 3, victory: 'reach-exit', timeOnPickup: 10 },
-    ...(folderId ? { folderId } : {}),
-  };
+  return makeMaze3x3({ id, name, ...(folderId ? { folderId } : {}) });
 }
 
 beforeEach(() => {
-  localStorage.clear();
-  useLevelStore.setState({
-    customLevels: {},
-    folders: { [DEFAULT_FOLDER_ID]: { id: DEFAULT_FOLDER_ID, name: '我的', createdAt: 1 } },
-  });
-  useEditorStore.setState({ level: makeMaze('editor-default', 'Editor Default') });
+  resetEditorWithFolder({ id: 'editor-default', name: 'Editor Default' });
 });
 
 describe('EditorLeftPanel (P2-13)', () => {

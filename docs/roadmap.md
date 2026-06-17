@@ -10,11 +10,11 @@
 
 | 字段 | 值 |
 |---|---|
-| 活跃增量 | **P2-14 review-fixes-batch-1(本次 12/33 finding 修复,未 commit)** |
-| 已完成 | P2-2 14/14 ✅ + P2-3 14/14 ✅ + P2-4a 16/16 ✅ + P2-4b 20/20 ✅ + P2-5 16/16 ✅ + P2-6 10/10 ✅ + P2-7 8/8 ✅ + P2-9 ✅ + P2-10 11/11 ✅ + P2-11 16/16 ✅ + **P2-13 ✅ (2026-06-17, ad94abe)** |
-| 下一个任务 | 等用户确认 commit P2-14 12 处代码改动;候选后续增量见下方表 |
+| 活跃增量 | **P2-15 review-fixes-batch-2(实施中,14/24 FR done;剩 10 项:D 域算法 pickup guard + EditorLeftPanel 改动 + GameOverOverlay/HUD victory key + form React.memo + carveLShape + theme.css 后续 + docs 同步)** |
+| 已完成 | P2-2 14/14 ✅ + P2-3 14/14 ✅ + P2-4a 16/16 ✅ + P2-4b 20/20 ✅ + P2-5 16/16 ✅ + P2-6 10/10 ✅ + P2-7 8/8 ✅ + P2-9 ✅ + P2-10 11/11 ✅ + P2-11 16/16 ✅ + P2-13 ✅ + P2-14 ✅ + **P2-15 14/24 ✅ (2026-06-17,session 实施)** |
+| 下一个任务 | 等用户决策:继续 P2-15 剩余 10 FR / 或手动 commit 当前工作后下次会话继续 |
 | 最后更新 | 2026-06-17 |
-| 最近 commit | 见 `git log --oneline -1`（避免追尾，由 Claude 主动查） |
+| 最近 commit | `e135e32` fix(p2-14): review batch 1 — 12/33 finding 修复 |
 
 **约束**：
 - 一次只做一个任务（见下方「总任务列表」）
@@ -65,7 +65,8 @@
 | P2-10 | 代码评审 11 项修复 (H1 Stepper clamp 颠倒 · H2 URL progressive 丢失 · H3 路径节点 NaN · M1 updateSize OOB · M2 重复拾取物 · M3 initialTime=0 · M4/M5 穷尽性检查 · L1 lastErrorKey 清理 · L2 ESC 冲突 · L3 敌人朝向) | P1 | P2-9 | Small | `docs/increments/p2-10-review-fixes/` | ✅ done (11/11) (2026-06-16) |
 | P2-11 | 教学关卡重设计（4 关重命名 + 教学步骤系统 + 哨兵回廊 回字形迷宫 + caught-by-enemy 胜利类型 + requireAllPickups 门控 + 编辑器 4 个新字段） | P1 | P2-4a, P2-8 | Medium | `docs/increments/p2-11-tutorial-revamp/` | ✅ done (16/16) (2026-06-16) |
 | P2-13 | 编辑器文件夹系统 + 左侧栏重构 + 胜利标签键修复（`levelStore` 文件夹 CRUD + `EditorLeftPanel` 替换 `EditorLeftDrawer` + 新 `Dropdown` 组件 + 教程卡 hero/rows/advanced 三段式 + `WinOverlay` victory 标签键修复 + theme.css 主题变量重排 = 27 文件 +5021/-2470 行） | P1 | P2-4b, P2-8 | Medium | `docs/increments/p2-13-editor-folders/` | ✅ done (2026-06-17, ad94abe) |
-| P2-14 | P2-13 review batch 1：12/33 finding 修复（H5 vitest 排除重排 + H4 Segmented useMemo 回归闭合 + H3 EditorLeftPanel 性能 + H1 reachability 边界守卫 + H2 Enemy constructor 守卫 + M3 shouldSurviveWin finite guard + M2 levelStore moveFolder cleanup + M12 Scene.dispose scene.clear + M13 collidesAt cellSize=0 守卫 + M14 Loop magic number + M15 GameCanvas subscribe guard + M2 _expandThickWall size 守卫） | P1 | P2-13 | Small | `docs/increments/p2-14-review-fixes-batch-1/` | 🟡 done (未 commit, 等用户确认;typecheck 0 errors, test 78/993/1/0;剩余 21 条 LOW/MEDIUM 见 P2-15 候选) |
+| P2-14 | P2-13 review batch 1：12/33 finding 修复（H5 vitest 排除重排 + H4 Segmented useMemo 回归闭合 + H3 EditorLeftPanel 性能 + H1 reachability 边界守卫 + H2 Enemy constructor 守卫 + M3 shouldSurviveWin finite guard + M2 levelStore moveFolder cleanup + M12 Scene.dispose scene.clear + M13 collidesAt cellSize=0 守卫 + M14 Loop magic number + M15 GameCanvas subscribe guard + M2 _expandThickWall size 守卫 = 12 文件 +123/-44 行） | P1 | P2-13 | Small | `docs/increments/p2-14-review-fixes-batch-1/` *(目录占位;产物随 commit `e135e32` 走)* | ✅ done (2026-06-17, e135e32) |
+| P2-15 | P2-13 review batch 2：14/24 LOW/MEDIUM finding 收口（FR-1/2/3/5/6/7/11/12/13/16/17/18/19/22 = 14 个 done,剩 10 个:FR-4 form memo · FR-8/14/20 EditorLeftPanel · FR-9 carveLShape · FR-10 AlgorithmMazeProvider · FR-15 GameOverOverlay/HUD · FR-21 theme.css 后续;spec/plan 在 `docs/increments/p2-15-review-fixes-batch-2/`,23 Task / 24 FR） | P1 | P2-13 | Medium | `docs/increments/p2-15-review-fixes-batch-2/` | 🟡 14/24 done,10 remaining |
 
 > **P2-1 已删除**：原计划"多关卡 JSON（中/大尺寸）"被 P2-3 算法生成取代。MVP 保留 `level-small.json` 作为"教学关"，`level-tiny.json` 留 E2E。
 > **P2-4 拆分**：原"敌人 + 编辑器"X-Large 拆成 P2-4a（敌人+survive mode，依赖 P2-3）和 P2-4b（编辑器，独立）。
@@ -93,7 +94,6 @@
 - 音频（deferred audio pipeline）
 - 移动端 / 触摸支持
 - 额外的 pickup 子类型
-- **P2-15 review-fixes-batch-2**:P2-14 剩余 21 条 LOW/MEDIUM(M-1 i18n orphan-key / M-4 enemySpawner 全墙测试 / M-5 useDebouncedCommit ref 模式 / M-6 form React.memo / M-7 collapsed 持久化 / M-8 JSON.parse memo / M-9 _helpers 抽 / M-10 右键菜单测试 / M-11 carveLShape 重写 / L-1 sanitizeFoldersMap.dropped / L-2 handleRenameLevel 失败 surface / L-4 GameOverOverlay victory key / L-5 levels.test.ts pickup.value / L-6 Enemy.test.ts chaseSpeed / L-7/8 Dropdown 焦点 / L-9 renameLevel action / L-10 LevelSelect 兜底 / L-11/12 theme.css / L-13 useDebouncedCommit 单测 + Dropdown 测试 + D-L-1~5 + D-H-1~3),估时 5-6 hr
 
 待需求明确后再升级为 P2-N 行。
 

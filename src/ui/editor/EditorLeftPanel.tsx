@@ -139,9 +139,26 @@ export function EditorLeftPanel(): React.ReactElement {
   const handleRenameLevel = (lv: MazeData): void => {
     const name = window.prompt(t('editor.leftPanel.renameLevelPrompt'), lv.name);
     if (name === null) return;
-    // levelStore 没有专门的 renameLevel;走 saveCustom 整盘覆盖即可
-    // (levelStore 已存,只要重命名后写一次)
-    useLevelStore.getState().saveCustom({ ...lv, name: name.trim() || lv.name });
+    // F-2026-06-17-L-9 / E-L-3: use the dedicated renameLevel action
+    // instead of saveCustom with a full-spread overwrite. renameLevel
+    // updates only the renamed entry's `name` field (preserving any
+    // in-flight edits to other fields) and routes through safeSetItem
+    // + lastWriteError like saveCustom does. Returns true on success;
+    // false surfaces a confirmation dialog (FR-14 / L-2).
+    const trimmed = name.trim() || lv.name;
+    const ok = useLevelStore.getState().renameLevel(lv.id, trimmed);
+    if (!ok) {
+      // F-2026-06-17-L-2: surface the failure. Either the id was
+      // unknown (shouldn't happen via UI) or persist failed.
+      const err = useLevelStore.getState().lastWriteError;
+      if (err) {
+        confirm({
+          title: t('editor.leftPanel.renameFailedTitle'),
+          message: t('editor.leftPanel.renameFailedMessage', { reason: err.reason }),
+          actions: [{ label: t('common.ok'), value: 'ok', variant: 'primary' }],
+        }).catch(() => undefined);
+      }
+    }
   };
 
   const handleDeleteLevel = async (lv: MazeData): Promise<void> => {

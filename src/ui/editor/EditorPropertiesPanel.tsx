@@ -217,11 +217,21 @@ function Segmented<T extends string>({
   );
 }
 
+// F-2026-06-17-E-M-1: ref pattern. The original implementation
+// depended on `[value, commit, delay]` so the effect re-scheduled
+// every render (commit is an inline arrow in all 7 call sites). The
+// ref pattern keeps the timer stable as long as `delay` is unchanged
+// — commit fires with the latest value/commit via refs, so rapid
+// typing only debounces once.
 function useDebouncedCommit<T>(value: T, commit: (v: T) => void, delay: number): void {
+  const valueRef = useRef(value);
+  const commitRef = useRef(commit);
+  valueRef.current = value;
+  commitRef.current = commit;
   useEffect(() => {
-    const id = window.setTimeout(() => commit(value), delay);
+    const id = window.setTimeout(() => commitRef.current(valueRef.current), delay);
     return () => window.clearTimeout(id);
-  }, [value, commit, delay]);
+  }, [delay]);
 }
 
 function LevelMetadataForm({ level }: { level: MazeData }): React.ReactElement {
@@ -857,7 +867,12 @@ function TutorialAdvancedSteps({
     }
   };
 
-  const stepList = (() => {
+  // F-2026-06-17-E-M-4: wrap the JSON parse in useMemo so it doesn't
+  // re-run on every keystroke. Previously each `setRaw` re-rendered
+  // the IIFE which did a fresh `JSON.parse` + `.slice(0, 3).map` even
+  // when `status === 'pristine'` (the parse was gated by status but the
+  // function call itself still happened on every render).
+  const stepList = useMemo(() => {
     if (status !== 'ok') return null;
     try {
       const parsed = JSON.parse(raw);
@@ -870,7 +885,7 @@ function TutorialAdvancedSteps({
       }
     } catch { /* ignore */ }
     return null;
-  })();
+  }, [raw, status]);
 
   return (
     <div className={`editor-tutorial__advanced${open ? ' editor-tutorial__advanced--open' : ''}`}>

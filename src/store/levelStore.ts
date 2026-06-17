@@ -48,6 +48,22 @@ interface LevelStore {
   // 分开)。`folders` 是全量字典,UI 自己根据 parentId 构造树。CRUD
   // 都走 safeSetItem,失败时复用 lastWriteError 通道。
   folders: Record<string, Folder>;
+  // F-2026-06-17-M-7: per-folder collapsed state moved out of
+  // EditorLeftPanel's local useState so it survives a refresh. Persists
+  // to maze3d.folders.v1 alongside the folder map; default {} (all
+  // folders expanded, matches the previous UI default).
+  collapsedFolderIds: Record<string, boolean>;
+  // F-2026-06-17-M-7: dedicated toggle action. EditorLeftPanel was
+  // managing collapsed state in a local `useState` — that state vanished
+  // on refresh. This action persists to its own localStorage key so the
+  // collapsed tree survives a reload. Returns the new value.
+  toggleFolderCollapsed: (id: string) => boolean;
+  // F-2026-06-17-F-M-2: level-scoped rename action. EditorLeftPanel used
+  // to call `useLevelStore.getState().saveCustom({ ...lv, name })` which
+  // rebuilds the entire `customLevels` Record (one Map.copy per call).
+  // This dedicated action updates a single entry and avoids the
+  // full-table spread that can lose in-flight edits elsewhere.
+  renameLevel: (id: string, name: string) => boolean;
   createFolder: (name: string, parentId?: string) => Folder;
   deleteFolder: (id: string) => void;
   renameFolder: (id: string, name: string) => void;
@@ -99,6 +115,11 @@ export interface WriteError {
 export interface LoadSummary {
   recordsDroppedKeys: string[];
   customsDroppedKeys: string[];
+  // F-2026-06-17-L-1: parallel channel for folders data corruption.
+  // `sanitizeFoldersMap` returns `{ map, dropped }`; the dropped list
+  // is routed here so the existing toast UI can surface "3 folders
+  // skipped" without introducing a new field type.
+  foldersDroppedKeys: string[];
   recordsMigrationError: string | null;
   customsMigrationError: string | null;
 }
@@ -106,16 +127,24 @@ export interface LoadSummary {
 function buildLoadSummary(
   recordsDropped: string[],
   customsDropped: string[],
+  foldersDropped: string[],
   recordsMigrationError: string | null,
   customsMigrationError: string | null,
 ): LoadSummary | null {
   if (
     recordsDropped.length === 0 &&
     customsDropped.length === 0 &&
+    foldersDropped.length === 0 &&
     recordsMigrationError === null &&
     customsMigrationError === null
   ) return null;
-  return { recordsDroppedKeys: recordsDropped, customsDroppedKeys: customsDropped, recordsMigrationError, customsMigrationError };
+  return {
+    recordsDroppedKeys: recordsDropped,
+    customsDroppedKeys: customsDropped,
+    foldersDroppedKeys: foldersDropped,
+    recordsMigrationError,
+    customsMigrationError,
+  };
 }
 
 const STORAGE_KEY = 'maze3d.levels.v1';
@@ -132,6 +161,10 @@ const CUSTOM_STORAGE_KEY = 'maze3d.customLevels.v1';
 // P2-13: folders storage. Independent key so the editor's folder tree
 // and level payloads have separate blast radii on corruption.
 const FOLDERS_STORAGE_KEY = 'maze3d.folders.v1';
+// F-2026-06-17-M-7: side-car storage for collapsed state. Kept separate
+// from FOLDERS_STORAGE_KEY so renameFolder / createFolder / etc. don't
+// have to grow a "preserve collapsed" branch.
+const FOLDERS_COLLAPSED_KEY = 'maze3d.folders.collapsed.v1';
 
 function isValidSeed(raw: unknown): raw is Seed {
   if (typeof raw !== 'object' || raw === null) return false;
@@ -356,6 +389,45 @@ export const useLevelStore = create<LevelStore>((set, get) => {
     }
     return ensured.map;
   })();
+  // F-2026-06-17-L-1: capture folders dropped list (parallel to records/customs).
+  // sanitizeFoldersMap returns `{ map, dropped }`; route the dropped list
+  // through buildLoadSummary so the existing toast UI can surface
+  // corrupted-folder incidents without a parallel channel.
+  const foldersDropped: string[] = (() => {
+    // We re-run sanitizeFoldersMap over the current folders to get the
+    // dropped list — but we already called sanitizeFoldersMap above
+    // inside foldersInit. To avoid double-work, we re-sanitize the raw
+    // loaded value once more here (small cost; folders map is tiny).
+    const raw = loadJSON<unknown>(FOLDERS_STORAGE_KEY, null);
+    if (raw === null) return [];
+    const fromVersion = parseStorageKeyVersion(FOLDERS_STORAGE_KEY);
+    if (fromVersion === null) return sanitizeFoldersMap(raw).dropped;
+    try {
+      return sanitizeFoldersMap(applyLevelMigrations(raw, fromVersion)).dropped;
+    } catch {
+      return [];
+    }
+  })();
+  // F-2026-06-17-M-7: collapsed state lives in the store (persisted).
+  // Stored as a flat `Record<folderId, boolean>` rather than a Map so
+  // the JSON.stringify round-trip is lossless; default `{}` means
+  // "all expanded" matching the previous EditorLeftPanel useState
+  // default. Reads from a side-car key (maze3d.folders.collapsed.v1)
+  // so it doesn't interfere with the folder CRUD actions' writes to
+  // the main folders storage key.
+  const collapsedInit: Record<string, boolean> = (() => {
+    try {
+      const raw = loadJSON<unknown>(FOLDERS_COLLAPSED_KEY, null);
+      if (raw === null || typeof raw !== 'object') return {};
+      const out: Record<string, boolean> = {};
+      for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+        if (typeof v === 'boolean') out[k] = v;
+      }
+      return out;
+    } catch {
+      return {};
+    }
+  })();
   // F-project-review-2026-06-13-D-10: surface dropped records / customs /
   // migration errors as a one-time store field. The UI reads this once
   // on mount and shows a toast like "3 custom levels were skipped because
@@ -364,6 +436,7 @@ export const useLevelStore = create<LevelStore>((set, get) => {
   const lastLoadSummary = buildLoadSummary(
     recordsInit.dropped,
     customsInit.dropped,
+    foldersDropped,
     recordsInit.migrationError,
     customsInit.migrationError,
   );
@@ -438,11 +511,35 @@ export const useLevelStore = create<LevelStore>((set, get) => {
     set({ customLevels: next, lastWriteError: null });
   },
   listCustom: () => Object.keys(get().customLevels),
+  // F-2026-06-17-L-9 / E-L-3: dedicated rename action. EditorLeftPanel used
+  // to call `useLevelStore.getState().saveCustom({ ...lv, name })` which
+  // rebuilds the entire `customLevels` Record and can lose in-flight
+  // edits if another field is being changed concurrently. This action
+  // updates a single entry's name field and writes through safeSetItem.
+  // Returns false (no-op) if the id is unknown or the trimmed name is
+  // empty; true on success.
+  renameLevel: (id, name) => {
+    const trimmed = name.trim();
+    if (!trimmed) return false;
+    const cur = get().customLevels[id];
+    if (!cur) return false;
+    const nextEntry: MazeData = { ...cur, name: trimmed };
+    const nextCustom = { ...get().customLevels, [id]: nextEntry };
+    const result = safeSetItem(CUSTOM_STORAGE_KEY, nextCustom);
+    if (!result.ok) {
+      console.warn('levelStore.renameLevel: persist failed', result.reason);
+      set({ customLevels: nextCustom, lastWriteError: { kind: 'customLevel', reason: result.reason } });
+      return false;
+    }
+    set({ customLevels: nextCustom, lastWriteError: null });
+    return true;
+  },
 
   // ---- P2-13: 文件夹 CRUD ----
   // 全部走 safeSetItem,失败时复用 lastWriteError 通道(暂时用
   // customLevel kind — 跟 saveCustom 同 bucket,toast 文案已覆盖)。
   folders: foldersInit,
+  collapsedFolderIds: collapsedInit,
   createFolder: (name, parentId) => {
     const trimmed = name.trim() || '未命名文件夹';
     // parentId 校验:必须是已存在的 folder,否则忽略(根目录)。
@@ -518,6 +615,22 @@ export const useLevelStore = create<LevelStore>((set, get) => {
     } else {
       set({ folders: next, lastWriteError: null });
     }
+  },
+  // F-2026-06-17-M-7: toggle a folder's collapsed state. Returns the
+  // new value (true = collapsed, false = expanded). Persisted to the
+  // side-car key. Idempotent on missing keys.
+  toggleFolderCollapsed: (id) => {
+    const cur = get().collapsedFolderIds;
+    const nextVal = !(cur[id] === true);
+    const next = { ...cur, [id]: nextVal };
+    const result = safeSetItem(FOLDERS_COLLAPSED_KEY, next);
+    if (!result.ok) {
+      console.warn('levelStore.toggleFolderCollapsed: persist failed', result.reason);
+      set({ collapsedFolderIds: next, lastWriteError: { kind: 'customLevel', reason: result.reason } });
+      return nextVal;
+    }
+    set({ collapsedFolderIds: next, lastWriteError: null });
+    return nextVal;
   },
   // level 的 folderId 修改。folderId === null → 根目录(即默认 "我的" 桶)。
   moveLevel: (levelId, folderId) => {

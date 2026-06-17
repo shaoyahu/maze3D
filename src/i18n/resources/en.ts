@@ -299,6 +299,9 @@ export const en: Translations = {
   'editor.leftPanel.untitledFolder': 'Untitled folder',
   'editor.leftPanel.renamePrompt': 'Rename',
   'editor.leftPanel.renameLevelPrompt': 'Level name',
+  // F-2026-06-17-L-2: surface rename persist failures.
+  'editor.leftPanel.renameFailedTitle': 'Rename failed',
+  'editor.leftPanel.renameFailedMessage': "Couldn't save the new name: {reason}",
   'editor.leftPanel.delete': 'Delete',
   'editor.leftPanel.rename': 'Rename',
   'editor.leftPanel.moveTo': 'Move to',

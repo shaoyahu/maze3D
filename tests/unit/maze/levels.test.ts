@@ -137,4 +137,26 @@ describe('built-in level JSONs (D-20)', () => {
       }
     },
   );
+
+  // F-2026-06-17-C-M-3: pin the pickup.value contract. JsonMazeProvider
+  // requires `value > 0` (line 158) but never asserts integer-ness or
+  // finiteness — a hand-crafted level with `value: 1.5` or
+  // `value: Infinity` would slip through. Symmetric to the walls/start/
+  // exit cellSize contract already tested.
+  it.each(collectLevels())(
+    '%s — pickup fields satisfy the contract (integer coords + finite positive value)',
+    ({ id, raw }) => {
+      const data = validateMaze(raw, id);
+      expect(
+        data.pickups.every(
+          (p) =>
+            Number.isInteger(p.x) &&
+            Number.isInteger(p.z) &&
+            Number.isFinite(p.value) &&
+            p.value > 0,
+        ),
+        `pickups in ${id} must satisfy integer-coord + finite-positive-value contract`,
+      ).toBe(true);
+    },
+  );
 });
