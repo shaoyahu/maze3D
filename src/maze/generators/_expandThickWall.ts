@@ -23,6 +23,19 @@ export interface TreeEdge {
 }
 
 export function expandThickWall(visualSize: number, treeEdges: TreeEdge[]): CellType[][] {
+  // F-2026-06-17-D-M-2: minimum-size guard. AlgorithmMazeProvider and the
+  // editor's generate-from-seed path both clamp visualSize to one of
+  // {15, 30, 50} before calling here, so this guard never fires in
+  // practice today. But editor custom exports and importExport.roundtrip
+  // can hand us a level with `size: { width: 1, depth: 1 }` after a
+  // data corruption recovery — without the throw, the for-loop on
+  // line 31 would have `lz < 0` immediately, the `Array.from({length:1})`
+  // would return a single cell, and the rest of the algorithm would
+  // quietly produce a degenerate maze. Throwing loud at the boundary
+  // makes the failure mode debuggable.
+  if (visualSize < 3) {
+    throw new Error(`expandThickWall: visualSize must be >= 3 (got ${visualSize})`);
+  }
   const logicalSize = Math.ceil(visualSize / 2);
   const walls: CellType[][] = Array.from({ length: visualSize }, () =>
     Array<CellType>(visualSize).fill(1 as CellType),

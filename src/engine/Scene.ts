@@ -384,7 +384,23 @@ export function disposeScene(
       else if (mat) disposeMat(mat);
     }
   });
+  // F-2026-06-17-B-M-12: clear the scene's own children list after the
+  // walk above removes their GPU resources. Without this, the parent→child
+  // references stay in place: `scene.children` still holds the disposed
+  // Object3D instances, the next buildScene() would still see them via
+  // add() conflicts, and the Game's local refs to walls/pickups/enemies
+  // arrays would still point at disposed meshes. The walk above mutated
+  // those arrays in place (walls.length=0) but the scene graph itself
+  // is its own structure.
+  scene.clear();
   walls.length = 0;
   pickups.length = 0;
   enemies.length = 0;
+  // F-2026-06-17-B-L-3: clear the module-level disposedTexs /
+  // doubleDisposeWarned Sets so a fresh level build doesn't double-warn
+  // for textures that were already disposed in a previous level's teardown.
+  // Without this, the Sets grew monotonically (one entry per texture
+  // ever created) and JS heap ballooned by 1.5-6 MB per 100 levels.
+  disposedTexs.clear();
+  doubleDisposeWarned.clear();
 }

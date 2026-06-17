@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useEditorStore } from '../../store/editorStore';
 import type { EnemySpawn, MazeData, Pickup, PickupType, VictoryType } from '../../maze/types';
 import { isPickupType, isVictoryType, VICTORY_TYPE_VALUES } from '../../maze/types';
@@ -238,6 +238,19 @@ function LevelMetadataForm({ level }: { level: MazeData }): React.ReactElement {
   const [timeOnPickup, setTimeOnPickup] = useState(level.rules.timeOnPickup);
   const [victory, setVictory] = useState<VictoryType>(level.rules.victory);
 
+  // F-2026-06-17-E-H-1: VICTORY_OPTIONS.map(...) was rebuilt on every
+  // render of LevelMetadataForm. The Segmented child has an effect that
+  // depends on the `options` reference, so a new array every render
+  // meant a fresh getBoundingClientRect() per render — a measurable
+  // layout thrash on the 50×50 editor. Memoize on `t` so language
+  // switches still produce a fresh options array, but unrelated
+  // re-renders (input typing, store selectors firing) keep the same
+  // reference and the effect stays quiet.
+  const victoryOptions = useMemo(
+    () => VICTORY_OPTIONS.map((o) => ({ value: o.value, label: t(o.labelKey) })),
+    [t],
+  );
+
   useEffect(() => {
     setName(level.name);
     setWidth(level.size.width);
@@ -346,7 +359,7 @@ function LevelMetadataForm({ level }: { level: MazeData }): React.ReactElement {
         <div className="editor-properties__field" data-testid="meta-victory">
           <span className="editor-properties__field-label">{t('editor.properties.field.victory')}</span>
           <Segmented
-            options={VICTORY_OPTIONS.map((o) => ({ value: o.value, label: t(o.labelKey) }))}
+            options={victoryOptions}
             value={victory}
             onChange={setVictory}
             testIdPrefix="meta-victory"

@@ -10,10 +10,10 @@
 
 | 字段 | 值 |
 |---|---|
-| 活跃增量 | （等待用户指派下一个增量 — 候选见下方） |
-| 已完成 | P2-2 14/14 ✅ + P2-3 14/14 ✅ + P2-4a 16/16 ✅ + P2-4b 20/20 ✅ + P2-5 16/16 ✅ + P2-6 10/10 ✅ + P2-7 8/8 ✅ + P2-9 ✅ + P2-10 11/11 ✅ + **P2-11 16/16 ✅** |
-| 下一个任务 | 待用户指派 · 候选：①P2-8 i18n 完成(仍标 🔄 in-progress draft)；②roadmap §「已知未跟进的测试债务」中 8 处 e2e `skip`/`fixme` + 2 处 mainMenu.revamp skip(明确不在 P2-10 范围) |
-| 最后更新 | 2026-06-16 |
+| 活跃增量 | **P2-14 review-fixes-batch-1(本次 12/33 finding 修复,未 commit)** |
+| 已完成 | P2-2 14/14 ✅ + P2-3 14/14 ✅ + P2-4a 16/16 ✅ + P2-4b 20/20 ✅ + P2-5 16/16 ✅ + P2-6 10/10 ✅ + P2-7 8/8 ✅ + P2-9 ✅ + P2-10 11/11 ✅ + P2-11 16/16 ✅ + **P2-13 ✅ (2026-06-17, ad94abe)** |
+| 下一个任务 | 等用户确认 commit P2-14 12 处代码改动;候选后续增量见下方表 |
+| 最后更新 | 2026-06-17 |
 | 最近 commit | 见 `git log --oneline -1`（避免追尾，由 Claude 主动查） |
 
 **约束**：
@@ -33,7 +33,7 @@
 >
 > **2 处 mainMenu.revamp 测试也被 skip**(F-2026-06-15-H-3.6):原测试断言 Three.js scene container,但 home-revamp 把它移除了。skip 是正确的(测试断言不存在的功能)。
 >
-> 当前 `npm test` 状态:**874 pass / 3 skip / 0 fail**。
+> 当前 `npm test` 状态(2026-06-17 更新):**993 pass / 1 skip / 0 fail**;e2e skip 状态 **8 处**(`enemies.spec.ts:26,41` / `survive.spec.ts:18` / `editor.spec.ts:48,120` / `pause-resume.spec.ts:39` / `time-trial.spec.ts:12,38`)。
 
 ---
 
@@ -64,6 +64,8 @@
 | P2-9 | 编辑器 UX 修复 + 使用手册 (拆分 wall/erase 两工具；修复 addEnemyNode 默认坐标；placePickup 加 lastErrorKey；"拾取"→"道具"重命名；新增 EditorHelpDrawer cheat-sheet 抽屉) | P1 | P2-4b | Small–Medium | `docs/increments/p2-9-editor-ux-fix-and-help/` | ✅ done (2026-06-16) |
 | P2-10 | 代码评审 11 项修复 (H1 Stepper clamp 颠倒 · H2 URL progressive 丢失 · H3 路径节点 NaN · M1 updateSize OOB · M2 重复拾取物 · M3 initialTime=0 · M4/M5 穷尽性检查 · L1 lastErrorKey 清理 · L2 ESC 冲突 · L3 敌人朝向) | P1 | P2-9 | Small | `docs/increments/p2-10-review-fixes/` | ✅ done (11/11) (2026-06-16) |
 | P2-11 | 教学关卡重设计（4 关重命名 + 教学步骤系统 + 哨兵回廊 回字形迷宫 + caught-by-enemy 胜利类型 + requireAllPickups 门控 + 编辑器 4 个新字段） | P1 | P2-4a, P2-8 | Medium | `docs/increments/p2-11-tutorial-revamp/` | ✅ done (16/16) (2026-06-16) |
+| P2-13 | 编辑器文件夹系统 + 左侧栏重构 + 胜利标签键修复（`levelStore` 文件夹 CRUD + `EditorLeftPanel` 替换 `EditorLeftDrawer` + 新 `Dropdown` 组件 + 教程卡 hero/rows/advanced 三段式 + `WinOverlay` victory 标签键修复 + theme.css 主题变量重排 = 27 文件 +5021/-2470 行） | P1 | P2-4b, P2-8 | Medium | `docs/increments/p2-13-editor-folders/` | ✅ done (2026-06-17, ad94abe) |
+| P2-14 | P2-13 review batch 1：12/33 finding 修复（H5 vitest 排除重排 + H4 Segmented useMemo 回归闭合 + H3 EditorLeftPanel 性能 + H1 reachability 边界守卫 + H2 Enemy constructor 守卫 + M3 shouldSurviveWin finite guard + M2 levelStore moveFolder cleanup + M12 Scene.dispose scene.clear + M13 collidesAt cellSize=0 守卫 + M14 Loop magic number + M15 GameCanvas subscribe guard + M2 _expandThickWall size 守卫） | P1 | P2-13 | Small | `docs/increments/p2-14-review-fixes-batch-1/` | 🟡 done (未 commit, 等用户确认;typecheck 0 errors, test 78/993/1/0;剩余 21 条 LOW/MEDIUM 见 P2-15 候选) |
 
 > **P2-1 已删除**：原计划"多关卡 JSON（中/大尺寸）"被 P2-3 算法生成取代。MVP 保留 `level-small.json` 作为"教学关"，`level-tiny.json` 留 E2E。
 > **P2-4 拆分**：原"敌人 + 编辑器"X-Large 拆成 P2-4a（敌人+survive mode，依赖 P2-3）和 P2-4b（编辑器，独立）。
@@ -91,6 +93,7 @@
 - 音频（deferred audio pipeline）
 - 移动端 / 触摸支持
 - 额外的 pickup 子类型
+- **P2-15 review-fixes-batch-2**:P2-14 剩余 21 条 LOW/MEDIUM(M-1 i18n orphan-key / M-4 enemySpawner 全墙测试 / M-5 useDebouncedCommit ref 模式 / M-6 form React.memo / M-7 collapsed 持久化 / M-8 JSON.parse memo / M-9 _helpers 抽 / M-10 右键菜单测试 / M-11 carveLShape 重写 / L-1 sanitizeFoldersMap.dropped / L-2 handleRenameLevel 失败 surface / L-4 GameOverOverlay victory key / L-5 levels.test.ts pickup.value / L-6 Enemy.test.ts chaseSpeed / L-7/8 Dropdown 焦点 / L-9 renameLevel action / L-10 LevelSelect 兜底 / L-11/12 theme.css / L-13 useDebouncedCommit 单测 + Dropdown 测试 + D-L-1~5 + D-H-1~3),估时 5-6 hr
 
 待需求明确后再升级为 P2-N 行。
 

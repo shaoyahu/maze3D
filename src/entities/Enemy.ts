@@ -54,6 +54,27 @@ export class Enemy {
         `Enemy ${spawn.id}: path must have at least 2 nodes (got ${spawn.path.length})`,
       );
     }
+    // F-2026-06-17-C-H-2: the first patrol node must live in the same
+    // cell as the spawn (or in a directly adjacent one). Validators above
+    // (JsonMazeProvider.parseEnemies, EditorMazeProvider) are the primary
+    // line of defense, but a hand-crafted JSON or a future provider that
+    // forgets the check can still hand us a spawn that disagrees with
+    // path[0]. Without this guard, the enemy's first frame is drawn with
+    // a heading computed from a far-away point (headingToward would
+    // produce a non-zero vector even if the FOV cone ends up pointing
+    // somewhere plausible) and the patrol "snaps" on its first tick —
+    // visibly wrong on the very first frame the enemy is on screen.
+    const first = spawn.path[0];
+    if (first === undefined) {
+      // Already excluded by the length<2 check above, but TS can't narrow
+      // it without an explicit branch; the throw keeps the type honest.
+      throw new Error(`Enemy ${spawn.id}: path[0] is undefined`);
+    }
+    if (Math.hypot(spawn.x - first.x, spawn.z - first.z) > grid.cellSize) {
+      throw new Error(
+        `Enemy ${spawn.id}: spawn (${spawn.x},${spawn.z}) is more than one cell (cellSize=${grid.cellSize}) away from path[0] (${first.x},${first.z})`,
+      );
+    }
     this.id = spawn.id;
     this.position = { x: spawn.x, z: spawn.z };
     this.path = spawn.path;

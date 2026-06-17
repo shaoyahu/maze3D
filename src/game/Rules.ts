@@ -97,6 +97,16 @@ export function applyDamage(
 }
 
 export function shouldSurviveWin(elapsedTime: number, surviveSeconds: number): boolean {
+  // F-2026-06-17-C-M-1: the elapsed time coming out of a requestAnimationFrame
+  // loop is always finite in practice (Loop.ts clamps dt to 0.1s), but the
+  // surviveSeconds value flows through several layers (initialTime +
+  // timeOnPickup pickups + the surviveSeconds field on a loaded level).
+  // A corrupted level (or a future direct caller of shouldSurviveWin) can
+  // hand us -Infinity, -1, or 0. Without this guard, `elapsedTime(0) >= -1`
+  // is true on the very first frame, awarding an instant survive win, and
+  // `Infinity >= surviveSeconds` is also true after a single frame.
+  if (!Number.isFinite(elapsedTime) || !Number.isFinite(surviveSeconds)) return false;
+  if (surviveSeconds <= 0) return false;
   return elapsedTime >= surviveSeconds;
 }
 

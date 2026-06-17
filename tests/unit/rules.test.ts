@@ -166,6 +166,24 @@ describe('Rules', () => {
       expect(shouldSurviveWin(30, 30)).toBe(true);
       expect(shouldSurviveWin(31, 30)).toBe(true);
     });
+    // F-2026-06-17-C-M-1: these three cases pin the finite/non-negative
+    // guard. A corrupted level can hand us -Infinity, -1, or NaN through
+    // `surviveSeconds` (initialTime + pickup values) or `elapsedTime` (a
+    // buggy future caller), and the bare `>=` operator would award an
+    // instant win or never award one.
+    it('returns false when surviveSeconds is non-finite', () => {
+      expect(shouldSurviveWin(100, Number.NaN)).toBe(false);
+      expect(shouldSurviveWin(100, Number.POSITIVE_INFINITY)).toBe(false);
+      expect(shouldSurviveWin(100, Number.NEGATIVE_INFINITY)).toBe(false);
+    });
+    it('returns false when surviveSeconds is zero or negative', () => {
+      expect(shouldSurviveWin(0, 0)).toBe(false);
+      expect(shouldSurviveWin(100, -1)).toBe(false);
+    });
+    it('returns false when elapsedTime is non-finite', () => {
+      expect(shouldSurviveWin(Number.NaN, 30)).toBe(false);
+      expect(shouldSurviveWin(Number.POSITIVE_INFINITY, 30)).toBe(false);
+    });
   });
 
   describe('shouldProgressSpawn (P2-4a)', () => {

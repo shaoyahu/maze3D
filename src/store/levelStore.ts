@@ -566,18 +566,17 @@ export const useLevelStore = create<LevelStore>((set, get) => {
       }
     }
     const cur = all[folderId];
+    // F-2026-06-17-A-2: replaced the messy 9-line spread (lines 569-577
+    // in the pre-fix version) with this single line. The original code
+    // carried a `as string | undefined` cast in a dead branch — the
+    // spread built a record with both `parentId: parentId` (when non-null)
+    // and `parentId: undefined as string | undefined` (when null), and
+    // then the next two lines overwrote it with the correct form. The
+    // new form just inlines the conditional: `parentId: null` from the
+    // caller means "move to root" → undefined on disk.
     const next = {
       ...all,
-      [folderId]: {
-        ...cur,
-        ...(parentId === null ? {} : { parentId }),
-        ...(parentId === null ? { parentId: undefined as string | undefined } : {}),
-      },
-    };
-    // 上面的展开有点乱,重写更清晰:parentId 字段,根 → undefined。
-    next[folderId] = {
-      ...cur,
-      parentId: parentId === null ? undefined : parentId,
+      [folderId]: { ...cur, parentId: parentId === null ? undefined : parentId },
     };
     const result = safeSetItem(FOLDERS_STORAGE_KEY, next);
     if (!result.ok) {

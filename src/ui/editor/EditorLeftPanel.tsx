@@ -14,7 +14,8 @@
 //
 // 模式 mirror:EditorMyLevelsDrawer(P2-12)的 useConfirm 习惯 + 列表
 // 渲染;EditorHelpDrawer 的关闭/escape 习惯这里用不上(常驻面板)。
-import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useLevelStore, DEFAULT_FOLDER_ID, type Folder } from '../../store/levelStore';
 import { useEditorStore } from '../../store/editorStore';
 import { useConfirm } from '../useConfirm';
@@ -52,8 +53,19 @@ export function EditorLeftPanel(): React.ReactElement {
   const t = useT();
   const locale = useSettingsStore((s) => s.language);
   const confirm = useConfirm();
-  const folders = useLevelStore((s) => s.folders);
-  const customLevels = useLevelStore((s) => s.customLevels);
+  // F-2026-06-17-E-H-3: collapse the three data selectors (folders,
+  // customLevels, currentLevelId) into a single useShallow subscription.
+  // With the original layout, a `customLevels` map change and a
+  // `currentLevelId` change would each fire a separate re-render, and
+  // Zustand's default Object.is would always see a new reference for the
+  // map. useShallow does a shallow field comparison, so the panel only
+  // re-renders when one of those three actually changed by value, not by
+  // reference. Action selectors below keep their per-call form because
+  // Zustand store actions are stable references (set() never re-binds
+  // them) and don't trigger re-renders.
+  const { folders, customLevels } = useLevelStore(
+    useShallow((s) => ({ folders: s.folders, customLevels: s.customLevels })),
+  );
   const currentLevelId = useEditorStore((s) => s.level.id);
   const createFolder = useLevelStore((s) => s.createFolder);
   const deleteFolder = useLevelStore((s) => s.deleteFolder);
@@ -303,7 +315,16 @@ interface RowMenuProps {
   folderOptions: Array<{ id: string; name: string }>;
 }
 
-function RowMenu({ kind, testIdSuffix, onRename, onDelete, onMoveTo, folderOptions }: RowMenuProps): React.ReactElement {
+// F-2026-06-17-E-H-3: RowMenu is wrapped in React.memo. Before this, every
+// re-render of EditorLeftPanel produced a new renderFolder/renderLevel
+// closure, which in turn produced fresh callback closures passed to
+// RowMenu. Because RowMenu wasn't memoized, every row in the tree
+// re-rendered on every parent render — including hover / setOpen events
+// that should have been local to a single row. With memo, the row only
+// re-renders when its props (kind / testIdSuffix / folderOptions) change
+// by reference, and since folderOptions is recomputed only when folders
+// changes, the cost is bounded to a real data change.
+const RowMenu = memo(function RowMenu({ kind, testIdSuffix, onRename, onDelete, onMoveTo, folderOptions }: RowMenuProps): React.ReactElement {
   const t = useT();
   const [open, setOpen] = useState<boolean>(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -382,7 +403,7 @@ function RowMenu({ kind, testIdSuffix, onRename, onDelete, onMoveTo, folderOptio
       )}
     </div>
   );
-}
+});
 
 // 给 RowMenu 的"移动到"列出所有可选 folder。excludeId 是 folder 时,
 // 不能把 folder 移到自己下;level 时 excludeId=null(可以挪到任何 folder)。

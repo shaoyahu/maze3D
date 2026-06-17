@@ -11,6 +11,15 @@ export function isReachable(
   const depth = walls.length;
   const width = depth > 0 ? walls[0].length : 0;
   if (depth === 0 || width === 0) return false;
+  // F-2026-06-17-C-H-1: guard start/exit coordinates against the grid bounds
+  // before any array access. Without this, `walls[start.z][start.x]` would
+  // silently return undefined (treating out-of-bounds as a floor) and the
+  // visited[z*width+x] write at line 21 would also leak past the array's
+  // actual length on a jagged (non-rectangular) input. Returning false on
+  // out-of-bounds keeps the BFS contract honest: unreachable from a cell we
+  // never owned.
+  if (start.x < 0 || start.x >= width || start.z < 0 || start.z >= depth) return false;
+  if (exit.x < 0 || exit.x >= width || exit.z < 0 || exit.z >= depth) return false;
   if (walls[start.z][start.x] === 1 || walls[exit.z][exit.x] === 1) return false;
   const visited = new Uint8Array(width * depth);
   // F-L12: head-index FIFO instead of `Array.shift()` (O(n) per pop).

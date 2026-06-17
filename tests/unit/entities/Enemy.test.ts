@@ -357,4 +357,40 @@ describe('Enemy', () => {
       expect(e.position.x).toBeLessThan(1.0);
     });
   });
+
+  // F-2026-06-17-C-H-2: the constructor must reject spawns whose path[0]
+  // is more than one cellSize away. Without this guard, an editor export
+  // with stale spawn coordinates would let the enemy "snap" on its
+  // first tick — the FOV cone was computed on the very first frame from
+  // a far-away heading, then silently corrected on the second tick.
+  describe('F-2026-06-17-C-H-2: spawn/path[0] distance guard', () => {
+    it('throws when spawn is more than one cell away from path[0]', () => {
+      const spawn = makeSpawn({
+        x: 0,
+        z: 0,
+        // path[0] at (5, 5) — distance ~7.07, well past cellSize=1.
+        path: [
+          { x: 5, z: 5 },
+          { x: 6, z: 5 },
+        ],
+      });
+      expect(() => new Enemy(spawn, { playerSpeed: 1, chaseMultiplier: 1.5 }, walledGrid())).toThrow(
+        /more than one cell.*away from path\[0\]/,
+      );
+    });
+
+    it('accepts a spawn exactly at path[0] (zero distance)', () => {
+      const spawn = makeSpawn({
+        x: 2,
+        z: 3,
+        path: [
+          { x: 2, z: 3 },
+          { x: 4, z: 3 },
+        ],
+      });
+      // No throw — the constructor should accept spawn === path[0].
+      const e = new Enemy(spawn, { playerSpeed: 1, chaseMultiplier: 1.5 }, walledGrid());
+      expect(e.path[0]).toEqual({ x: 2, z: 3 });
+    });
+  });
 });
