@@ -96,4 +96,45 @@ describe('built-in level JSONs (D-20)', () => {
       expect(data.walls[data.exit.z][data.exit.x]).toBe(0);
     },
   );
+
+  // F-2026-06-17-F-CRITICAL-1: built-in teaching levels ship with P2-11
+  // fields (i18n.en, tutorialSteps, hideMinimap, rules.enemyAggression,
+  // rules.requireAllPickups). The original P2-11 validator was
+  // field-silent, so adding the JSON fields did nothing at runtime —
+  // 959/1/0 tests passed while i18n / TutorialBanner / hideMinimap /
+  // enemyAggression were all dropped. This assertion is per-level and
+  // fails the specific level whose validator broke, so a regression
+  // is traceable instead of "all built-ins broken".
+  it.each(collectLevels())(
+    '%s — P2-11 fields survive the validator (i18n + tutorialSteps + hideMinimap + rules overrides)',
+    ({ id, raw }) => {
+      const data = validateMaze(raw, id);
+      // The bug we are guarding against is the validator silently
+      // *stripping* a field that the JSON had. For each P2-11 field:
+      // if the raw JSON carried it, the validated data must carry it
+      // too (with the same shape).
+      const rawObj = raw as Record<string, unknown>;
+      const rawRules = (rawObj.rules as Record<string, unknown> | undefined) ?? {};
+      if (rawObj.i18n !== undefined) {
+        expect(data.i18n).toBeDefined();
+      }
+      if (Array.isArray(rawObj.tutorialSteps)) {
+        expect(data.tutorialSteps).toBeDefined();
+        expect(Array.isArray(data.tutorialSteps)).toBe(true);
+      }
+      if (typeof rawObj.hideMinimap === 'boolean') {
+        expect(data.hideMinimap).toBe(rawObj.hideMinimap);
+      }
+      if (
+        rawRules.enemyAggression === 'easy' ||
+        rawRules.enemyAggression === 'medium' ||
+        rawRules.enemyAggression === 'hard'
+      ) {
+        expect(data.rules.enemyAggression).toBe(rawRules.enemyAggression);
+      }
+      if (rawRules.requireAllPickups === true) {
+        expect(data.rules.requireAllPickups).toBe(true);
+      }
+    },
+  );
 });

@@ -206,6 +206,33 @@ describe('isVictoryType (F-D-quality-HIGH-2)', () => {
   });
 });
 
+// F-2026-06-17-F-M-3: explicit guard coverage for the P2-11
+// `caught-by-enemy` literal and the canonical "garbage" non-string
+// inputs. The each-loop above already exercises caught-by-enemy
+// transitively, but a dedicated block makes the guard contract
+// readable in isolation — important because the union was extended
+// post-freeze (P2-11) and the runtime whitelist is the single source
+// of truth that drives `crossesExit`'s "caught by enemy" branch.
+describe('isVictoryType — explicit guard coverage (F-M-3)', () => {
+  it('accepts the P2-11 caught-by-enemy literal', () => {
+    expect(isVictoryType('caught-by-enemy')).toBe(true);
+  });
+
+  it('rejects arbitrary unknown strings', () => {
+    expect(isVictoryType('invalid')).toBe(false);
+    expect(isVictoryType('CAUGHT-BY-ENEMY')).toBe(false); // case-sensitive
+    expect(isVictoryType('caught_by_enemy')).toBe(false); // underscore vs dash
+  });
+
+  it('rejects the canonical non-string garbage inputs', () => {
+    expect(isVictoryType(null)).toBe(false);
+    expect(isVictoryType(undefined)).toBe(false);
+    expect(isVictoryType(123)).toBe(false);
+    expect(isVictoryType({})).toBe(false);
+    expect(isVictoryType(['caught-by-enemy'])).toBe(false);
+  });
+});
+
 describe('isMazeSize (F-D-quality-D-16)', () => {
   it.each(MAZE_SIZES)('accepts the documented size %d', (n) => {
     expect(isMazeSize(n)).toBe(true);
