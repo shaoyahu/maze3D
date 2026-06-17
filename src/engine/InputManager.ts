@@ -111,6 +111,18 @@ export class InputManager {
   };
 
   private onKeyDown = (e: KeyboardEvent) => {
+    // F-2026-06-17-B-H-3: when paused, the only key the engine still
+    // cares about is the pause-toggle key (so the player can un-pause).
+    // Anything else — typing in the Settings overlay, accidentally
+    // tapping Digit1/2 to use an item while the menu is up, pressing W
+    // to scroll a dropdown — must not leak into `this.keys` /
+    // `justPressed` or fire a tutorial / use-item side effect. The
+    // previous code had no guard here, so opening the Pause overlay
+    // while a focus was inside a form input created a "P key loop":
+    // P toggled pause off, the next P in the input box toggled it back
+    // on, etc. Now we still allow KeyP to fall through so the user can
+    // always un-pause, but everything else is dropped.
+    if (this.paused && e.code !== 'KeyP') return;
     this.keys.add(e.code);
     if (e.code === 'KeyP' && !e.repeat) this.togglePauseListener?.();
     if (e.code === 'Digit1' && !e.repeat) this.useItemListener?.(0);

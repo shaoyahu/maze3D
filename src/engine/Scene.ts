@@ -3,15 +3,25 @@ import type { MazeData } from '../maze/types';
 import { createPickupMaterial } from '../entities/Pickup';
 import { ENEMY_HEIGHT, ENEMY_RADIUS } from '../entities/Enemy';
 
+// F-2026-06-17-B-H-1: track GPU resources with strong Set<> refs, NOT
+// WeakSet<>. Three.js textures / geometries / materials are GPU-backed;
+// they MUST be explicitly dispose()'d before being dropped, even if the
+// JS-side wrapper is GC'd (the GPU upload survives). A WeakSet silently
+// loses entries once the wrapper is collected, defeating the purpose of
+// "have I already disposed this?". With strong Sets we keep the wrappers
+// alive until the module itself is torn down — which is the desired
+// lifetime for a singleton dedupe set anyway.
+//
 // F-D-17 (P3-Theme 6): cross-call double-dispose tracking for textures.
 // The per-call `seenTexs` inside disposeScene only dedupes within a single
 // invocation; if the same THREE.Texture is fed to a second disposeScene()
 // (e.g. React strict-mode double-mount, level-swap race, or hot-reload),
 // CanvasTexture.dispose() can throw or warn. We log once per texture and
-// skip the second call. Both sets are weak so disposed textures can be
-// GC'd normally — the warn flag is keyed on the same weak refs.
-const disposedTexs = new WeakSet<THREE.Texture>();
-const doubleDisposeWarned = new WeakSet<THREE.Texture>();
+// skip the second call. Both sets are strong so disposed textures can be
+// tracked across disposeScene() calls even after the wrapping scene is
+// GC'd.
+const disposedTexs = new Set<THREE.Texture>();
+const doubleDisposeWarned = new Set<THREE.Texture>();
 
 function createWallTexture(): THREE.CanvasTexture {
   // Brick pattern with visible horizontal & vertical mortar lines so the
@@ -331,9 +341,15 @@ export function disposeScene(
   pickups: THREE.Mesh[],
   enemies: THREE.Mesh[] = [],
 ) {
-  const seenGeoms = new WeakSet<THREE.BufferGeometry>();
-  const seenMats = new WeakSet<THREE.Material>();
-  const seenTexs = new WeakSet<THREE.Texture>();
+  // F-2026-06-17-B-H-1: Set (strong refs), not WeakSet. Three.js
+  // BufferGeometry / Material / Texture must be dispose()'d explicitly;
+  // using WeakSet would let the wrapper be GC'd while the GPU resource
+  // leaks. The seen* sets are local to this invocation; on a second
+  // disposeScene() call the module-level `disposedTexs` set (also strong)
+  // dedupes across calls.
+  const seenGeoms = new Set<THREE.BufferGeometry>();
+  const seenMats = new Set<THREE.Material>();
+  const seenTexs = new Set<THREE.Texture>();
   const disposeTex = (t: THREE.Texture | undefined | null) => {
     if (!t) return;
     if (seenTexs.has(t)) return;

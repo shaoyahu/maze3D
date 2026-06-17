@@ -107,6 +107,15 @@ export class Game {
   private camera?: THREE.PerspectiveCamera;
   private sceneRefs?: SceneRefs;
   private player?: PlayerState;
+  // F-2026-06-17-B-H-2: a flag flipped synchronously in dispose() and
+  // checked at the top of update(). The Loop's own `stopped` flag cancels
+  // pending rAF, but rAF callbacks already in flight (already dispatched
+  // by the browser, scheduled to fire on the next frame) can still land
+  // inside update() after dispose() returns — especially in React 18
+  // strict-mode, where Game instances are created and destroyed twice in
+  // quick succession. Without this guard, a late tick would touch the
+  // disposed scene refs and render a torn-down scene once.
+  private destroyed = false;
   // Read-only accessors for UI components (e.g. Minimap) that need to
   // peek at engine state without going through Zustand. Returns the raw
   // reference; callers must not mutate.
@@ -165,7 +174,13 @@ export class Game {
     this.camera = createCamera();
     // Apply the player's saved FOV before the first render so the minimap
     // and the 3D view agree from frame 0.
-    this.camera.fov = this.bridge.getInitialFov();
+    // F-2026-06-17-B-H-4: route through clampFov() so a stray NaN /
+    // ±Infinity (corrupted localStorage, devtools injection, future
+    // migration bug) collapses to FOV_DEFAULT (60) instead of poisoning
+    // camera.fov and propagating into projectionMatrix, breaking the
+    // very first render. setFov() already does this — init() was the
+    // forgotten sibling.
+    this.camera.fov = clampFov(this.bridge.getInitialFov());
     this.camera.updateProjectionMatrix();
     this.input = new InputManager(this.bridge.getInitialPointerSensitivity());
     this.input.onTogglePause(() => this.bridge.onPauseToggle());
@@ -260,7 +275,14 @@ export class Game {
     const generated = this.currentMode === 'survive'
       ? injectEnemySpawns(maze, requestedEnemyCount)
       : [];
-    const injectedMaze: MazeData = { ...maze, enemies: [...maze.enemies, ...generated] };
+    // F-2026-06-17-C-H-3: drop any previously-injected gen-* enemies
+    // before merging the new batch. Without this, the retry / next-level
+    // path stacked another 3 enemies on top of the prior 3, ballooning
+    // the scene to 6 / 9 / 12 over a single run. Hand-crafted
+    // `maze.enemies` (FR-21) are preserved — the `gen-` prefix is the
+    // procedural-injection marker, so the filter is safe.
+    const handCraftedEnemies = maze.enemies.filter((e) => !e.id.startsWith('gen-'));
+    const injectedMaze: MazeData = { ...maze, enemies: [...handCraftedEnemies, ...generated] };
     // F4: buildScene applies the palette exactly once based on the dark
     // mode flag, so the follow-up setDarkMode() (which would re-run
     // applyPalette a second time) is no longer needed.
@@ -322,6 +344,11 @@ export class Game {
   }
 
   dispose() {
+    // F-2026-06-17-B-H-2: flip the destroyed flag synchronously, BEFORE
+    // any other teardown, so an in-flight rAF callback (already
+    // dispatched by the browser but not yet executed) is rejected at the
+    // top of update() and never touches the partially-torn-down scene.
+    this.destroyed = true;
     this.loop?.stop();
     this.input?.dispose();
     if (this.sceneRefs) {
@@ -336,6 +363,15 @@ export class Game {
   }
 
   private update(dt: number) {
+    // F-2026-06-17-B-H-2: bail first on a disposed instance. The other
+    // `!this.renderer` guards below already handle missing optional refs
+    // (e.g. before init), but they all check *field* presence — disposed
+    // refs are not nulled by dispose() (the `?.dispose()` calls only run
+    // the side effect, they do not clear the references), so a late
+    // tick would otherwise see every ref still present and render
+    // a torn-down scene. The destroyed flag is the single source of
+    // truth for "this Game is no longer in service".
+    if (this.destroyed) return;
     if (!this.renderer || !this.camera || !this.player || !this.sceneRefs || !this.currentMaze || !this.input) return;
     if (!this.bridge.isActiveLevel(this.currentMaze.id)) return;
     // Bail when the run is over. pauseLoop() is called for the win path, but
