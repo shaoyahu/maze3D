@@ -1,9 +1,16 @@
 import type { MazeData } from '../../maze/types';
 import { isReachable } from '../../maze/reachability';
+import type { TVars } from '../../i18n';
 
+// F-2026-06-17-E-M-7: issues now carry an i18n key (and optional vars)
+// instead of a pre-rendered string. The status bar calls `t()` to render
+// the message, so warnings follow the active language instead of always
+// showing English. The `where` field stays as a raw string — it's a chip
+// tag, not user-facing prose.
 export interface ValidationIssue {
   severity: 'error' | 'warning';
-  message: string;
+  messageKey: string;
+  messageVars?: TVars;
   where?: string;
 }
 
@@ -17,7 +24,7 @@ export interface ValidationIssue {
 // numerical order (1, 2, 3, 4, 5), each appearing at most once.
 export function validateDesign(level: MazeData): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
-  const { walls, start, exit, pickups, enemies, rules } = level;
+  const { walls, start, exit, enemies, rules } = level;
   const startOnWall = walls[start.z]?.[start.x] === 1;
   const exitOnWall = walls[exit.z]?.[exit.x] === 1;
 
@@ -27,20 +34,14 @@ export function validateDesign(level: MazeData): ValidationIssue[] {
   if (!startOnWall && !exitOnWall && !isReachable(walls, start, exit)) {
     issues.push({
       severity: 'warning',
-      message: 'Exit is unreachable from the start cell',
+      messageKey: 'editor.validation.exitUnreachable',
       where: 'exit',
     });
   }
 
-  // Rule 2: no pickups means no time/health to collect — flag for the
-  // designer without blocking save.
-  if (pickups.length === 0) {
-    issues.push({
-      severity: 'warning',
-      message: 'Level has no pickups',
-      where: 'pickups',
-    });
-  }
+  // (F-2026-06-17: "no pickups" 警告已砍。空关卡也是合法配置 —
+  // 例如纯到达出口的极简迷宫,或教学关卡里"出谜前别打扰玩家"。
+  // 原 rule 2 删除后,后续规则编号保持稳定:rule 3 = enemyPathTooShort。)
 
   // Rule 3: every enemy needs a patrol path of at least 2 waypoints to
   // move between. A single-point path leaves the enemy frozen on spawn.
@@ -48,18 +49,19 @@ export function validateDesign(level: MazeData): ValidationIssue[] {
     if (enemy.path.length < 2) {
       issues.push({
         severity: 'warning',
-        message: `Enemy ${enemy.id} has a patrol path with fewer than 2 waypoints`,
+        messageKey: 'editor.validation.enemyPathTooShort',
+        messageVars: { id: enemy.id },
         where: `enemy:${enemy.id}`,
       });
     }
   }
 
   // Rule 4: start on a wall. Emitted after the warning rules so the
-  // designer sees the "no pickups" hint before the blocking error.
+  // designer sees the "exit unreachable" hint before the blocking error.
   if (startOnWall) {
     issues.push({
       severity: 'error',
-      message: 'Start cell is on a wall',
+      messageKey: 'editor.validation.startOnWall',
       where: 'start',
     });
   }
@@ -68,7 +70,7 @@ export function validateDesign(level: MazeData): ValidationIssue[] {
   if (exitOnWall) {
     issues.push({
       severity: 'error',
-      message: 'Exit cell is on a wall',
+      messageKey: 'editor.validation.exitOnWall',
       where: 'exit',
     });
   }
@@ -80,21 +82,24 @@ export function validateDesign(level: MazeData): ValidationIssue[] {
   if (!(rules.initialTime > 0)) {
     issues.push({
       severity: 'error',
-      message: `rules.initialTime must be > 0 (got ${rules.initialTime})`,
+      messageKey: 'editor.validation.rules.initialTime',
+      messageVars: { value: rules.initialTime },
       where: 'rules',
     });
   }
   if (!(rules.maxHealth > 0)) {
     issues.push({
       severity: 'error',
-      message: `rules.maxHealth must be > 0 (got ${rules.maxHealth})`,
+      messageKey: 'editor.validation.rules.maxHealth',
+      messageVars: { value: rules.maxHealth },
       where: 'rules',
     });
   }
   if (!(rules.timeOnPickup > 0)) {
     issues.push({
       severity: 'error',
-      message: `rules.timeOnPickup must be > 0 (got ${rules.timeOnPickup})`,
+      messageKey: 'editor.validation.rules.timeOnPickup',
+      messageVars: { value: rules.timeOnPickup },
       where: 'rules',
     });
   }

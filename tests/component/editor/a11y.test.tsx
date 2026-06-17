@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { EditorTopBar } from '../../../src/ui/editor/EditorTopBar';
-import { EditorLeftDrawer } from '../../../src/ui/editor/EditorLeftDrawer';
+import { EditorToolbar } from '../../../src/ui/editor/EditorToolbar';
 import { EditorViewport } from '../../../src/ui/editor/EditorViewport';
 import { Button } from '../../../src/ui/components/Button';
 import { useEditorStore } from '../../../src/store/editorStore';
@@ -44,10 +44,11 @@ describe('EditorTopBar a11y (P3-Theme 2)', () => {
     resetEditor();
   });
 
-  it('LeftDrawer exposes role=toolbar with aria-label "Editor tools" (B-L3, post-split)', () => {
+  it('EditorToolbar exposes role=toolbar with aria-label "Editor tools" (B-L3, post-split)', () => {
+    // P2-13: 工具从 LeftDrawer 搬到中央上方的 EditorToolbar,role/aria-label 不变。
     render(
       <ConfirmProvider>
-        <EditorLeftDrawer />
+        <EditorToolbar />
       </ConfirmProvider>,
     );
     const toolbar = screen.getByRole('toolbar', { name: 'Editor tools' });

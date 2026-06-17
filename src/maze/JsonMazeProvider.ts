@@ -249,6 +249,11 @@ export function validateMaze(raw: unknown, id: string): MazeData {
     tutorialSteps = m.tutorialSteps as NonNullable<MazeData['tutorialSteps']>;
   }
   const hideMinimap = typeof m.hideMinimap === 'boolean' ? m.hideMinimap : undefined;
+  // P2-13: optional folderId for the editor's left-panel file tree.
+  // Free-form string (validated only as "looks like an id"); the
+  // editor's level store resolves the reference at render time, so a
+  // dangling folderId just falls back to the default "我的" bucket.
+  const folderId = typeof m.folderId === 'string' && m.folderId.length > 0 ? m.folderId : undefined;
   // rules.enemyAggression + rules.requireAllPickups are optional in
   // LevelRules; patch them in here from the raw record so the
   // validator never silently drops them.
@@ -282,6 +287,7 @@ export function validateMaze(raw: unknown, id: string): MazeData {
     ...(i18n !== undefined ? { i18n } : {}),
     ...(tutorialSteps !== undefined ? { tutorialSteps } : {}),
     ...(hideMinimap !== undefined ? { hideMinimap } : {}),
+    ...(folderId !== undefined ? { folderId } : {}),
   };
   return maze;
 }

@@ -107,9 +107,19 @@ describe('EditorStatusBar (P2-4b #14)', () => {
   });
 
   it('shows the warning count from validateDesign', () => {
-    // No pickups → 1 warning (no pickups).
-    // All walls in start/exit bounds, so no "on wall" errors.
-    resetEditor();
+    // F-2026-06-17: the default fixture used to be 1 warning ("no
+    // pickups"). That rule was removed — empty levels are legal — so we
+    // pre-seed a wall column at x=2 that severs start (0,0) from exit
+    // (4,3), which is the only remaining non-error rule that always
+    // fires regardless of the rest of the level.
+    resetEditor({
+      walls: [
+        [0, 0, 1, 0, 0],
+        [0, 0, 1, 0, 0],
+        [0, 0, 1, 0, 0],
+        [0, 0, 1, 0, 0],
+      ],
+    });
     render(<EditorStatusBar />);
     expect(screen.getByTestId('status-warnings').textContent).toContain('1');
     expect(screen.getByTestId('status-warnings').textContent).toContain('警告');
@@ -131,28 +141,40 @@ describe('EditorStatusBar (P2-4b #14)', () => {
     });
 
     it('opens the popup when the warning chip is clicked', () => {
+      // F-2026-06-17: fixture has 1 warning (exit unreachable) and 0
+      // errors after the "no pickups" rule was removed.
+      resetEditor({
+        walls: [
+          [0, 0, 1, 0, 0],
+          [0, 0, 1, 0, 0],
+          [0, 0, 1, 0, 0],
+          [0, 0, 1, 0, 0],
+        ],
+      });
       render(<EditorStatusBar />);
       act(() => {
         screen.getByTestId('status-warnings').click();
       });
       const popup = screen.getByTestId('warnings-popup');
       expect(popup).toBeInTheDocument();
-      // The fixture has 1 warning ("no pickups") and 0 errors.
+      // F-2026-06-17-E-M-7: warnings popup renders the i18n-translated
+      // message (default locale is `zh`), not the raw English string.
       expect(screen.getByTestId('warnings-popup-list').children).toHaveLength(1);
-      expect(screen.getByTestId('warnings-popup-item-0').textContent).toContain('Level has no pickups');
+      expect(screen.getByTestId('warnings-popup-item-0').textContent).toContain('出口无法从起点到达');
     });
 
     it('renders one list item per issue across warnings and errors', () => {
-      // Force an error by placing the exit on a wall, and keep the
-      // existing "no pickups" warning. Two issues total.
+      // F-2026-06-17: trigger 1 warning + 1 error without relying on
+      // the removed "no pickups" rule. The wall column severs start↔exit
+      // (warning); `initialTime: 0` triggers the rules.initialTime error.
       resetEditor({
         walls: [
-          [0, 0, 0, 0, 1], // exit (4,0) sits on a wall
-          [0, 0, 0, 0, 0],
-          [0, 0, 0, 0, 0],
-          [0, 0, 0, 0, 0],
+          [0, 0, 1, 0, 0],
+          [0, 0, 1, 0, 0],
+          [0, 0, 1, 0, 0],
+          [0, 0, 1, 0, 0],
         ],
-        exit: { x: 4, z: 0 },
+        rules: { initialTime: 0, maxHealth: 3, victory: 'reach-exit', timeOnPickup: 10 },
       });
       render(<EditorStatusBar />);
       act(() => {

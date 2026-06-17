@@ -773,27 +773,381 @@
 
 /* ----- Left drawer (48px) ----- */
 
-.editor-drawer {
-  width: 48px;
+/* P2-13: .editor-drawer 三个类已删 — 旧左侧工具 drawer 被 EditorLeftPanel
+   (左栏) + EditorToolbar (中央上方) 取代。 */
+
+.editor-drawer-removed { display: none; }
+
+/* ----- P2-13: Top toolbar (中央上方,横排工具) -----
+   P2-13.x 改版:按钮 30×36 → 50×60(图标 + 中文短名 + 快捷键),整条
+   工具栏水平居中,active 状态用底色填充 + accent 边框,而不是左侧 bar。
+   视觉上对齐工业 CAD 工具栏(图标 + 名称两行,让人一眼能识别工具)。 */
+
+.editor-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  min-height: 76px;
+}
+
+.editor-toolbar__group {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.editor-toolbar__divider {
+  width: 1px;
+  height: 44px;
+  background: var(--border);
+  margin: 0 6px;
+  flex-shrink: 0;
+}
+
+.editor-toolbar__btn {
+  appearance: none;
+  position: relative;
+  min-width: 64px;
+  height: 60px;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--fg-muted);
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 120ms ease-out, color 120ms ease-out, border-color 120ms ease-out;
+}
+
+.editor-toolbar__btn:hover {
+  background: var(--bg-inset);
+  color: var(--fg);
+  border-color: var(--border);
+}
+
+.editor-toolbar__btn--active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.editor-toolbar__btn--active .editor-toolbar__label {
+  color: var(--accent);
+}
+
+.editor-toolbar__btn[data-disabled="true"] {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.editor-toolbar__icon {
+  font-size: 17px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.editor-toolbar__icon svg {
+  display: block;
+}
+
+.editor-toolbar__label {
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--fg-muted);
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.editor-toolbar__shortcut {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 600;
+  color: var(--fg-dim);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  margin-top: 1px;
+}
+
+.editor-toolbar__btn--active .editor-toolbar__shortcut {
+  color: var(--accent);
+  opacity: 0.75;
+}
+
+/* ----- P2-13: EditorLeftPanel (左栏常驻) + 文件树 -----
+   240px 宽,顶部两个操作按钮(关卡 / 文件夹),下方递归 ul/li 树。 */
+
+.editor-leftpanel {
+  width: 240px;
   flex-shrink: 0;
   background: var(--bg-elevated);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  align-items: center;
-  padding: 12px 0;
-  gap: 4px;
+  min-height: 0;
+  overflow: hidden;
 }
 
-.editor-drawer__divider {
-  width: 28px;
-  height: 1px;
-  background: var(--border);
-  margin: 6px 0;
+.editor-leftpanel__actions {
+  display: flex;
+  gap: 6px;
+  padding: 10px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
 }
 
-.editor-drawer__spacer {
+.editor-leftpanel__btn {
   flex: 1;
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--bg-inset);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 120ms ease-out, background 120ms ease-out;
+}
+
+.editor-leftpanel__btn:hover {
+  border-color: var(--border-strong);
+}
+
+.editor-leftpanel__btn--primary {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.editor-leftpanel__btn--primary:hover {
+  background: var(--accent-soft);
+  filter: brightness(1.1);
+}
+
+.editor-leftpanel__tree {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0 16px;
+}
+
+.editor-leftpanel__empty {
+  padding: 24px 12px;
+  text-align: center;
+  color: var(--fg-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  border: 1px dashed var(--border);
+  border-radius: var(--r-md);
+  margin: 12px;
+  line-height: 1.5;
+}
+
+.editor-tree {
+  /* 容器,跟 .editor-leftpanel__tree 是同一节点的别名 — EditorLeftPanel
+     内部 data-testid 用 editor-tree。 */
+}
+
+.editor-tree__root,
+.editor-tree__children {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.editor-tree__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding-right: 8px;
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--fg);
+  position: relative;
+  cursor: default;
+}
+
+.editor-tree__row--level {
+  cursor: default;
+}
+
+.editor-tree__row--level:hover,
+.editor-tree__row--folder:hover {
+  background: var(--bg-inset);
+}
+
+.editor-tree__row--level:hover .editor-tree__menu,
+.editor-tree__row--folder:hover .editor-tree__menu {
+  opacity: 1;
+}
+
+.editor-tree__chevron {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--fg-dim);
+  font-size: 10px;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.editor-tree__chevron:hover {
+  color: var(--fg);
+}
+
+.editor-tree__icon {
+  font-size: 12px;
+  flex-shrink: 0;
+  width: 16px;
+  text-align: center;
+  line-height: 1;
+}
+
+.editor-tree__name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.editor-tree__name--button {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  padding: 0;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.editor-tree__level--current .editor-tree__name {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.editor-tree__level--current .editor-tree__icon {
+  color: var(--accent);
+}
+
+/* Row menu (hover 出现的 ⋮ 按钮 + popover) */
+.editor-tree__menu {
+  position: relative;
+  opacity: 0;
+  transition: opacity 100ms ease-out;
+  flex-shrink: 0;
+}
+
+.editor-tree__menu--open {
+  opacity: 1;
+}
+
+.editor-tree__menu-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--fg-dim);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+
+.editor-tree__menu-btn:hover {
+  background: var(--bg-elevated);
+  color: var(--fg);
+}
+
+.editor-tree__menu-pop {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 50;
+  min-width: 180px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-1);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.editor-tree__menu-item {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 12px;
+  text-align: left;
+  padding: 6px 10px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.editor-tree__menu-item:hover {
+  background: var(--bg-inset);
+}
+
+.editor-tree__menu-item--danger {
+  color: var(--danger);
+}
+
+.editor-tree__menu-item--danger:hover {
+  background: var(--danger-soft);
+}
+
+.editor-tree__menu-sub {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border);
+  margin-top: 2px;
+  padding-top: 2px;
+}
+
+.editor-tree__menu-sub-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fg-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 4px 10px 2px;
+}
+
+.editor-tree__root-levels {
+  /* 根目录下"无 parentId"的关卡,视觉上跟默认文件夹并列 */
 }
 
 /* ----- Viewport chrome (footer readouts, minimap, zoom controls) ----- */
@@ -832,34 +1186,38 @@
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 6px 10px;
-  background: rgba(20, 22, 30, 0.78);
-  border: 1px solid var(--border);
+  padding: 7px 12px;
+  background: var(--statusbar-bg);
+  border: 1px solid var(--border-strong);
   border-radius: var(--r-sm);
   font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--fg-muted);
-  backdrop-filter: blur(6px);
+  color: var(--statusbar-color);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: var(--shadow-1);
   z-index: 5;
 }
 
 .editor-viewport-readout__label {
-  color: var(--fg-dim);
+  color: var(--statusbar-color);
+  opacity: 0.55;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   font-size: 9px;
+  font-weight: 600;
 }
 
 .editor-viewport-readout__value {
-  color: var(--fg);
-  font-weight: 600;
+  color: var(--accent);
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 
 .editor-viewport-readout__divider {
   width: 1px;
   height: 12px;
-  background: var(--border);
+  background: var(--border-strong);
 }
 
 .editor-viewport-zoom {
@@ -869,12 +1227,14 @@
   display: flex;
   align-items: center;
   gap: 0;
-  background: rgba(20, 22, 30, 0.78);
-  border: 1px solid var(--border);
+  background: var(--statusbar-bg);
+  border: 1px solid var(--border-strong);
   border-radius: var(--r-sm);
   font-family: var(--font-mono);
   font-size: 11px;
-  backdrop-filter: blur(6px);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: var(--shadow-1);
   overflow: hidden;
   z-index: 5;
 }
@@ -899,8 +1259,8 @@
 .editor-viewport-zoom__value {
   min-width: 50px;
   text-align: center;
-  color: var(--fg);
-  font-weight: 600;
+  color: var(--accent);
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
   border-left: 1px solid var(--border);
   border-right: 1px solid var(--border);
@@ -1409,6 +1769,191 @@
   to { transform: translate(-50%, 0); opacity: 1; }
 }
 
+/* ----- P2-12: My-Levels drawer (editor 内的自定义关卡列表) -----
+   结构与 editor-help 高度对齐:portal → backdrop → 顶部居中面板。
+   列表用普通 ul/li,行内 = 名称/ID/大小 + 两个按钮(编辑/删除)。 */
+
+.editor-mylevels__backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 1200;
+  animation: editor-help-fade 140ms ease-out;
+}
+
+.editor-mylevels__panel {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(720px, calc(100vw - 32px));
+  max-height: 70vh;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 10px 10px;
+  padding: 18px 22px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  color: var(--fg);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  overflow-y: auto;
+  animation: editor-help-drop 200ms ease-out;
+}
+
+.editor-mylevels__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 10px;
+}
+
+.editor-mylevels__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  font-family: var(--font-display);
+}
+
+.editor-mylevels__close {
+  border: none;
+  background: transparent;
+  color: var(--fg-muted);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: var(--r-sm);
+  transition: color 140ms ease-out, background 140ms ease-out;
+}
+
+.editor-mylevels__close:hover {
+  color: var(--fg);
+  background: var(--bg-inset);
+}
+
+.editor-mylevels__body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-family: var(--font-body);
+  font-size: 13px;
+}
+
+.editor-mylevels__empty {
+  padding: 28px 16px;
+  text-align: center;
+  color: var(--fg-dim);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  border: 1px dashed var(--border);
+  border-radius: var(--r-md);
+}
+
+.editor-mylevels__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.editor-mylevels__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-elevated);
+  transition: border-color 140ms ease-out, background 140ms ease-out;
+}
+
+.editor-mylevels__row:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-inset);
+}
+
+.editor-mylevels__row-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.editor-mylevels__row-name {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor-mylevels__row-id,
+.editor-mylevels__row-size {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-dim);
+}
+
+.editor-mylevels__row-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.editor-mylevels__btn {
+  appearance: none;
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 6px 12px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--fg);
+  cursor: pointer;
+  transition: color 140ms ease-out, border-color 140ms ease-out, background 140ms ease-out;
+}
+
+.editor-mylevels__btn:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-inset);
+}
+
+.editor-mylevels__btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.editor-mylevels__btn--primary {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.editor-mylevels__btn--primary:hover {
+  background: var(--accent-soft);
+}
+
+.editor-mylevels__btn--danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.editor-mylevels__btn--danger:hover {
+  background: var(--danger-soft);
+}
+
 /* Toggle button (top-right of the viewport shell) */
 .editor-help-toggle {
   position: absolute;
@@ -1457,14 +2002,17 @@
   font-family: var(--font-body);
 }
 
-/* The entity forms (pickup / enemy / wall) wrap a "← 关卡属性" button +
-   the entity card. Without `gap` on the wrapper the button sits flush
-   against the card header — the panel's outer `gap: 10px` only applies
-   to the wrapper's direct siblings, not to the wrapper's own children. */
+/* The entity forms (pickup / enemy / wall) and the level-metadata form
+   (关卡元数据 / 规则 / 教程 三块卡片的容器) all share this wrapper.
+   `.editor-properties` 自身的 `gap: 10px` 只在它的**直接子节点**之间
+   生效,不会嵌套到这一层 div 里面 — 不给 wrapper 加 gap,内部三张
+   Card 就会紧贴在一起(回归过:把 `<div data-testid="level-metadata-form">`
+   漏掉这个 className,导致三张卡的边框线挤成一坨)。
+   12px 比面板自身的 10px 略大一点点,让卡片边界更显眼但不喧宾夺主。 */
 .editor-properties__form {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 
 .editor-properties__back {
@@ -2396,31 +2944,9 @@
 .console-card--custom .console-card__no { color: var(--info); }
 .console-card--custom { --card-accent: var(--info); }
 
-.console-card__delete {
-  appearance: none;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 3px;
-  color: var(--fg-dim);
-  font-family: var(--font-mono);
-  font-size: 9px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  padding: 4px 8px;
-  cursor: pointer;
-  transition: color 140ms ease-out, border-color 140ms ease-out, background 140ms ease-out;
-}
-
-.console-card__delete:hover {
-  color: var(--danger);
-  border-color: var(--danger);
-  background: var(--danger-soft);
-}
-
-.console-card__delete:focus-visible {
-  outline: 2px solid var(--danger);
-  outline-offset: 2px;
-}
+/* P2-12: .console-card__delete 三段删除 — 该按钮已从 /levels 搬到
+   EditorMyLevelsDrawer(editor-mylevels__btn--danger 替代),此处不再
+   需要。 */
 
 /* ----- Mode picker (segmented) ----- */
 
@@ -3304,4 +3830,587 @@
   .home-shell { padding: 16px; }
   .home-hero { padding: 32px 24px; gap: 16px; }
   .home-hero__title { font-size: 32px; }
+}
+
+/* ============================================================
+   P2-13.x: 统一下拉框(Dropdown 组件)
+   替换浏览器原生 <select>。三段:
+     - .dropdown__native-select  : 隐藏的 <select>,仅给 a11y / 测试用
+     - .dropdown__trigger        : 视觉上的 button trigger
+     - .dropdown__popup / __option: 浮层 listbox + 选项
+   ============================================================ */
+
+.dropdown__native-select {
+  /* visually hidden 但 screen-reader / 自动化测试仍能命中。 */
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.dropdown__trigger {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 32px;
+  padding: 5px 30px 5px 11px;
+  background: var(--bg-inset);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  font-family: var(--font-body);
+  font-size: 12px;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  text-align: left;
+  position: relative;
+  transition: border-color 140ms ease-out, background 140ms ease-out, color 140ms ease-out;
+}
+
+.dropdown__trigger:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-elevated);
+}
+
+.dropdown__trigger:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.dropdown__trigger[aria-expanded="true"] {
+  border-color: var(--accent);
+}
+
+.dropdown__trigger[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.dropdown__trigger-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dropdown__trigger-suffix {
+  color: var(--fg-dim);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.dropdown__trigger-caret {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--fg-muted);
+  display: inline-flex;
+  transition: transform 160ms ease-out, color 140ms ease-out;
+}
+
+.dropdown__trigger[aria-expanded="true"] .dropdown__trigger-caret {
+  color: var(--accent);
+  transform: translateY(-50%) rotate(180deg);
+}
+
+/* 兼容 .console-select 历史挂载点 —— 让 <Dropdown className="console-select">
+   还能匹配旧 .console-select 的 padding/字号差异。 */
+.dropdown__trigger.console-select {
+  padding: 7px 30px 7px 12px;
+  font-size: 13px;
+  min-height: 36px;
+}
+
+.dropdown__popup {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  z-index: 1100;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-2);
+  max-height: 280px;
+  overflow-y: auto;
+  animation: dropdown-pop 140ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  font-family: var(--font-body);
+  font-size: 12px;
+  outline: none;
+}
+
+.dropdown__popup--above {
+  animation: dropdown-pop-up 140ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes dropdown-pop {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+
+@keyframes dropdown-pop-up {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0);   }
+}
+
+.dropdown__option {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 28px 7px 10px;
+  border-radius: var(--r-sm);
+  color: var(--fg);
+  cursor: pointer;
+  user-select: none;
+  transition: background 100ms ease-out, color 100ms ease-out;
+  min-height: 32px;
+  justify-content: center;
+}
+
+.dropdown__option--with-desc {
+  padding: 8px 28px 9px 10px;
+  min-height: 42px;
+}
+
+.dropdown__option-main {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.dropdown__option-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dropdown__option-codename {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  flex-shrink: 0;
+}
+
+.dropdown__option-desc {
+  font-family: var(--font-body);
+  font-size: 10px;
+  color: var(--fg-muted);
+  line-height: 1.4;
+  letter-spacing: 0.01em;
+}
+
+.dropdown__option--active {
+  background: var(--bg-inset);
+}
+
+.dropdown__option--selected {
+  color: var(--accent);
+}
+
+.dropdown__option--selected .dropdown__option-codename {
+  color: var(--accent);
+  opacity: 0.7;
+}
+
+.dropdown__option--selected.dropdown__option--active {
+  background: var(--accent-soft);
+}
+
+.dropdown__option--disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.dropdown__option-check {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--accent);
+  display: inline-flex;
+}
+
+/* ============================================================
+   P2-13.x: Stepper — 隐藏原生 number spin 按钮
+   Stepper 已经有自定义 +/- 按钮,再让浏览器的上下箭头同时存在会
+   功能重复 + 视觉割裂。统一 reset。
+   ============================================================ */
+
+.editor-stepper__input,
+.console-stepper__input,
+.editor-properties__path-row input {
+  /* Chromium / WebKit / Edge */
+  appearance: textfield;
+  -webkit-appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.editor-stepper__input::-webkit-outer-spin-button,
+.editor-stepper__input::-webkit-inner-spin-button,
+.console-stepper__input::-webkit-outer-spin-button,
+.console-stepper__input::-webkit-inner-spin-button,
+.editor-properties__path-row input::-webkit-outer-spin-button,
+.editor-properties__path-row input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
+}
+
+.editor-stepper__input::-moz-number-spin-box,
+.console-stepper__input::-moz-number-spin-box,
+.editor-properties__path-row input::-moz-number-spin-box {
+  display: none;
+}
+
+/* ============================================================
+   P2-13.x: 教程 / HUD 卡片重设计
+   旧实现:checkbox 散装 + JSON textarea 裸露,排版跟规则卡片不统一。
+   新设计:
+     - 顶部 hero: 教程状态总览(开关 + 当前 step 序号)
+     - 中部三组"toggle row": 每一组 = 标题 + 描述 + 自定义开关
+     - 高级编辑折叠区:JSON 文本编辑放在虚线分隔的"advanced"块,
+       默认收起,避免一上来就被裸露 JSON 劝退
+   跟 rules 卡片共用 stepper / select 视觉语言。
+   ============================================================ */
+
+.editor-tutorial {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.editor-tutorial__hero {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-sm);
+}
+
+.editor-tutorial__hero-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--r-sm);
+  background: var(--accent);
+  color: var(--accent-ink);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 700;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.editor-tutorial__hero-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+
+.editor-tutorial__hero-title {
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.editor-tutorial__hero-sub {
+  font-family: var(--font-body);
+  font-size: 11px;
+  color: var(--fg-muted);
+  line-height: 1.4;
+}
+
+.editor-tutorial__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.editor-tutorial__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  transition: border-color 140ms ease-out, background 140ms ease-out;
+}
+
+.editor-tutorial__row:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-elevated);
+}
+
+.editor-tutorial__row-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+
+.editor-tutorial__row-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--fg);
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+.editor-tutorial__row-icon {
+  font-size: 12px;
+  color: var(--fg-muted);
+  width: 14px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.editor-tutorial__row-desc {
+  font-family: var(--font-body);
+  font-size: 10.5px;
+  color: var(--fg-dim);
+  letter-spacing: 0.01em;
+  line-height: 1.4;
+}
+
+.editor-tutorial__row-control {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 教程行内的"自定义 Switch"——比 console-switch 略小,跟 .console-checkbox 同密度。*/
+.editor-tutorial__switch {
+  position: relative;
+  display: inline-block;
+  width: 30px;
+  height: 16px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.editor-tutorial__switch input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+.editor-tutorial__switch__track {
+  position: absolute;
+  inset: 0;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  transition: background 160ms ease-out, border-color 160ms ease-out;
+}
+
+.editor-tutorial__switch__knob {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 12px;
+  height: 12px;
+  background: var(--fg-muted);
+  border-radius: 50%;
+  transition: transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1), background 160ms ease-out;
+}
+
+.editor-tutorial__switch input:checked ~ .editor-tutorial__switch__track {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.editor-tutorial__switch input:checked ~ .editor-tutorial__switch__knob {
+  transform: translateX(14px);
+  background: var(--accent);
+}
+
+.editor-tutorial__switch input:focus-visible ~ .editor-tutorial__switch__track {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* 高级 JSON 编辑折叠区 */
+.editor-tutorial__advanced {
+  border: 1px dashed var(--border);
+  border-radius: var(--r-sm);
+  background: transparent;
+  overflow: hidden;
+}
+
+.editor-tutorial__advanced-toggle {
+  width: 100%;
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  background: transparent;
+  border: none;
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  text-align: left;
+  transition: color 140ms ease-out, background 140ms ease-out;
+}
+
+.editor-tutorial__advanced-toggle:hover {
+  color: var(--fg);
+  background: var(--bg-inset);
+}
+
+.editor-tutorial__advanced-caret {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  color: var(--fg-dim);
+  font-size: 9px;
+  transition: transform 160ms ease-out;
+}
+
+.editor-tutorial__advanced--open .editor-tutorial__advanced-caret {
+  transform: rotate(90deg);
+}
+
+.editor-tutorial__advanced-body {
+  display: none;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 10px 10px;
+  border-top: 1px dashed var(--border);
+  padding-top: 8px;
+  margin-top: -1px;
+}
+
+.editor-tutorial__advanced--open .editor-tutorial__advanced-body {
+  display: flex;
+}
+
+.editor-tutorial__advanced-hint {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fg-dim);
+  letter-spacing: 0.04em;
+  line-height: 1.5;
+}
+
+.editor-tutorial__advanced textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 80px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 7px 9px;
+  outline: none;
+  transition: border-color 140ms ease-out;
+}
+
+.editor-tutorial__advanced textarea:focus {
+  border-color: var(--accent);
+}
+
+.editor-tutorial__advanced-status {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--fg-dim);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.editor-tutorial__advanced-status--error { color: var(--danger); }
+.editor-tutorial__advanced-status--ok    { color: var(--ok);     }
+
+.editor-tutorial__step-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+}
+
+.editor-tutorial__step-row__no {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.editor-tutorial__step-row__no--current {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.editor-tutorial__step-row__body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+  font-family: var(--font-body);
+  font-size: 11px;
+  color: var(--fg);
+  line-height: 1.4;
+}
+
+.editor-tutorial__step-row__meta {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: var(--fg-dim);
+  text-transform: uppercase;
 }

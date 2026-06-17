@@ -32,11 +32,10 @@ function makeLevel(over: Partial<MazeData> = {}): MazeData {
 
 describe('validateDesign', () => {
   it('returns [] for a clean level', () => {
-    // Arrange — a level with at least one pickup is "clean": no rule fires.
-    // (The base fixture has no pickups, which would trigger rule 2.)
-    const level = makeLevel({
-      pickups: [{ id: 'p1', x: 0, z: 0, type: 'time', value: 10 }],
-    });
+    // Arrange — base fixture already passes: reachable start↔exit, no
+    // enemies, default rules, even an empty pickups array (F-2026-06-17
+    // removed the "no pickups" warning — empty levels are legal).
+    const level = makeLevel();
 
     // Act
     const issues = validateDesign(level);
@@ -61,23 +60,8 @@ describe('validateDesign', () => {
     // Assert
     expect(issues).toContainEqual({
       severity: 'warning',
-      message: expect.stringContaining('unreachable'),
+      messageKey: 'editor.validation.exitUnreachable',
       where: 'exit',
-    });
-  });
-
-  it('emits a "no pickups" warning when pickups array is empty', () => {
-    // Arrange
-    const level = makeLevel({ pickups: [] });
-
-    // Act
-    const issues = validateDesign(level);
-
-    // Assert
-    expect(issues).toContainEqual({
-      severity: 'warning',
-      message: expect.stringContaining('pickup'),
-      where: 'pickups',
     });
   });
 
@@ -93,7 +77,8 @@ describe('validateDesign', () => {
     // Assert
     expect(issues).toContainEqual({
       severity: 'warning',
-      message: expect.stringContaining('path'),
+      messageKey: 'editor.validation.enemyPathTooShort',
+      messageVars: { id: 'e1' },
       where: 'enemy:e1',
     });
   });
@@ -115,7 +100,7 @@ describe('validateDesign', () => {
     // Assert
     expect(issues).toContainEqual({
       severity: 'error',
-      message: expect.stringContaining('Start'),
+      messageKey: 'editor.validation.startOnWall',
       where: 'start',
     });
   });
@@ -137,18 +122,19 @@ describe('validateDesign', () => {
     // Assert
     expect(issues).toContainEqual({
       severity: 'error',
-      message: expect.stringContaining('Exit'),
+      messageKey: 'editor.validation.exitOnWall',
       where: 'exit',
     });
   });
 
   it('returns multiple issues in rule order', () => {
-    // Arrange — trigger 3 different issues:
-    //   rule 2 (no pickups),
+    // Arrange — trigger 2 different issues:
     //   rule 3 (enemy with path.length 1),
     //   rule 4 (start on wall)
-    // We deliberately keep exit off a wall and reachable so rule 1 does not
-    // appear; this pins the assertion to a known slice of the rule list.
+    // We deliberately keep exit off a wall and reachable so rule 1 does
+    // not appear; this pins the assertion to a known slice of the rule
+    // list. F-2026-06-17: "no pickups" rule 2 was removed, so we no
+    // longer pre-seed an empty pickups array to inflate the count.
     const level = makeLevel({
       start: { x: 1, z: 1 },
       walls: [
@@ -156,17 +142,15 @@ describe('validateDesign', () => {
         [0, 1, 0],
         [0, 0, 0],
       ],
-      pickups: [],
       enemies: [{ id: 'e7', x: 0, z: 0, path: [{ x: 0, z: 0 }] }],
     });
 
     // Act
     const issues = validateDesign(level);
 
-    // Assert — at least 3 issues, in order: pickups, enemy:e7, start
-    expect(issues.length).toBeGreaterThanOrEqual(3);
+    // Assert — at least 2 issues, in order: enemy:e7, start
+    expect(issues.length).toBeGreaterThanOrEqual(2);
     expect(issues.map((i) => i.where)).toEqual([
-      'pickups',
       'enemy:e7',
       'start',
     ]);

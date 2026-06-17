@@ -252,16 +252,23 @@ function buildEmptyLevel(width: number, depth: number): MazeData {
       `buildEmptyLevel: width and depth must be positive integers (got width=${width}, depth=${depth})`,
     );
   }
-  // All-walls grid: every cell is a wall. The user carves out floors.
+  // F-2026-06-17: a "new level" is now an empty open floor — every cell
+  // is a floor (0) — not a wall blob the user has to chip out. Start +
+  // exit sit on the floor by default, and the user drops walls down
+  // with the W tool. Visually it matches the user's mental model of a
+  // "blank canvas" and lines up with the empty-state hint on the
+  // viewport ("click to place walls, or just start playing").
   const walls: CellType[][] = [];
   for (let z = 0; z < depth; z += 1) {
     const row: CellType[] = [];
-    for (let x = 0; x < width; x += 1) row.push(1);
+    for (let x = 0; x < width; x += 1) row.push(0);
     walls.push(row);
   }
-  // F-2026-06-12-T2: carve start (0,0) and exit (width-1, depth-1) so the new level
-  // passes `validateMaze` out of the box. Without this, "Save" on an
-  // un-edited new level throws "start/exit is on a wall".
+  // F-2026-06-12-T2: start (0,0) and exit (width-1, depth-1) are already
+  // on the floor (we just filled the whole grid with 0s). Kept the
+  // explicit `carveCells` call so the "carve start/exit" invariant lives
+  // in one place — if we ever flip buildEmptyLevel back to "start from
+  // walls", the start/exit placement still works without re-deriving.
   carveCells(walls, [
     { x: 0, z: 0 },
     { x: width - 1, z: depth - 1 },
@@ -882,11 +889,16 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
 
     updateSize: (width, depth) => {
       const { level } = get();
-      // All-walls grid: the user re-carves after a resize, just like newLevel.
+      // F-2026-06-17: a resize now starts from an empty open floor (all 0s)
+      // — matching the new buildEmptyLevel behavior. Anything the user had
+      // placed before is dropped instead of being trapped behind a wall of
+      // 1s. (We already filtered pickups / enemies that fell out of bounds
+      // below; the wall grid is rebuilt from scratch so OOB wall cells
+      // from the previous level never silently re-appear.)
       const walls: CellType[][] = [];
       for (let z = 0; z < depth; z += 1) {
         const row: CellType[] = [];
-        for (let x = 0; x < width; x += 1) row.push(1);
+        for (let x = 0; x < width; x += 1) row.push(0);
         walls.push(row);
       }
       // Clamp start/exit into the new bounds so the validator cannot reject

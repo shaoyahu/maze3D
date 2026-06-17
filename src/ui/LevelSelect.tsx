@@ -25,10 +25,10 @@ import { formatTime } from '../utils/time';
 import { isStorageAvailable } from '../store/persist';
 import { useLevelStore } from '../store/levelStore';
 import { algorithmForMode } from '../maze/AlgorithmMazeProvider';
-import { useConfirm } from './useConfirm';
 import { useT } from '../i18n';
 import { useSettingsStore } from '../store/settingsStore';
 import { getDisplayName } from '../utils/getDisplayName';
+import { Dropdown, type DropdownOption } from './components/Dropdown';
 
 export interface LevelDef { id: string; name: string; data?: MazeData }
 
@@ -274,8 +274,8 @@ export function LevelSelect({
 
   const customLevels = useLevelStore((s) => s.customLevels);
   const bestByLevel = useLevelStore((s) => s.bestByLevel);
-  const deleteCustom = useLevelStore((s) => s.deleteCustom);
-  const confirm = useConfirm();
+  // P2-12: `deleteCustom` 之前是给 /levels 上"删除自定义关卡"按钮用的,
+  // 那个入口已搬到 EditorMyLevelsDrawer。这里只读 customLevels 用于渲染。
   const customDefs = Object.values(customLevels)
     .map((lv) => ({ id: lv.id, name: lv.name, data: lv, size: `${lv.size.width}×${lv.size.depth}` }))
     .sort((a, b) => a.name.localeCompare(b.name, 'zh'));
@@ -377,27 +377,19 @@ export function LevelSelect({
           </h2>
           <p className="console-subtitle">{t(SECTION_SUBTITLE_KEYS[levelSource])}</p>
         </div>
-        <select
-          data-testid="level-source-select"
-          aria-label={t('levels.nav.sourceLabel')}
+        <Dropdown<LevelSource>
+          testId="level-source-select"
+          ariaLabel={t('levels.nav.sourceLabel')}
           value={levelSource}
-          onChange={(e) => {
-            const v = e.target.value;
-            if (isLevelSource(v)) setLevelSource(v);
-          }}
-          style={{
-            position: 'absolute',
-            width: 1, height: 1,
-            padding: 0, margin: -1, overflow: 'hidden',
-            clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0,
-          }}
-        >
-          {LEVEL_SOURCE_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value} data-testid={opt.testId}>
-              {t(opt.labelKey)}
-            </option>
-          ))}
-        </select>
+          options={LEVEL_SOURCE_OPTIONS.map<DropdownOption<LevelSource>>((opt) => ({
+            value: opt.value,
+            label: t(opt.labelKey),
+            codename: opt.codename,
+          }))}
+          onChange={(v) => { if (isLevelSource(v)) setLevelSource(v); }}
+          optionTestId={(opt) => LEVEL_SOURCE_OPTIONS.find((o) => o.value === opt.value)?.testId}
+          hidden
+        />
         <div className="console-title-meta">
           {error ? (
             <span style={{ color: 'var(--danger)' }}>{error}</span>
@@ -437,33 +429,29 @@ export function LevelSelect({
         <div className="console-main">
           {showSublevel && (
             <>
-              <select
-                data-testid="sublevel-select"
-                aria-label={t('levels.sublevel.aria')}
+              <Dropdown<string>
+                testId="sublevel-select"
+                ariaLabel={t('levels.sublevel.aria')}
                 value={effectiveSublevelId ?? ''}
-                onChange={(e) => {
-                  const next = e.target.value || null;
-                  lastSublevelBySourceRef.current[levelSource] = next;
-                  setSublevelId(next);
+                options={
+                  sublevelOptions.length === 0
+                    ? [{ value: '', label: t('levels.sublevel.empty'), disabled: true }]
+                    : sublevelOptions.map<DropdownOption<string>>((lv) => ({
+                        value: lv.id,
+                        label: displayName(lv),
+                      }))
+                }
+                onChange={(next) => {
+                  const v = next || null;
+                  lastSublevelBySourceRef.current[levelSource] = v;
+                  setSublevelId(v);
                 }}
+                optionTestId={(opt) =>
+                  opt.value === '' ? 'sublevel-empty' : `sublevel-option-${opt.value}`
+                }
                 disabled={sublevelOptions.length === 0}
-                style={{
-                  position: 'absolute',
-                  width: 1, height: 1,
-                  padding: 0, margin: -1, overflow: 'hidden',
-                  clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0,
-                }}
-              >
-                {sublevelOptions.length === 0 ? (
-                  <option value="" data-testid="sublevel-empty">{t('levels.sublevel.empty')}</option>
-                ) : (
-                  sublevelOptions.map((lv) => (
-                    <option key={lv.id} value={lv.id} data-testid={`sublevel-option-${lv.id}`}>
-                      {displayName(lv)}
-                    </option>
-                  ))
-                )}
-              </select>
+                hidden
+              />
 
               {available.length === 0 ? (
                 <div
@@ -509,30 +497,9 @@ export function LevelSelect({
                         <span className="console-card__no">
                           {String(i + 1).padStart(2, '0')}
                         </span>
-                        {isCustom && (
-                          <button
-                            type="button"
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              const choice = await confirm({
-                                title: t('levels.delete.confirmTitle'),
-                                message: t('levels.delete.confirmMessage', { name }),
-                                actions: [
-                                  { label: t('levels.delete.cancel'), value: 'cancel', variant: 'secondary' },
-                                  { label: t('levels.delete.ok'),     value: 'ok',     variant: 'danger'    },
-                                ],
-                                danger: true,
-                              });
-                              if (choice === 'ok') deleteCustom(lv.id);
-                            }}
-                            aria-label={t('levels.delete.aria', { name })}
-                            data-testid={`delete-custom-${lv.id}`}
-                            className="console-card__delete"
-                            style={{ position: 'absolute', top: 8, left: 8, zIndex: 3 }}
-                          >
-                            {t('levels.delete.ok')}
-                          </button>
-                        )}
+                        {/* P2-12: 自定义关卡的"删除"按钮已搬到编辑器内的
+                            EditorMyLevelsDrawer;此处不再渲染。卡片保持可点
+                            击(进入游戏)。 */}
                         <div className="console-card__thumb">
                           {lv.data ? (
                             <LevelThumb data={lv.data} />
@@ -635,28 +602,8 @@ export function LevelSelect({
                     <span className="console-card__no">
                       {String(i + 1).padStart(2, '0')}
                     </span>
-                    <button
-                      type="button"
-                      onClick={async (e) => {
-                        e.stopPropagation();
-                        const choice = await confirm({
-                          title: t('levels.delete.confirmTitle'),
-                          message: t('levels.delete.confirmMessage', { name }),
-                          actions: [
-                            { label: t('levels.delete.cancel'), value: 'cancel', variant: 'secondary' },
-                            { label: t('levels.delete.ok'),     value: 'ok',     variant: 'danger'    },
-                          ],
-                          danger: true,
-                        });
-                        if (choice === 'ok') deleteCustom(lv.id);
-                      }}
-                      aria-label={t('levels.delete.aria', { name })}
-                      data-testid={`delete-custom-${lv.id}`}
-                      className="console-card__delete"
-                      style={{ position: 'absolute', top: 8, left: 8, zIndex: 3 }}
-                    >
-                      {t('levels.delete.ok')}
-                    </button>
+                    {/* P2-12: 删除按钮已搬走(见 P2-12.4),此处只渲染卡片。
+                        点击 / 键盘聚焦仍能进入游戏 — 决策 C。 */}
                     <div className="console-card__thumb">
                       <LevelThumb data={lv.data} />
                       <span className="console-card__corner console-card__corner--tl" />
@@ -730,27 +677,18 @@ export function LevelSelect({
                 </div>
                 <div className="console-proc__config-grid">
                   <span className="console-proc__config-label">{t('levels.config.mode')}</span>
-                  <select
-                    data-testid="mode-select"
-                    aria-label={t('levels.config.modeAria')}
+                  <Dropdown<VictoryType>
+                    testId="mode-select"
+                    ariaLabel={t('levels.config.modeAria')}
                     value={mode}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      if (isVictoryType(v)) setMode(v);
-                    }}
-                    style={{
-                      position: 'absolute',
-                      width: 1, height: 1,
-                      padding: 0, margin: -1, overflow: 'hidden',
-                      clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0,
-                    }}
-                  >
-                    {MODE_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value} data-testid={opt.testId}>
-                        {t(opt.labelKey)}
-                      </option>
-                    ))}
-                  </select>
+                    options={MODE_OPTIONS.map<DropdownOption<VictoryType>>((opt) => ({
+                      value: opt.value,
+                      label: t(opt.labelKey),
+                    }))}
+                    onChange={(v) => { if (isVictoryType(v)) setMode(v); }}
+                    optionTestId={(opt) => MODE_OPTIONS.find((o) => o.value === opt.value)?.testId}
+                    hidden
+                  />
                   <div className="console-segmented" role="tablist" aria-label={t('levels.config.modeAria')}>
                     {MODE_OPTIONS.map((opt) => {
                       const active = mode === opt.value;
@@ -780,35 +718,34 @@ export function LevelSelect({
                   </div>
 
                   <span className="console-proc__config-label">{t('levels.config.size')}</span>
-                  <select
-                    data-testid="size-select"
+                  <Dropdown<MazeSize>
+                    testId="size-select"
                     className="console-select"
+                    ariaLabel={t('levels.config.sizeAria')}
                     value={selectedSize}
-                    onChange={(e) => {
-                      const n = Number(e.target.value);
-                      if (isMazeSize(n)) setSelectedSize(n);
-                    }}
-                    aria-label={t('levels.config.sizeAria')}
-                  >
-                    {SIZE_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>{t(opt.labelKey)}</option>
-                    ))}
-                  </select>
+                    options={SIZE_OPTIONS.map<DropdownOption<MazeSize>>((opt) => ({
+                      value: opt.value,
+                      label: t(opt.labelKey),
+                      codename: `${opt.value}×${opt.value}`,
+                    }))}
+                    onChange={(n) => { if (isMazeSize(n)) setSelectedSize(n); }}
+                  />
 
                   {isSurvive ? (
                     <>
                       <span className="console-proc__config-label">{t('levels.config.enemyCount')}</span>
-                      <select
-                        data-testid="enemy-count-select"
+                      <Dropdown<number>
+                        testId="enemy-count-select"
                         className="console-select"
+                        ariaLabel={t('levels.config.enemyCountAria')}
                         value={enemyCount}
-                        onChange={(e) => setEnemyCount(Number(e.target.value))}
-                        aria-label={t('levels.config.enemyCountAria')}
-                      >
-                        {ENEMY_COUNT_OPTIONS.map((n) => (
-                          <option key={n} value={n} data-testid={`enemy-count-${n}`}>{n}</option>
-                        ))}
-                      </select>
+                        options={ENEMY_COUNT_OPTIONS.map<DropdownOption<number>>((n) => ({
+                          value: n,
+                          label: String(n),
+                        }))}
+                        onChange={(n) => setEnemyCount(n)}
+                        optionTestId={(opt) => `enemy-count-${opt.value}`}
+                      />
 
                       <span className="console-proc__config-label">{t('levels.config.surviveSeconds')}</span>
                       <div>

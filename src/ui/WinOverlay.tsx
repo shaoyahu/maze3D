@@ -68,21 +68,23 @@ export function WinOverlay({
 
         <div style={statsGridStyle}>
           <StatTile
-            label={t('overlays.win.timeUsed', { time: '' }).replace(/[\s\d:]+$/, '').trim() || '用时'}
+            // P2-13.9: 用独立 label-only key 替代 `t('overlays.win.timeUsed', {time:''})`
+            // + replace 的 fragile fallback;新 key 永远只返回 label,跟 value 解耦。
+            label={t('overlays.win.timeLabel')}
             value={formatTime(timeUsed)}
             delayMs={120}
             entered={entered}
             tone="primary"
           />
           <StatTile
-            label="收集"
+            label={t('overlays.win.pickupsLabel')}
             value={`${collected} / ${total}`}
             delayMs={180}
             entered={entered}
             tone="neutral"
           />
           <StatTile
-            label="最佳"
+            label={t('overlays.win.bestLabel')}
             value={best ? formatTime(best.timeUsed) : '—'}
             delayMs={240}
             entered={entered}

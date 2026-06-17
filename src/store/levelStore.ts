@@ -44,6 +44,15 @@ interface LevelStore {
   getCustom: (id: string) => MazeData | undefined;
   deleteCustom: (id: string) => void;
   listCustom: () => string[];
+  // P2-13: 文件夹(独立 localStorage 键 maze3d.folders.v1,与 customLevels
+  // 分开)。`folders` 是全量字典,UI 自己根据 parentId 构造树。CRUD
+  // 都走 safeSetItem,失败时复用 lastWriteError 通道。
+  folders: Record<string, Folder>;
+  createFolder: (name: string, parentId?: string) => Folder;
+  deleteFolder: (id: string) => void;
+  renameFolder: (id: string, name: string) => void;
+  moveLevel: (levelId: string, folderId: string | null) => void;
+  moveFolder: (folderId: string, parentId: string | null) => boolean;
   // F-project-review-2026-06-13-D-10: transient field set during init when
   // localStorage entries were dropped (sanitization rejection) or a
   // migration threw. The UI reads this once on mount to show a one-time
@@ -120,6 +129,9 @@ const STORAGE_KEY = 'maze3d.levels.v1';
 // routes the loaded value through `applyLevelMigrations` so v1 data on
 // disk is transformed on load instead of being orphaned.
 const CUSTOM_STORAGE_KEY = 'maze3d.customLevels.v1';
+// P2-13: folders storage. Independent key so the editor's folder tree
+// and level payloads have separate blast radii on corruption.
+const FOLDERS_STORAGE_KEY = 'maze3d.folders.v1';
 
 function isValidSeed(raw: unknown): raw is Seed {
   if (typeof raw !== 'object' || raw === null) return false;
@@ -135,6 +147,21 @@ function isValidSeed(raw: unknown): raw is Seed {
   }
   return true;
 }
+
+// P2-13: 文件夹。id 由 levelStore.createFolder 生成(nanoid 风格短串),
+// name 是用户输入的展示名,parentId 是父文件夹 id(根目录则 undefined)。
+// createdAt 用来在同 name 时稳定排序,UI 不直接展示。
+export interface Folder {
+  id: string;
+  name: string;
+  parentId?: string;
+  createdAt: number;
+}
+
+// 固定 id — 初始化时自动建一个 "我的" 文件夹。所有新关卡默认进入这个
+// 文件夹;旧 customLevels(没 folderId)也归到这里。删 "我的" 不允许(API
+// 内置保护) — 始终保留为根容器。
+export const DEFAULT_FOLDER_ID = 'folder-default';
 
 export function isBestRecord(raw: unknown): raw is BestRecord {
   if (typeof raw !== 'object' || raw === null) return false;
@@ -196,6 +223,52 @@ export function sanitizeCustomLevelsMap(raw: unknown): { map: Record<string, Maz
   return { map: out, dropped };
 }
 
+// P2-13: 文件夹 sanitize。类似 customs — 任何字段缺失或类型错就丢
+// 弃;合法 entries 通过 isFolder 校验。返回 dropped list 供 init toast。
+// 跟 customs 不同,这里 dropped 的 entries 不会让 default folder 自动建;
+// 我们在初始化时用 ensureDefaultFolder 兜底。
+export function sanitizeFoldersMap(raw: unknown): { map: Record<string, Folder>; dropped: string[] } {
+  if (typeof raw !== 'object' || raw === null) return { map: {}, dropped: [] };
+  const out: Record<string, Folder> = {};
+  const dropped: string[] = [];
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (isFolder(v)) out[k] = v;
+    else {
+      dropped.push(k);
+      console.warn(`levelStore: dropped invalid folder '${k}'`);
+    }
+  }
+  return { map: out, dropped };
+}
+
+function isFolder(raw: unknown): raw is Folder {
+  if (typeof raw !== 'object' || raw === null) return false;
+  const f = raw as Record<string, unknown>;
+  if (typeof f.id !== 'string' || f.id === '') return false;
+  if (typeof f.name !== 'string') return false;
+  if (f.parentId !== undefined && typeof f.parentId !== 'string') return false;
+  if (typeof f.createdAt !== 'number' || !Number.isFinite(f.createdAt)) return false;
+  return true;
+}
+
+// P2-13: 永远存在一个 "我的" 文件夹。空 map / 缺 default id / name 改
+// 写都会重建。返回新 map + 是否真的发生改动(用于持久化判定)。
+function ensureDefaultFolder(map: Record<string, Folder>): { map: Record<string, Folder>; changed: boolean } {
+  const existing = map[DEFAULT_FOLDER_ID];
+  if (existing && existing.name === '我的') return { map, changed: false };
+  return {
+    map: {
+      ...map,
+      [DEFAULT_FOLDER_ID]: {
+        id: DEFAULT_FOLDER_ID,
+        name: '我的',
+        createdAt: existing?.createdAt ?? Date.now(),
+      },
+    },
+    changed: true,
+  };
+}
+
 export const useLevelStore = create<LevelStore>((set, get) => {
   // F-project-review-2026-06-13-D-10: switch from `create((set, get) => ({...}))`
   // to a function-bodied form so we can compute the per-key init result
@@ -251,6 +324,37 @@ export const useLevelStore = create<LevelStore>((set, get) => {
       );
       return { map: {} as Record<string, MazeData>, dropped: [] as string[], migrationError: e instanceof Error ? e.message : String(e) };
     }
+  })();
+  // P2-13: 文件夹初始化。load + sanitize + ensureDefaultFolder 三步。
+  // ensure 步骤即使空 map 也会建一个 DEFAULT_FOLDER_ID 进去,首次启动
+  // 也能看到 "我的" 根目录;之后每次启动保证 default 存在(任何手
+  // 工 localStorage 编辑都不会让 UI 陷入"无家可归"状态)。
+  const foldersInit = (() => {
+    const raw = loadJSON<unknown>(FOLDERS_STORAGE_KEY, null);
+    let map: Record<string, Folder> = {};
+    if (raw !== null) {
+      const fromVersion = parseStorageKeyVersion(FOLDERS_STORAGE_KEY);
+      if (fromVersion === null) {
+        map = sanitizeFoldersMap(raw).map;
+      } else {
+        try {
+          const migrated = applyLevelMigrations(raw, fromVersion);
+          map = sanitizeFoldersMap(migrated).map;
+        } catch (e) {
+          console.warn(
+            `levelStore: migration failed for '${FOLDERS_STORAGE_KEY}':`,
+            e instanceof Error ? e.message : e,
+          );
+          map = {};
+        }
+      }
+    }
+    // 不论 map 来自哪,都强制 default 存在 — 失败容忍策略。
+    const ensured = ensureDefaultFolder(map);
+    if (ensured.changed) {
+      safeSetItem(FOLDERS_STORAGE_KEY, ensured.map);
+    }
+    return ensured.map;
   })();
   // F-project-review-2026-06-13-D-10: surface dropped records / customs /
   // migration errors as a one-time store field. The UI reads this once
@@ -334,6 +438,156 @@ export const useLevelStore = create<LevelStore>((set, get) => {
     set({ customLevels: next, lastWriteError: null });
   },
   listCustom: () => Object.keys(get().customLevels),
+
+  // ---- P2-13: 文件夹 CRUD ----
+  // 全部走 safeSetItem,失败时复用 lastWriteError 通道(暂时用
+  // customLevel kind — 跟 saveCustom 同 bucket,toast 文案已覆盖)。
+  folders: foldersInit,
+  createFolder: (name, parentId) => {
+    const trimmed = name.trim() || '未命名文件夹';
+    // parentId 校验:必须是已存在的 folder,否则忽略(根目录)。
+    if (parentId !== undefined && !(parentId in get().folders)) {
+      console.warn('levelStore.createFolder: unknown parentId', parentId);
+      parentId = undefined;
+    }
+    const folder: Folder = {
+      id: `folder-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+      name: trimmed,
+      ...(parentId !== undefined ? { parentId } : {}),
+      createdAt: Date.now(),
+    };
+    const next = { ...get().folders, [folder.id]: folder };
+    const result = safeSetItem(FOLDERS_STORAGE_KEY, next);
+    if (!result.ok) {
+      console.warn('levelStore.createFolder: persist failed', result.reason);
+      set({ folders: next, lastWriteError: { kind: 'customLevel', reason: result.reason } });
+    } else {
+      set({ folders: next, lastWriteError: null });
+    }
+    return folder;
+  },
+  // 级联删除:删 folder 时同时删其下所有子 folder + 关卡,以及把
+  // "我的" 默认 folder 视为不可删(no-op)。DFS 一遍,set 装 ids。
+  deleteFolder: (id) => {
+    if (id === DEFAULT_FOLDER_ID) {
+      console.warn('levelStore.deleteFolder: default folder is protected');
+      return;
+    }
+    const all = get().folders;
+    if (!(id in all)) return;
+    const toDelete = new Set<string>();
+    const stack = [id];
+    while (stack.length > 0) {
+      const cur = stack.pop()!;
+      toDelete.add(cur);
+      for (const f of Object.values(all)) {
+        if (f.parentId === cur) stack.push(f.id);
+      }
+    }
+    const nextFolders: Record<string, Folder> = {};
+    for (const [k, v] of Object.entries(all)) {
+      if (!toDelete.has(k)) nextFolders[k] = v;
+    }
+    // 关卡也清掉 — 它们的 folderId 指向被删的 folder,留着就是野引用。
+    const nextCustom: Record<string, MazeData> = {};
+    for (const [k, v] of Object.entries(get().customLevels)) {
+      if (!v.folderId || !toDelete.has(v.folderId)) nextCustom[k] = v;
+    }
+    const folderResult = safeSetItem(FOLDERS_STORAGE_KEY, nextFolders);
+    const customResult = safeSetItem(CUSTOM_STORAGE_KEY, nextCustom);
+    const firstErr = !folderResult.ok ? folderResult : !customResult.ok ? customResult : null;
+    set({
+      folders: nextFolders,
+      customLevels: nextCustom,
+      lastWriteError: firstErr
+        ? { kind: 'customLevel', reason: firstErr.reason }
+        : null,
+    });
+  },
+  renameFolder: (id, name) => {
+    const cur = get().folders[id];
+    if (!cur) return;
+    // 默认 "我的" 也允许重命名(用户可能想换个叫法,比如 "我的关卡");
+    // 但 id 永远是 DEFAULT_FOLDER_ID,免得 UI 找不到。
+    const trimmed = name.trim() || cur.name;
+    const next = { ...get().folders, [id]: { ...cur, name: trimmed } };
+    const result = safeSetItem(FOLDERS_STORAGE_KEY, next);
+    if (!result.ok) {
+      console.warn('levelStore.renameFolder: persist failed', result.reason);
+      set({ folders: next, lastWriteError: { kind: 'customLevel', reason: result.reason } });
+    } else {
+      set({ folders: next, lastWriteError: null });
+    }
+  },
+  // level 的 folderId 修改。folderId === null → 根目录(即默认 "我的" 桶)。
+  moveLevel: (levelId, folderId) => {
+    const cur = get().customLevels[levelId];
+    if (!cur) return;
+    if (folderId !== null && !(folderId in get().folders)) {
+      console.warn('levelStore.moveLevel: unknown folderId', folderId);
+      return;
+    }
+    const next: MazeData = {
+      ...cur,
+      ...(folderId === null ? { folderId: DEFAULT_FOLDER_ID } : { folderId }),
+    };
+    const nextCustom = { ...get().customLevels, [levelId]: next };
+    const result = safeSetItem(CUSTOM_STORAGE_KEY, nextCustom);
+    if (!result.ok) {
+      console.warn('levelStore.moveLevel: persist failed', result.reason);
+      set({ customLevels: nextCustom, lastWriteError: { kind: 'customLevel', reason: result.reason } });
+    } else {
+      set({ customLevels: nextCustom, lastWriteError: null });
+    }
+  },
+  // folder 嵌套移动,带循环检测:不能把 folder 移到自己或自己后代下。
+  // parentId === null → 根。返回 true 表示成功,false 表示被拒绝。
+  moveFolder: (folderId, parentId) => {
+    if (folderId === DEFAULT_FOLDER_ID) {
+      // 默认文件夹不挪位置,保持根。
+      return false;
+    }
+    const all = get().folders;
+    if (!(folderId in all)) return false;
+    if (parentId !== null) {
+      if (!(parentId in all)) return false;
+      if (parentId === folderId) return false;
+      // DFS 检查 parentId 是否是 folderId 的后代 — 是则拒绝。
+      const stack = [folderId];
+      const seen = new Set<string>();
+      while (stack.length > 0) {
+        const cur = stack.pop()!;
+        if (seen.has(cur)) continue;
+        seen.add(cur);
+        if (cur === parentId) return false;
+        for (const f of Object.values(all)) {
+          if (f.parentId === cur) stack.push(f.id);
+        }
+      }
+    }
+    const cur = all[folderId];
+    const next = {
+      ...all,
+      [folderId]: {
+        ...cur,
+        ...(parentId === null ? {} : { parentId }),
+        ...(parentId === null ? { parentId: undefined as string | undefined } : {}),
+      },
+    };
+    // 上面的展开有点乱,重写更清晰:parentId 字段,根 → undefined。
+    next[folderId] = {
+      ...cur,
+      parentId: parentId === null ? undefined : parentId,
+    };
+    const result = safeSetItem(FOLDERS_STORAGE_KEY, next);
+    if (!result.ok) {
+      console.warn('levelStore.moveFolder: persist failed', result.reason);
+      set({ folders: next, lastWriteError: { kind: 'customLevel', reason: result.reason } });
+    } else {
+      set({ folders: next, lastWriteError: null });
+    }
+    return true;
+  },
   // F-project-review-2026-06-13-D-10: see `lastLoadSummary` declaration
   // and `buildLoadSummary` helper above for the contract. Captured at
   // construction; cleared when the toast is dismissed.

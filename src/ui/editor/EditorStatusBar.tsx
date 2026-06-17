@@ -98,7 +98,7 @@ function WarningsPopup({
                 <span className="warnings-popup__severity">
                   {issue.severity === 'error' ? '⛔' : '⚠'}
                 </span>
-                <span className="warnings-popup__message">{issue.message}</span>
+                <span className="warnings-popup__message">{t(issue.messageKey, issue.messageVars)}</span>
                 {issue.where !== undefined && (
                   <span className="warnings-popup__where">{issue.where}</span>
                 )}

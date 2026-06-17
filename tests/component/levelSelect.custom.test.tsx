@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, within, act } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { LevelSelect } from '../../src/ui/LevelSelect';
 import { useLevelStore } from '../../src/store/levelStore';
 import { useSettingsStore } from '../../src/store/settingsStore';
@@ -100,9 +100,10 @@ describe('LevelSelect custom levels group (P2-4b #17 / P2-6 cascading)', () => {
     expect(options).toBeUndefined();
   });
 
-  // Case 4 (老: 删除按钮) → FR-16 兼容: delete-custom-{id} 按钮保留,
-  // P2-7 自定义 confirm 弹窗, 同意则调用 useLevelStore.deleteCustom。
-  it('clicking the delete button (after confirm) calls deleteCustom', async () => {
+  // P2-12: "删除自定义关卡" 入口已从 /levels 搬到 EditorMyLevelsDrawer
+  // (编辑器内)。/levels 不再渲染 delete-custom-{id} 按钮,改断言它
+  // 不存在。这条 case 替代了原来的"点击删除"两个 case (case 4 / 5)。
+  it('does not render a delete button for custom levels (P2-12 moved to editor)', () => {
     useLevelStore.setState({
       customLevels: { 'custom-1': makeCustom('custom-1', 'My First', 10, 10) },
     });
@@ -111,36 +112,10 @@ describe('LevelSelect custom levels group (P2-4b #17 / P2-6 cascading)', () => {
         <LevelSelect available={[]} onPick={() => {}} onBack={() => {}} />
       </ConfirmProvider>,
     );
-    await act(async () => {
-      fireEvent.click(screen.getByTestId('delete-custom-custom-1'));
-    });
-    expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument();
-    await act(async () => {
-      fireEvent.click(screen.getByTestId('confirm-action-ok'));
-    });
-    expect(screen.queryByTestId('confirm-dialog')).toBeNull();
-    expect(useLevelStore.getState().customLevels['custom-1']).toBeUndefined();
-  });
-
-  // Case 5 (老: 删除按钮取消) → 同上, 取消时不删。
-  it('clicking the delete button without confirm does NOT delete', async () => {
-    useLevelStore.setState({
-      customLevels: { 'custom-1': makeCustom('custom-1', 'My First', 10, 10) },
-    });
-    render(
-      <ConfirmProvider>
-        <LevelSelect available={[]} onPick={() => {}} onBack={() => {}} />
-      </ConfirmProvider>,
-    );
-    await act(async () => {
-      fireEvent.click(screen.getByTestId('delete-custom-custom-1'));
-    });
-    expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument();
-    await act(async () => {
-      fireEvent.click(screen.getByTestId('confirm-action-cancel'));
-    });
-    expect(screen.queryByTestId('confirm-dialog')).toBeNull();
-    expect(useLevelStore.getState().customLevels['custom-1']).toBeDefined();
+    expect(screen.queryByTestId('delete-custom-custom-1')).toBeNull();
+    // 自定义关卡卡片仍然可点(进入游戏)— 决策 C。
+    const card = screen.getByTestId('custom-level-custom-1');
+    expect(card).toBeInTheDocument();
   });
 
   // Case 6 (老: group 内按 name 排序) → 新: 源=custom 时 sublevel-select

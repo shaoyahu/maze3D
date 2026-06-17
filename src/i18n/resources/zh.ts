@@ -68,6 +68,11 @@ export const zh: Translations = {
   'overlays.win.title': '通关！',
   'overlays.win.subtitle': '你找到了出口',
   'overlays.win.timeUsed': '用时 {time}',
+  // P2-13.9: label-only keys(不带 {value} 参数)— 给 StatTile 的 label
+  // 用,跟带 value 的 .timeUsed / .pickups / .best 解耦。
+  'overlays.win.timeLabel': '用时',
+  'overlays.win.pickupsLabel': '收集',
+  'overlays.win.bestLabel': '最佳',
   'overlays.win.pickups': '收集 {collected} / {total}',
   'overlays.win.best': '历史最佳 {time}',
   'overlays.win.newRecord': '新纪录！',
@@ -190,11 +195,8 @@ export const zh: Translations = {
   'levels.sublevel.emptyTeaching': '// 暂无教学关卡 //',
   'levels.sublevel.emptyCustom': '// 暂无用户关卡 // 进入编辑器创建你的第一个关卡',
 
-  'levels.delete.confirmTitle': '删除关卡',
-  'levels.delete.confirmMessage': '确定删除「{name}」？此操作不可撤销。',
-  'levels.delete.cancel': '取消',
-  'levels.delete.ok': '删除',
-  'levels.delete.aria': '删除 {name}',
+  // P2-12: levels.delete.* 已移除 — 自定义关卡的"删除"入口从 /levels
+  // 搬到 EditorMyLevelsDrawer,这些 key 不再有消费者。
 
   'levels.stat.best': '最佳',
   'levels.stat.collected': '已收',
@@ -284,7 +286,44 @@ export const zh: Translations = {
   'editor.toolbar.import': '导入',
   'editor.toolbar.exitTitle': '退出编辑器',
   'editor.toolbar.exit': '退出',
+  // P2-13.9: EditorViewport 文案(原硬编码中文,英文 locale 下不变中文)。
+  'editor.viewport.empty': '空关卡',
+  'editor.viewport.emptySub': '选择工具 · 点击格子开始放置',
+  'editor.viewport.panHintTitle': '平移模式',
+  'editor.viewport.panHintDrag': '按住 左键 或 右键 在画布上拖动来移动视图',
+  'editor.viewport.panHintSub': '滚轮缩放 · ESC 退出',
+  'editor.viewport.zoomOutAria': '缩小',
+  'editor.viewport.zoomInAria': '放大',
+  'editor.viewport.minimapAria': '缩略图',
   'editor.toolbar.importAria': '导入关卡文件',
+  // P2-13: 工具栏(中央上方)横排按钮文案。键名沿用 P2-9 EditorLeftDrawer
+  // 的命名(editor.toolbar.tool.*),只是 .tsx 主体已经搬到新位置。
+  'editor.toolbar.tool.select': '选择',
+  'editor.toolbar.tool.wall': '墙体',
+  'editor.toolbar.tool.erase': '通道',
+  'editor.toolbar.tool.start': '起点',
+  'editor.toolbar.tool.exit': '终点',
+  'editor.toolbar.tool.pickup': '拾取',
+  'editor.toolbar.tool.enemy': '敌人',
+  'editor.toolbar.tool.pan': '平移',
+  'editor.toolbar.undo': '撤销',
+  'editor.toolbar.redo': '重做',
+  // P2-13: 编辑器左栏文件树。EditorLeftPanel 用到的全部文案。
+  'editor.leftPanel.newLevel': '关卡',
+  'editor.leftPanel.newFolder': '文件夹',
+  'editor.leftPanel.empty': '还没有关卡 · 点 [关卡] 开始',
+  'editor.leftPanel.folderNamePrompt': '文件夹名',
+  'editor.leftPanel.untitledFolder': '未命名文件夹',
+  'editor.leftPanel.renamePrompt': '重命名',
+  'editor.leftPanel.renameLevelPrompt': '关卡名',
+  'editor.leftPanel.delete': '删除',
+  'editor.leftPanel.rename': '重命名',
+  'editor.leftPanel.moveTo': '移动到',
+  'editor.leftPanel.menu': '更多',
+  'editor.leftPanel.deleteFolderTitle': '删除文件夹',
+  'editor.leftPanel.deleteFolderMessage': '确定删除「{name}」?此文件夹内的所有关卡和子文件夹也会被删除。',
+  'editor.leftPanel.deleteLevelTitle': '删除关卡',
+  'editor.leftPanel.deleteLevelMessage': '确定删除「{name}」?此操作不可撤销。',
 
   // ============================================================
   // editor.status.* — 编辑器状态栏
@@ -353,6 +392,30 @@ export const zh: Translations = {
   'editor.properties.field.coord': '坐标',
   'editor.properties.deleteWall': '删除墙体',
 
+  // P2-13.7: 教程 / HUD 卡片整体 i18n 化(原硬编码中文)。
+  'editor.properties.tutorialCard': '教程 / HUD',
+  'editor.properties.tutorialChip': 'tutorial',
+  'editor.properties.tutorial.hideMinimap': '隐藏 Minimap',
+  'editor.properties.tutorial.enemyAggression': '敌人追击速度覆盖',
+  'editor.properties.tutorial.aggression.inherit': '继承全局设置',
+  'editor.properties.tutorial.aggression.easy': '简单 (1.2x)',
+  'editor.properties.tutorial.aggression.medium': '中等 (1.5x)',
+  'editor.properties.tutorial.aggression.hard': '困难 (1.8x)',
+  'editor.properties.tutorial.requireAllPickups': '必须收集全部拾取',
+  'editor.properties.tutorial.stepsLabel': '教学步骤 (JSON)',
+  // P2-13.x: 教程卡片改版,新增 hero/row 描述 / 高级折叠区文案。
+  'editor.properties.tutorial.hero.on': '已启用 {count} 步教程',
+  'editor.properties.tutorial.hero.off': '未配置教程',
+  'editor.properties.tutorial.hero.sub': '玩家进入关卡时,顶部横幅会按顺序播放这串步骤。',
+  'editor.properties.tutorial.hideMinimapDesc': '关卡内不渲染右上角小地图,强制玩家靠空间记忆。',
+  'editor.properties.tutorial.enemyAggressionDesc': '覆盖全局敌人追击速度(0.8x~1.8x)。',
+  'editor.properties.tutorial.requireAllPickupsDesc': '通关前必须先拿走所有拾取物。',
+  'editor.properties.tutorial.advancedLabel': '高级 · 步骤 JSON',
+  'editor.properties.tutorial.advancedHint': '留空 = 不显示教程。完整 schema 见 docs/increments/p2-11-tutorial-steps.md。',
+  'editor.properties.tutorial.advancedStatusIdle': '尚未提交',
+  'editor.properties.tutorial.advancedStatusOk': '已保存',
+  'editor.properties.tutorial.advancedStatusError': 'JSON 解析失败,保持原样',
+
   'editor.properties.selectionMissing': '选中的{thing}已不存在。',
   // F-P2-9: missing-selection chip text relabeled from "拾取物" →
   // "道具" to match the new toolbar label.
@@ -413,6 +476,25 @@ export const zh: Translations = {
   'editor.lastError.startOnExit': '起点不能与终点重叠',
   'editor.lastError.exitOnStart': '终点不能与起点重叠',
   'editor.lastError.pathOutOfBounds': '路径节点超出网格范围',
+
+  // F-2026-06-17-E-M-7: 关卡检查 (validateDesign) 的全部问题文案。
+  // 由 EditorStatusBar 渲染,跟随当前语言。`{id}` / `{value}` 是可选插值。
+  'editor.validation.exitUnreachable': '出口无法从起点到达',
+  'editor.validation.enemyPathTooShort': '敌人 {id} 的巡逻路径少于 2 个路径点',
+  'editor.validation.startOnWall': '起点落在了墙上',
+  'editor.validation.exitOnWall': '出口落在了墙上',
+  'editor.validation.rules.initialTime': '初始时间必须大于 0(当前 {value})',
+  'editor.validation.rules.maxHealth': '最大生命必须大于 0(当前 {value})',
+  'editor.validation.rules.timeOnPickup': '拾取 +时间必须大于 0(当前 {value})',
+
+  // P2-12: 编辑器内"我的关卡"管理 drawer 的展示文案。drawer 替代
+  // 原 /levels 页面的删除入口;编辑/删除两个操作都从这里发起。
+  'editor.mylevels.title': '我的关卡 · 编辑或删除',
+  'editor.mylevels.empty': '还没有保存的关卡 · 新建一个开始吧',
+  'editor.mylevels.edit': '编辑',
+  'editor.mylevels.delete': '删除',
+  'editor.mylevels.deleteTitle': '删除关卡',
+  'editor.mylevels.deleteMessage': '确定删除「{name}」?此操作不可撤销。',
 
   // ============================================================
   // editor.help.* — 编辑器使用手册（EditorHelpDrawer 内容）

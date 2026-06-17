@@ -55,6 +55,11 @@ export const en: Translations = {
   'overlays.win.title': 'Clear!',
   'overlays.win.subtitle': 'You found the exit',
   'overlays.win.timeUsed': 'Time {time}',
+  // P2-13.9: label-only keys for StatTile labels (decoupled from the
+  // value-bearing .timeUsed / .pickups / .best).
+  'overlays.win.timeLabel': 'Time used',
+  'overlays.win.pickupsLabel': 'Collected',
+  'overlays.win.bestLabel': 'Best',
   'overlays.win.pickups': 'Collected {collected} / {total}',
   'overlays.win.best': 'Personal best {time}',
   'overlays.win.newRecord': 'New record!',
@@ -177,11 +182,7 @@ export const en: Translations = {
   'levels.sublevel.emptyTeaching': '// No built-in levels //',
   'levels.sublevel.emptyCustom': '// No user levels // create your first one in the editor',
 
-  'levels.delete.confirmTitle': 'Delete Level',
-  'levels.delete.confirmMessage': 'Delete “{name}”? This cannot be undone.',
-  'levels.delete.cancel': 'Cancel',
-  'levels.delete.ok': 'Delete',
-  'levels.delete.aria': 'Delete {name}',
+  // P2-12: levels.delete.* removed — see zh.ts.
 
   'levels.stat.best': 'Best',
   'levels.stat.collected': 'Got',
@@ -268,7 +269,44 @@ export const en: Translations = {
   'editor.toolbar.import': 'Import',
   'editor.toolbar.exitTitle': 'Exit editor',
   'editor.toolbar.exit': 'Exit',
+  // P2-13.9: EditorViewport copy (was hard-coded Chinese — would show
+  // Chinese under an English locale).
+  'editor.viewport.empty': 'Empty grid',
+  'editor.viewport.emptySub': 'Pick a tool · click a cell to start placing',
+  'editor.viewport.panHintTitle': 'Pan mode',
+  'editor.viewport.panHintDrag': 'Hold left or right mouse button and drag on the canvas to move the view',
+  'editor.viewport.panHintSub': 'Wheel to zoom · ESC to exit',
+  'editor.viewport.zoomOutAria': 'Zoom out',
+  'editor.viewport.zoomInAria': 'Zoom in',
+  'editor.viewport.minimapAria': 'Minimap',
   'editor.toolbar.importAria': 'Import level file',
+  // P2-13: mirror of zh.ts — top toolbar button labels.
+  'editor.toolbar.tool.select': 'Select',
+  'editor.toolbar.tool.wall': 'Wall',
+  'editor.toolbar.tool.erase': 'Carve',
+  'editor.toolbar.tool.start': 'Start',
+  'editor.toolbar.tool.exit': 'Exit',
+  'editor.toolbar.tool.pickup': 'Item',
+  'editor.toolbar.tool.enemy': 'Enemy',
+  'editor.toolbar.tool.pan': 'Pan',
+  'editor.toolbar.undo': 'Undo',
+  'editor.toolbar.redo': 'Redo',
+  // P2-13: mirror of zh.ts — left-panel file tree copy.
+  'editor.leftPanel.newLevel': 'Level',
+  'editor.leftPanel.newFolder': 'Folder',
+  'editor.leftPanel.empty': 'No levels yet · click [Level] to start',
+  'editor.leftPanel.folderNamePrompt': 'Folder name',
+  'editor.leftPanel.untitledFolder': 'Untitled folder',
+  'editor.leftPanel.renamePrompt': 'Rename',
+  'editor.leftPanel.renameLevelPrompt': 'Level name',
+  'editor.leftPanel.delete': 'Delete',
+  'editor.leftPanel.rename': 'Rename',
+  'editor.leftPanel.moveTo': 'Move to',
+  'editor.leftPanel.menu': 'More',
+  'editor.leftPanel.deleteFolderTitle': 'Delete folder',
+  'editor.leftPanel.deleteFolderMessage': 'Delete "{name}"? All levels and subfolders inside it will be deleted too.',
+  'editor.leftPanel.deleteLevelTitle': 'Delete level',
+  'editor.leftPanel.deleteLevelMessage': 'Delete "{name}"? This cannot be undone.',
 
   // ============================================================
   // editor.status.*
@@ -338,6 +376,31 @@ export const en: Translations = {
   'editor.properties.field.coord': 'Coords',
   'editor.properties.deleteWall': 'Delete wall',
 
+  // P2-13.7: tutorial / HUD card i18n (was hard-coded Chinese in P2-11).
+  'editor.properties.tutorialCard': 'Tutorial / HUD',
+  'editor.properties.tutorialChip': 'tutorial',
+  'editor.properties.tutorial.hideMinimap': 'Hide Minimap',
+  'editor.properties.tutorial.enemyAggression': 'Enemy chase-speed override',
+  'editor.properties.tutorial.aggression.inherit': 'Inherit global setting',
+  'editor.properties.tutorial.aggression.easy': 'Easy (1.2x)',
+  'editor.properties.tutorial.aggression.medium': 'Medium (1.5x)',
+  'editor.properties.tutorial.aggression.hard': 'Hard (1.8x)',
+  'editor.properties.tutorial.requireAllPickups': 'Must collect all items',
+  'editor.properties.tutorial.stepsLabel': 'Tutorial steps (JSON)',
+  // P2-13.x: tutorial card refresh — hero / row descriptions + advanced
+  // collapse block copy.
+  'editor.properties.tutorial.hero.on': '{count}-step tutorial active',
+  'editor.properties.tutorial.hero.off': 'No tutorial configured',
+  'editor.properties.tutorial.hero.sub': 'When the player enters the level, the top banner plays these steps in order.',
+  'editor.properties.tutorial.hideMinimapDesc': 'Skip the top-right minimap — players rely on spatial memory only.',
+  'editor.properties.tutorial.enemyAggressionDesc': 'Override the global enemy chase speed (0.8x–1.8x).',
+  'editor.properties.tutorial.requireAllPickupsDesc': 'Every pickup must be collected before the level can be cleared.',
+  'editor.properties.tutorial.advancedLabel': 'Advanced · Steps JSON',
+  'editor.properties.tutorial.advancedHint': 'Empty = no tutorial. Full schema: docs/increments/p2-11-tutorial-steps.md.',
+  'editor.properties.tutorial.advancedStatusIdle': 'Not yet committed',
+  'editor.properties.tutorial.advancedStatusOk': 'Saved',
+  'editor.properties.tutorial.advancedStatusError': 'Invalid JSON, kept as-is',
+
   'editor.properties.selectionMissing': 'The selected {thing} no longer exists.',
   // F-P2-9: missing-selection chip text relabeled from "pickup" →
   // "item" to match the new toolbar label.
@@ -397,6 +460,26 @@ export const en: Translations = {
   'editor.lastError.startOnExit': "Start can't overlap the exit cell",
   'editor.lastError.exitOnStart': "Exit can't overlap the start cell",
   'editor.lastError.pathOutOfBounds': 'Path node is out of grid bounds',
+
+  // F-2026-06-17-E-M-7: design-rule issues rendered in the editor
+  // warnings popup. Keys mirror the 8 ValidationIssue.messageKey values
+  // emitted by editorValidation.ts; {id} / {value} are the optional
+  // interpolation variables carried in `messageVars`.
+  'editor.validation.exitUnreachable': 'Exit is unreachable from the start cell',
+  'editor.validation.enemyPathTooShort': 'Enemy {id} has a patrol path with fewer than 2 waypoints',
+  'editor.validation.startOnWall': 'Start cell is on a wall',
+  'editor.validation.exitOnWall': 'Exit cell is on a wall',
+  'editor.validation.rules.initialTime': 'initialTime must be > 0 (got {value})',
+  'editor.validation.rules.maxHealth': 'maxHealth must be > 0 (got {value})',
+  'editor.validation.rules.timeOnPickup': 'timeOnPickup must be > 0 (got {value})',
+
+  // P2-12: mirror of zh.ts — My-Levels drawer copy.
+  'editor.mylevels.title': 'My Levels · edit or delete',
+  'editor.mylevels.empty': 'No saved levels yet · start by creating one',
+  'editor.mylevels.edit': 'Edit',
+  'editor.mylevels.delete': 'Delete',
+  'editor.mylevels.deleteTitle': 'Delete level',
+  'editor.mylevels.deleteMessage': 'Delete "{name}"? This cannot be undone.',
 
   // ============================================================
   // editor.help.* — Level editor user manual (EditorHelpDrawer copy)

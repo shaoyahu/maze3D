@@ -79,14 +79,15 @@ describe('useEditorStore', () => {
       expect(lvl.start).toEqual({ x: 0, z: 0 });
       expect(lvl.exit).toEqual({ x: 4, z: 3 });
       expect(lvl.walls).toHaveLength(4);
-      // Every cell is a wall EXCEPT the start and exit cells, which are
-      // carved to 0 so the new level already passes `validateMaze`. The
-      // user then extends the floor by clicking more cells.
+      // F-2026-06-17: a fresh level is now a fully open floor (all 0s) —
+      // matching the user's mental model of a "blank canvas". The W
+      // tool places walls down; the previous "all-walls + carve start/exit"
+      // shape was demoted to a footgun. The start/exit carve calls in
+      // buildEmptyLevel remain (defensive) but no longer affect the
+      // visible grid.
       for (let z = 0; z < lvl.walls.length; z += 1) {
         for (let x = 0; x < lvl.walls[z]!.length; x += 1) {
-          const isStart = x === lvl.start.x && z === lvl.start.z;
-          const isExit = x === lvl.exit.x && z === lvl.exit.z;
-          expect(lvl.walls[z]![x]).toBe(isStart || isExit ? 0 : 1);
+          expect(lvl.walls[z]![x]).toBe(0);
         }
       }
       expect(lvl.pickups).toEqual([]);
@@ -983,14 +984,13 @@ describe('useEditorStore', () => {
       const lvl = useEditorStore.getState().level;
       expect(lvl.size).toEqual({ width: 3, depth: 3 });
       expect(lvl.walls).toHaveLength(3);
-      // After the F-2026-06-12-T2 carve fix, every cell is a wall EXCEPT the
-      // clamped start and exit cells, which are carved to 0 so the
-      // resized level still passes `validateMaze` out of the box.
+      // F-2026-06-17: a resize rebuilds the grid as an empty open floor
+      // (all 0s), matching the new buildEmptyLevel behavior. Anything the
+      // user had placed before is dropped — OOB walls from the previous
+      // size never silently re-appear.
       for (let z = 0; z < lvl.walls.length; z += 1) {
         for (let x = 0; x < lvl.walls[z]!.length; x += 1) {
-          const isStart = x === lvl.start.x && z === lvl.start.z;
-          const isExit = x === lvl.exit.x && z === lvl.exit.z;
-          expect(lvl.walls[z]![x]).toBe(isStart || isExit ? 0 : 1);
+          expect(lvl.walls[z]![x]).toBe(0);
         }
       }
       // Exit (4,3) → (2,2) after clamp.

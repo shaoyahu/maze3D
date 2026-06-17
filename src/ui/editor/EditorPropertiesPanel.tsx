@@ -3,6 +3,7 @@ import { useEditorStore } from '../../store/editorStore';
 import type { EnemySpawn, MazeData, Pickup, PickupType, VictoryType } from '../../maze/types';
 import { isPickupType, isVictoryType, VICTORY_TYPE_VALUES } from '../../maze/types';
 import { Button } from '../components/Button';
+import { Dropdown, type DropdownOption } from '../components/Dropdown';
 import { useT } from '../../i18n';
 import { validateTutorialSteps } from '../../utils/tutorialValidator';
 
@@ -12,16 +13,27 @@ const PICKUP_TYPE_LABEL_KEYS: Record<PickupType, string> = {
   health: 'editor.properties.pickupType.health',
   key: 'editor.properties.pickupType.key',
 };
+const PICKUP_TYPE_CODENAMES: Record<PickupType, string> = {
+  time: 'P-01',
+  health: 'P-02',
+  key: 'P-03',
+};
 
+// F-2026-06-17-E-M-8: 之前用 'editor.properties.victory.*' 这个不存在的
+// key 前缀,渲染时 `t()` 会 console.warn 并原样返回 key 字符串,导致
+// 胜利条件 Segmented 控件里出现 "editor.properties.victory.reachExit"
+// 这样的 raw key。统一改成 `levels.victory.*`(在 zh.ts / en.ts 已有
+// reachExit / timeTrial / survive / caughtByEnemy 四条),并用 Record
+// 代替 ternary 链 — TS 编译时强制覆盖全部 4 个 VictoryType,新增值时
+// 漏写会立刻报错。
+const VICTORY_LABEL_KEYS: Record<VictoryType, string> = {
+  'reach-exit': 'levels.victory.reachExit',
+  'time-trial': 'levels.victory.timeTrial',
+  survive: 'levels.victory.survive',
+  'caught-by-enemy': 'levels.victory.caughtByEnemy',
+};
 const VICTORY_OPTIONS: ReadonlyArray<{ value: VictoryType; labelKey: string }> =
-  VICTORY_TYPE_VALUES.map((v) => ({
-    value: v,
-    labelKey: v === 'reach-exit'
-      ? 'editor.properties.victory.reachExit'
-      : v === 'time-trial'
-        ? 'editor.properties.victory.timeTrial'
-        : 'editor.properties.victory.survive',
-  }));
+  VICTORY_TYPE_VALUES.map((v) => ({ value: v, labelKey: VICTORY_LABEL_KEYS[v] }));
 
 function Card({
   variant,
@@ -252,7 +264,7 @@ function LevelMetadataForm({ level }: { level: MazeData }): React.ReactElement {
   }, 300);
 
   return (
-    <div data-testid="level-metadata-form">
+    <div data-testid="level-metadata-form" className="editor-properties__form">
       <Card variant="meta" title={t('editor.properties.metaCard')} chip={t('editor.properties.metaChip')}>
         <label className="editor-properties__field">
           <span className="editor-properties__field-label">{t('editor.properties.field.name')}</span>
@@ -343,69 +355,12 @@ function LevelMetadataForm({ level }: { level: MazeData }): React.ReactElement {
       </Card>
 
       {/* P2-11: per-level tutorial / HUD fields. Live in their own Card so
-          designers can leave them collapsed when editing combat levels. */}
-      <Card variant="meta" title="教程 / HUD (P2-11)" chip="tutorial">
-        <label className="editor-properties__field">
-          <input
-            type="checkbox"
-            data-testid="meta-hide-minimap"
-            checked={!!level.hideMinimap}
-            onChange={(e) => useEditorStore.getState().setHideMinimap(e.target.checked)}
-          />
-          <span className="editor-properties__field-label">隐藏 Minimap</span>
-        </label>
-        <label className="editor-properties__field">
-          <span className="editor-properties__field-label">敌人追击速度覆盖</span>
-          <select
-            data-testid="meta-enemy-aggression"
-            value={level.rules.enemyAggression ?? ''}
-            onChange={(e) => {
-              const v = e.target.value;
-              useEditorStore.getState().setEnemyAggression(
-                v === '' ? null : (v as 'easy' | 'medium' | 'hard'),
-              );
-            }}
-          >
-            <option value="">继承全局设置</option>
-            <option value="easy">简单 (1.2x)</option>
-            <option value="medium">中等 (1.5x)</option>
-            <option value="hard">困难 (1.8x)</option>
-          </select>
-        </label>
-        <label className="editor-properties__field">
-          <input
-            type="checkbox"
-            data-testid="meta-require-all-pickups"
-            checked={!!level.rules.requireAllPickups}
-            onChange={(e) => useEditorStore.getState().setRequireAllPickups(e.target.checked)}
-          />
-          <span className="editor-properties__field-label">必须收集全部拾取</span>
-        </label>
-        <label className="editor-properties__field">
-          <span className="editor-properties__field-label">教学步骤 (JSON)</span>
-          <textarea
-            data-testid="meta-tutorial-steps"
-            rows={4}
-            defaultValue={level.tutorialSteps ? JSON.stringify(level.tutorialSteps, null, 2) : ''}
-            onBlur={(e) => {
-              const raw = e.target.value.trim();
-              if (!raw) {
-                useEditorStore.getState().setTutorialSteps(undefined);
-                return;
-              }
-              try {
-                const parsed = JSON.parse(raw);
-                const validation = validateTutorialSteps(parsed);
-                if (validation.ok) {
-                  useEditorStore.getState().setTutorialSteps(validation.steps);
-                }
-              } catch {
-                // Invalid JSON — silently keep the text in the textarea so
-                // the user can fix it. No store mutation.
-              }
-            }}
-          />
-        </label>
+          designers can leave them collapsed when editing combat levels.
+          P2-13.7: 全部硬编码中文改 i18n 化,跟随系统语言。
+          P2-13.x: 教程卡片 UI 改版 —— 顶部 hero 总览 → 三组 toggle row →
+          高级 JSON 编辑折叠区(默认收起)。 */}
+      <Card variant="meta" title={t('editor.properties.tutorialCard')} chip={t('editor.properties.tutorialChip')}>
+        <TutorialCardBody level={level} />
       </Card>
     </div>
   );
@@ -445,23 +400,23 @@ function PickupForm({ pickup }: { pickup: Pickup }): React.ReactElement {
       <Card variant="pickup" selected title={t('editor.properties.pickupCard')} chip={pickup.id.slice(0, 8)}>
         <label className="editor-properties__field">
           <span className="editor-properties__field-label">{t('editor.properties.field.type')}</span>
-          <select
-            className="editor-properties__select"
+          <Dropdown<PickupType>
+            testId="pickup-type"
+            ariaLabel={t('editor.properties.field.type')}
             value={type}
-            onChange={(e) => {
-              const tp = e.target.value;
+            options={PICKUP_TYPE_OPTIONS.map((tp) => ({
+              value: tp,
+              label: t(PICKUP_TYPE_LABEL_KEYS[tp]),
+              codename: PICKUP_TYPE_CODENAMES[tp],
+              desc: `(${tp})`,
+            }))}
+            onChange={(tp) => {
               if (!isPickupType(tp)) return;
               setType(tp);
               updatePickup(pickup.id, { type: tp });
             }}
-            data-testid="pickup-type"
-          >
-            {PICKUP_TYPE_OPTIONS.map((tp) => (
-              <option key={tp} value={tp}>
-                {t(PICKUP_TYPE_LABEL_KEYS[tp])} ({tp})
-              </option>
-            ))}
-          </select>
+            optionTestId={(opt) => `pickup-type-${opt.value}`}
+          />
         </label>
         <label className="editor-properties__field">
           <span className="editor-properties__field-label">{t('editor.properties.field.value')}</span>
@@ -718,6 +673,248 @@ function SelectionMissing({ kind }: { kind: 'pickup' | 'enemy' }): React.ReactEl
           ? t('editor.properties.selection.pickup')
           : t('editor.properties.selection.enemy'),
       })}
+    </div>
+  );
+}
+
+// ─────────────────── P2-13.x: 教程 / HUD 卡片改版 ───────────────────
+//
+// 结构三段式:
+//   1) hero     —— 教学状态总览(开关 + 当前 step 数 / 状态)
+//   2) rows     —— 三组 toggle row, 每一行 = 标题 + 描述 + 控件
+//                    · 隐藏 minimap          → 自定义 Switch
+//                    · 敌人追击速度覆盖       → Dropdown (继承/简单/中等/困难)
+//                    · 必须收集全部拾取       → 自定义 Switch
+//   3) advanced —— JSON 文本编辑,默认收起, 避免一上来就被裸露 JSON 劝退
+//
+// 数据流:全部走 useEditorStore 的 setter,跟原 inline 版本语义一致;
+// 旧 testid (meta-hide-minimap / meta-enemy-aggression / meta-require-all-pickups
+// / meta-tutorial-steps) 全部保留以不破坏现有 component 测试。
+function TutorialCardBody({ level }: { level: MazeData }): React.ReactElement {
+  const t = useT();
+  const setHideMinimap = useEditorStore((s) => s.setHideMinimap);
+  const setEnemyAggression = useEditorStore((s) => s.setEnemyAggression);
+  const setRequireAllPickups = useEditorStore((s) => s.setRequireAllPickups);
+  const setTutorialSteps = useEditorStore((s) => s.setTutorialSteps);
+
+  const aggressionOptions: ReadonlyArray<DropdownOption<'' | 'easy' | 'medium' | 'hard'>> = [
+    { value: '',     label: t('editor.properties.tutorial.aggression.inherit') },
+    { value: 'easy',   label: t('editor.properties.tutorial.aggression.easy') },
+    { value: 'medium', label: t('editor.properties.tutorial.aggression.medium') },
+    { value: 'hard',   label: t('editor.properties.tutorial.aggression.hard') },
+  ];
+
+  const stepCount = level.tutorialSteps?.length ?? 0;
+  const isOn = stepCount > 0;
+
+  return (
+    <div className="editor-tutorial">
+      <div className="editor-tutorial__hero">
+        <span className="editor-tutorial__hero-icon" aria-hidden>?</span>
+        <div className="editor-tutorial__hero-body">
+          <span className="editor-tutorial__hero-title">
+            {isOn
+              ? t('editor.properties.tutorial.hero.on', { count: stepCount })
+              : t('editor.properties.tutorial.hero.off')}
+          </span>
+          <span className="editor-tutorial__hero-sub">
+            {t('editor.properties.tutorial.hero.sub')}
+          </span>
+        </div>
+      </div>
+
+      <div className="editor-tutorial__rows">
+        <div className="editor-tutorial__row">
+          <div className="editor-tutorial__row-body">
+            <span className="editor-tutorial__row-label">
+              <span className="editor-tutorial__row-icon" aria-hidden>◫</span>
+              {t('editor.properties.tutorial.hideMinimap')}
+            </span>
+            <span className="editor-tutorial__row-desc">
+              {t('editor.properties.tutorial.hideMinimapDesc')}
+            </span>
+          </div>
+          <div className="editor-tutorial__row-control">
+            <label className="editor-tutorial__switch" aria-label={t('editor.properties.tutorial.hideMinimap')}>
+              <input
+                type="checkbox"
+                data-testid="meta-hide-minimap"
+                checked={!!level.hideMinimap}
+                onChange={(e) => setHideMinimap(e.target.checked)}
+              />
+              <span className="editor-tutorial__switch__track" />
+              <span className="editor-tutorial__switch__knob" />
+            </label>
+          </div>
+        </div>
+
+        <div className="editor-tutorial__row">
+          <div className="editor-tutorial__row-body">
+            <span className="editor-tutorial__row-label">
+              <span className="editor-tutorial__row-icon" aria-hidden>◉</span>
+              {t('editor.properties.tutorial.enemyAggression')}
+            </span>
+            <span className="editor-tutorial__row-desc">
+              {t('editor.properties.tutorial.enemyAggressionDesc')}
+            </span>
+          </div>
+          <div className="editor-tutorial__row-control" style={{ minWidth: 140 }}>
+            <Dropdown<'' | 'easy' | 'medium' | 'hard'>
+              testId="meta-enemy-aggression"
+              ariaLabel={t('editor.properties.tutorial.enemyAggression')}
+              value={level.rules.enemyAggression ?? ''}
+              options={aggressionOptions}
+              onChange={(v) => setEnemyAggression(v === '' ? null : v)}
+            />
+          </div>
+        </div>
+
+        <div className="editor-tutorial__row">
+          <div className="editor-tutorial__row-body">
+            <span className="editor-tutorial__row-label">
+              <span className="editor-tutorial__row-icon" aria-hidden>✦</span>
+              {t('editor.properties.tutorial.requireAllPickups')}
+            </span>
+            <span className="editor-tutorial__row-desc">
+              {t('editor.properties.tutorial.requireAllPickupsDesc')}
+            </span>
+          </div>
+          <div className="editor-tutorial__row-control">
+            <label className="editor-tutorial__switch" aria-label={t('editor.properties.tutorial.requireAllPickups')}>
+              <input
+                type="checkbox"
+                data-testid="meta-require-all-pickups"
+                checked={!!level.rules.requireAllPickups}
+                onChange={(e) => setRequireAllPickups(e.target.checked)}
+              />
+              <span className="editor-tutorial__switch__track" />
+              <span className="editor-tutorial__switch__knob" />
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <TutorialAdvancedSteps
+        initialJson={level.tutorialSteps ? JSON.stringify(level.tutorialSteps, null, 2) : ''}
+        onCommit={(steps) => setTutorialSteps(steps)}
+      />
+    </div>
+  );
+}
+
+// 高级 JSON 编辑折叠区:默认收起,点 ▶ 展开,展开后 textarea 接受
+// onBlur 时的 validate + commit。状态在本地 useState 跟踪 raw 文本与
+// 上次 commit 的状态(ok / error / pristine)。
+function TutorialAdvancedSteps({
+  initialJson,
+  onCommit,
+}: {
+  initialJson: string;
+  onCommit: (steps: ReturnType<typeof useEditorStore.getState>['level']['tutorialSteps']) => void;
+}): React.ReactElement {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const [raw, setRaw] = useState(initialJson);
+  const [status, setStatus] = useState<'pristine' | 'ok' | 'error'>('pristine');
+
+  // 同步外部变化(切关卡时)
+  useEffect(() => {
+    setRaw(initialJson);
+    setStatus('pristine');
+  }, [initialJson]);
+
+  const commit = (): void => {
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      onCommit(undefined);
+      setStatus('ok');
+      return;
+    }
+    try {
+      const parsed = JSON.parse(trimmed);
+      const validation = validateTutorialSteps(parsed);
+      if (validation.ok) {
+        onCommit(validation.steps);
+        setStatus('ok');
+      } else {
+        setStatus('error');
+      }
+    } catch {
+      setStatus('error');
+    }
+  };
+
+  const stepList = (() => {
+    if (status !== 'ok') return null;
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.slice(0, 3).map((s: { title?: string; trigger?: string }, i: number) => ({
+          index: i,
+          title: typeof s?.title === 'string' ? s.title : `Step ${i + 1}`,
+          trigger: typeof s?.trigger === 'string' ? s.trigger : '',
+        }));
+      }
+    } catch { /* ignore */ }
+    return null;
+  })();
+
+  return (
+    <div className={`editor-tutorial__advanced${open ? ' editor-tutorial__advanced--open' : ''}`}>
+      <button
+        type="button"
+        className="editor-tutorial__advanced-toggle"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        data-testid="meta-tutorial-steps-toggle"
+      >
+        <span>{t('editor.properties.tutorial.advancedLabel')}</span>
+        <span className="editor-tutorial__advanced-caret" aria-hidden>▸</span>
+      </button>
+      <div className="editor-tutorial__advanced-body">
+        <div className="editor-tutorial__advanced-hint">
+          {t('editor.properties.tutorial.advancedHint')}
+        </div>
+        <textarea
+          data-testid="meta-tutorial-steps"
+          rows={6}
+          value={raw}
+          onChange={(e) => { setRaw(e.target.value); setStatus('pristine'); }}
+          onBlur={commit}
+          spellCheck={false}
+        />
+        <span
+          className={
+            status === 'error'
+              ? 'editor-tutorial__advanced-status editor-tutorial__advanced-status--error'
+              : status === 'ok'
+                ? 'editor-tutorial__advanced-status editor-tutorial__advanced-status--ok'
+                : 'editor-tutorial__advanced-status'
+          }
+          data-testid="meta-tutorial-steps-status"
+        >
+          {status === 'error'
+            ? t('editor.properties.tutorial.advancedStatusError')
+            : status === 'ok'
+              ? t('editor.properties.tutorial.advancedStatusOk')
+              : t('editor.properties.tutorial.advancedStatusIdle')}
+        </span>
+        {open && stepList && stepList.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>
+            {stepList.map((s) => (
+              <div className="editor-tutorial__step-row" key={s.index}>
+                <span className="editor-tutorial__step-row__no editor-tutorial__step-row__no--current">
+                  {s.index + 1}
+                </span>
+                <div className="editor-tutorial__step-row__body">
+                  <span>{s.title}</span>
+                  {s.trigger && <span className="editor-tutorial__step-row__meta">{s.trigger}</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

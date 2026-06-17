@@ -103,58 +103,9 @@ test.describe('editor (P2-4b)', () => {
     await expect(page.getByText('测试关卡')).toBeVisible();
   });
 
-  // Same root cause as 'save a custom level and see it in LevelSelect'
-  // (see fixme above) — the LevelSelect delete confirm path depends on
-  // the editor save having produced a custom level, which is blocked
-  // by the validator race. Revisit with the editor pass.
-  test.fixme('delete a custom level from LevelSelect (with confirm)', async ({ page }) => {
-    // Seed a custom level directly into localStorage.
-    await freshPage(page);
-    await page.evaluate(() => {
-      const level = {
-        id: 'custom-abc',
-        name: 'ToDelete',
-        size: { width: 3, depth: 3 },
-        cellSize: 2,
-        start: { x: 0, z: 0 },
-        exit: { x: 2, z: 2 },
-        walls: [[0,0,0],[0,0,0],[0,0,0]],
-        pickups: [],
-        enemies: [],
-        rules: { initialTime: 60, maxHealth: 3, victory: 'reach-exit', timeOnPickup: 10 },
-      };
-      localStorage.setItem('maze3d.customLevels.v1', JSON.stringify({ 'custom-abc': level }));
-      // F-project-review-2026-06-13-C-L5: explicitly clear
-      // `maze3d.editorDraft.v1` in the seed step. A prior spec's
-      // autosave (2s debounce) can land AFTER this clear; without the
-      // removeItem the delete spec would see a leftover draft that
-      // the editor would later hydrate and confuse the assertions.
-      localStorage.removeItem('maze3d.editorDraft.v1');
-    });
-    await page.reload();
-    await page.getByRole('button', { name: '开始' }).click();
-    // P2-6: custom level name is a <span>, not a button.
-    await expect(page.getByText('ToDelete')).toBeVisible();
-
-    // Decline confirm → level stays.
-    // P2-7: the confirm dialog is a themed DOM component, not a native
-    // browser dialog, so we click `confirm-action-cancel` (the action
-    // with value='cancel') instead of attaching a `page.once('dialog')` handler.
-    await page.getByTestId('delete-custom-custom-abc').click();
-    await expect(page.getByTestId('confirm-dialog')).toBeVisible();
-    await page.getByTestId('confirm-action-cancel').click();
-    await expect(page.getByText('ToDelete')).toBeVisible();
-
-    // Accept confirm → level removed.
-    await page.getByTestId('delete-custom-custom-abc').click();
-    await expect(page.getByTestId('confirm-dialog')).toBeVisible();
-    await page.getByTestId('confirm-action-ok').click();
-    // P2-6: custom-levels-group is always in the DOM (FR-9 top-level
-    // container). What disappears is the row + delete button for the
-    // specific level. Asserting on the delete-button testid prefix is
-    // the stable signal that no custom levels remain.
-    await expect(page.locator('[data-testid^="delete-custom-"]')).toHaveCount(0);
-  });
+  // P2-12: 删除自定义关卡的入口已从 /levels 搬到编辑器内
+  // (EditorMyLevelsDrawer)。该 e2e 因此被删除 — 后续有 E2E 需求时,
+  // 在编辑器路径下重写 "save → my-levels → delete" 流程。决策 A + C。
 
   // F-project-review-2026-06-13-C-H1: convert stale `test.skip` to
   // `test.fixme` so the export/import roundtrip is visible in the run

@@ -548,19 +548,19 @@ export function EditorViewport(): React.ReactElement {
 
       {isEmpty && (
         <div className="editor-viewport-empty" data-testid="editor-viewport-empty">
-          <div>空关卡</div>
-          <div className="editor-viewport-empty__accent">选择工具 · 点击格子开始放置</div>
+          <div>{t('editor.viewport.empty')}</div>
+          <div className="editor-viewport-empty__accent">{t('editor.viewport.emptySub')}</div>
         </div>
       )}
 
       {tool === 'pan' && !hasPanned && (
         <div className="editor-viewport-pan-hint" data-testid="editor-viewport-pan-hint">
           <div className="editor-viewport-pan-hint__icon" aria-hidden>✥</div>
-          <div className="editor-viewport-pan-hint__title">平移模式</div>
+          <div className="editor-viewport-pan-hint__title">{t('editor.viewport.panHintTitle')}</div>
           <div className="editor-viewport-pan-hint__body">
-            按住 <kbd>左键</kbd> 或 <kbd>右键</kbd> 在画布上拖动来移动视图
+            {t('editor.viewport.panHintDrag')}
           </div>
-          <div className="editor-viewport-pan-hint__sub">滚轮缩放 · ESC 退出</div>
+          <div className="editor-viewport-pan-hint__sub">{t('editor.viewport.panHintSub')}</div>
         </div>
       )}
 
@@ -575,7 +575,7 @@ export function EditorViewport(): React.ReactElement {
         <button
           type="button"
           className="editor-viewport-zoom__btn"
-          aria-label="缩小"
+          aria-label={t('editor.viewport.zoomOutAria')}
           disabled={camera.zoom <= ZOOM_MIN}
           onClick={() => setCamera({ zoom: Math.max(ZOOM_MIN, camera.zoom - ZOOM_STEP) })}
         >
@@ -587,7 +587,7 @@ export function EditorViewport(): React.ReactElement {
         <button
           type="button"
           className="editor-viewport-zoom__btn"
-          aria-label="放大"
+          aria-label={t('editor.viewport.zoomInAria')}
           disabled={camera.zoom >= ZOOM_MAX}
           onClick={() => setCamera({ zoom: Math.min(ZOOM_MAX, camera.zoom + ZOOM_STEP) })}
         >
@@ -595,7 +595,7 @@ export function EditorViewport(): React.ReactElement {
         </button>
       </div>
 
-      <div className="editor-viewport-minimap" data-testid="editor-viewport-minimap" aria-label="缩略图">
+      <div className="editor-viewport-minimap" data-testid="editor-viewport-minimap" aria-label={t('editor.viewport.minimapAria')}>
         <div className="editor-viewport-minimap__title">
           Map {width}×{depth}
         </div>

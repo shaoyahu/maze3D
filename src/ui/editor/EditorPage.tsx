@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useEditorStore } from '../../store/editorStore';
+import type { EditorTool } from '../../maze/types';
 import { EditorTopBar } from './EditorTopBar';
-import { EditorLeftDrawer } from './EditorLeftDrawer';
+import { EditorLeftPanel } from './EditorLeftPanel';
+import { EditorToolbar } from './EditorToolbar';
 import { EditorViewport } from './EditorViewport';
 import { EditorPropertiesPanel } from './EditorPropertiesPanel';
 import { EditorStatusBar } from './EditorStatusBar';
@@ -43,6 +45,7 @@ export function EditorPage({ onExit }: EditorPageProps): React.ReactElement {
   const t = useT();
   const undo = useEditorStore((s) => s.undo);
   const redo = useEditorStore((s) => s.redo);
+  const setTool = useEditorStore((s) => s.setTool);
   const saveDraft = useEditorStore((s) => s.saveDraft);
   const loadDraft = useEditorStore((s) => s.loadDraft);
   const level = useEditorStore((s) => s.level);
@@ -103,23 +106,49 @@ export function EditorPage({ onExit }: EditorPageProps): React.ReactElement {
   }, [level, saveDraft]);
 
   // ---- Global keyboard shortcuts --------------------------------------
+  // - ⌘Z / ⌘⇧Z / ⌘Y: undo / redo (also Ctrl on non-mac)
+  // - V / W / B / S / E / P / M / H: switch the active placement tool.
+  //   Mirrors the shortcuts shown on the toolbar chips, so the user
+  //   doesn't have to reach for the mouse after learning them visually.
+  //   Skip when focus is in an editable field (so typing "w" in the
+  //   level name doesn't switch to the wall tool).
   useEffect(() => {
     const handler = (e: KeyboardEvent): void => {
       if (!isUndoRedoTarget(e.target)) return;
       const mod = e.metaKey || e.ctrlKey;
-      if (!mod) return;
-      const key = e.key.toLowerCase();
-      if (key === 'z' && !e.shiftKey) {
+      if (mod) {
+        const key = e.key.toLowerCase();
+        if (key === 'z' && !e.shiftKey) {
+          e.preventDefault();
+          undo();
+        } else if ((key === 'z' && e.shiftKey) || key === 'y') {
+          e.preventDefault();
+          redo();
+        }
+        return;
+      }
+      // No modifier — single-key tool switch. lowercased so Caps Lock
+      // doesn't break the binding.
+      const toolKey = e.key.toLowerCase();
+      const TOOL_SHORTCUTS: Record<string, EditorTool> = {
+        v: 'select',
+        w: 'wall',
+        b: 'erase',
+        s: 'start',
+        e: 'exit',
+        p: 'pickup',
+        m: 'enemy',
+        h: 'pan',
+      };
+      const next = TOOL_SHORTCUTS[toolKey];
+      if (next !== undefined) {
         e.preventDefault();
-        undo();
-      } else if ((key === 'z' && e.shiftKey) || key === 'y') {
-        e.preventDefault();
-        redo();
+        setTool(next);
       }
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [undo, redo]);
+  }, [undo, redo, setTool]);
 
   const handleExit = async (): Promise<void> => {
     const dirty = useEditorStore.getState().dirty;
@@ -150,9 +179,18 @@ export function EditorPage({ onExit }: EditorPageProps): React.ReactElement {
   return (
     <div data-testid="editor-page" style={PAGE_STYLE}>
       <EditorTopBar onExit={handleExit} onSaveAndExit={handleExit} />
+      {/* P2-13.8: 三栏 — 左 / 中(顶部 toolbar + viewport) / 右,三栏
+          都在 outer row 平行,各自跨越整个高度。右栏(属性)跟左栏
+          (文件树)一样"独立成栏" — 不再挤在 middle column 的 inner row
+          里,工具行因此不再出现在属性栏"上方那一行"。 */}
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-        <EditorLeftDrawer />
-        <EditorViewport />
+        <EditorLeftPanel />
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+          <EditorToolbar />
+          <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
+            <EditorViewport />
+          </div>
+        </div>
         <EditorPropertiesPanel />
       </div>
       <EditorStatusBar />

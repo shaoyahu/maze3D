@@ -133,6 +133,12 @@ export interface MazeData {
   // by events from the engine (mouse-look / key-pressed / pickup /
   // exit / timeout). See `TutorialStep` + `TutorialTrigger`.
   tutorialSteps?: TutorialStep[];
+  // P2-13: parent folder id. When present, the level is grouped under
+  // the folder in the editor's left-panel file tree; when undefined
+  // (or pointing at a deleted folder), the level renders under the
+  // default "我的" folder. Editor-only metadata; the runtime engine
+  // does not look at this field.
+  folderId?: string;
 }
 
 // ---------------------------------------------------------------------------
