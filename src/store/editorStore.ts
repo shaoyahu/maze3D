@@ -73,13 +73,18 @@ interface EditorCamera {
 type SaveResult = { ok: true; level: MazeData } | { ok: false; error: string };
 
 // Local alias: only the slice fields we replace on each commit. We pass
-// this to `set(...)` to keep the per-action code uniform.
+// this to `set(...)` to keep the per-action code uniform. The two error
+// fields are part of the slice so commitLevel can clear them in a single
+// call (F-2026-06-17-A-M-1) — the previous code had 15 `set({ ...commitLevel(...),
+// lastError: null, lastErrorKey: null })` sites that were easy to drop.
 type LevelSlice = {
   level: MazeData;
   past: Snapshot[];
   future: Snapshot[];
   selection: EditorStoreState['selection'];
   dirty: boolean;
+  lastError: string | null;
+  lastErrorKey: string | null;
 };
 
 interface EditorStoreState {
@@ -344,6 +349,17 @@ function commitLevel(
     future: next.future,
     selection: next.selection,
     dirty: levelHash(next.level) !== state.lastSavedHash,
+    // F-2026-06-17-A-M-1: every successful commit auto-clears the
+    // error banner. A commit only fires after validateMaze / placeWall
+    // / etc. accepted the change, so the prior "X is invalid" chip
+    // is stale by definition. Callers no longer need to spread
+    // `lastError: null, lastErrorKey: null` manually — that pattern
+    // was duplicated in 15 set() calls and any future refactor that
+    // forgot it would let a stale error linger after a successful
+    // edit. (setTool / select / clearSelection still call set() with
+    // an explicit clear, since they don't go through commitLevel.)
+    lastError: null,
+    lastErrorKey: null,
   };
 }
 
@@ -496,40 +512,35 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
 
     clearLastError: () => set({ lastError: null, lastErrorKey: null }),
 
-    // P2-11: per-level P2-11 fields. Each setter mutates the active draft
-    // and pushes a history snapshot so undo/redo works without extra
-    // wiring. `setEnemyAggression(null)` clears the override (falls back
-    // to settingsStore.enemyAggression); pass `'easy' | 'medium' | 'hard'`
+    // P2-11: per-level P2-11 fields. Each setter routes through
+    // `commitLevel` so history push + dirty re-derivation happens once
+    // (the original P2-11 commit e35092d used a non-existent `s.draft`
+    // field and the wrong 2-arg `pushHistory`, which made every P2-11
+    // editor control a silent no-op — F-2026-06-17-A-CRITICAL-1).
+    // `setEnemyAggression(null)` clears the override (falls back to
+    // settingsStore.enemyAggression); pass `'easy' | 'medium' | 'hard'`
     // to override.
     setHideMinimap: (v) => {
       const s = get();
-      if (!s.draft) return;
-      const next = pushHistory(s.level, { ...s.draft, hideMinimap: v || undefined });
-      set({ level: next.level, draft: next.draft });
+      set(commitLevel(s, { ...s.level, hideMinimap: v || undefined }));
     },
     setEnemyAggression: (v) => {
       const s = get();
-      if (!s.draft) return;
-      const rules = { ...s.draft.rules };
+      const rules = { ...s.level.rules };
       if (v === null) delete rules.enemyAggression;
       else rules.enemyAggression = v;
-      const next = pushHistory(s.level, { ...s.draft, rules });
-      set({ level: next.level, draft: next.draft });
+      set(commitLevel(s, { ...s.level, rules }));
     },
     setRequireAllPickups: (v) => {
       const s = get();
-      if (!s.draft) return;
-      const rules = { ...s.draft.rules };
+      const rules = { ...s.level.rules };
       if (!v) delete rules.requireAllPickups;
       else rules.requireAllPickups = true;
-      const next = pushHistory(s.level, { ...s.draft, rules });
-      set({ level: next.level, draft: next.draft });
+      set(commitLevel(s, { ...s.level, rules }));
     },
     setTutorialSteps: (steps) => {
       const s = get();
-      if (!s.draft) return;
-      const next = pushHistory(s.level, { ...s.draft, tutorialSteps: steps && steps.length > 0 ? steps : undefined });
-      set({ level: next.level, draft: next.draft });
+      set(commitLevel(s, { ...s.level, tutorialSteps: steps && steps.length > 0 ? steps : undefined }));
     },
 
     // F-project-review-2026-06-13-D-5/D-18: a successful levelStore
@@ -578,7 +589,7 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
         zi === z ? r.map((c, xi) => (xi === x ? (1 as CellType) : c)) : r,
       );
       const nextLevel: MazeData = { ...level, walls: nextWalls };
-      set({ ...commitLevel(get(), nextLevel), lastError: null, lastErrorKey: null });
+      set(commitLevel(get(), nextLevel));
     },
 
     // F-P2-9: dedicated carve / erase tool. Inverse of placeWall.
@@ -606,7 +617,7 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
         zi === z ? r.map((c, xi) => (xi === x ? (0 as CellType) : c)) : r,
       );
       const nextLevel: MazeData = { ...level, walls: nextWalls };
-      set({ ...commitLevel(get(), nextLevel), lastError: null, lastErrorKey: null });
+      set(commitLevel(get(), nextLevel));
     },
 
     placeStart: (x, z) => {
@@ -633,7 +644,7 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
         );
       }
       const nextLevel: MazeData = { ...level, start: { x, z }, walls: nextWalls };
-      set({ ...commitLevel(get(), nextLevel), lastError: null, lastErrorKey: null });
+      set(commitLevel(get(), nextLevel));
     },
 
     placeExit: (x, z) => {
@@ -657,7 +668,7 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
         );
       }
       const nextLevel: MazeData = { ...level, exit: { x, z }, walls: nextWalls };
-      set({ ...commitLevel(get(), nextLevel), lastError: null, lastErrorKey: null });
+      set(commitLevel(get(), nextLevel));
     },
 
     placePickup: (x, z) => {
@@ -699,7 +710,7 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
       };
       const nextLevel: MazeData = { ...level, pickups: [...level.pickups, newPickup] };
       // Per spec: placePickup also clears the selection.
-      set({ ...commitLevel(get(), nextLevel, null), lastError: null, lastErrorKey: null });
+      set(commitLevel(get(), nextLevel, null));
     },
 
     placeEnemy: (x, z, width) => {
@@ -776,7 +787,7 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
         e.id === enemyId ? { ...e, path: [...e.path, { x: nx, z: nz }] } : e,
       );
       const nextLevel: MazeData = { ...level, walls: nextWalls, enemies: nextEnemies };
-      set({ ...commitLevel(get(), nextLevel, { kind: 'enemy', id: enemyId }), lastError: null, lastErrorKey: null });
+      set(commitLevel(get(), nextLevel, { kind: 'enemy', id: enemyId }));
     },
 
     // ---- patch actions (mark dirty; no immediate history push) ----
@@ -936,7 +947,7 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
           if (!nextLevel.enemies.some((e) => e.id === sel.id)) nextSelection = null;
         }
       }
-      set({ ...commitLevel(get(), nextLevel, nextSelection), lastError: null, lastErrorKey: null });
+      set(commitLevel(get(), nextLevel, nextSelection));
     },
 
     // ---- enemy path edits ----
@@ -1009,7 +1020,7 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
         e.id === enemyId ? { ...e, path: [...e.path, { x, z }] } : e,
       );
       const nextLevel: MazeData = { ...level, enemies: nextEnemies };
-      set({ ...commitLevel(get(), nextLevel), lastError: null, lastErrorKey: null });
+      set(commitLevel(get(), nextLevel));
     },
 
     removeEnemyNode: (enemyId, nodeIndex) => {
@@ -1035,7 +1046,7 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
           : e,
       );
       const nextLevel: MazeData = { ...level, enemies: nextEnemies };
-      set({ ...commitLevel(get(), nextLevel), lastError: null, lastErrorKey: null });
+      set(commitLevel(get(), nextLevel));
     },
 
     // ---- selection-driven delete ----
@@ -1069,7 +1080,7 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
         const _exhaustive: never = selection;
         throw new Error(`deleteSelected: unhandled selection kind ${String(_exhaustive)}`);
       }
-      set({ ...commitLevel(get(), nextLevel, nextSelection), lastError: null, lastErrorKey: null });
+      set(commitLevel(get(), nextLevel, nextSelection));
     },
 
     // ---- history ----

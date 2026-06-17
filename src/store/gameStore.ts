@@ -170,7 +170,13 @@ export const useGameStore = create<GameState>((set, get) => ({
       const injectedEnemies = mode === 'survive'
         ? injectEnemySpawns(maze, requestedEnemyCount)
         : [];
-      const totalEnemyCount = maze.enemies.length + injectedEnemies.length;
+      // F-2026-06-17-C-H-3: mirror Game.startLevel — drop any
+      // previously-injected gen-* enemies before counting. Without
+      // this, the HUD's enemy counter drifts higher on every retry
+      // because each injectEnemySpawns call returned 3 new gen-1/2/3
+      // and the prior batch was still in maze.enemies.
+      const handCraftedCount = maze.enemies.filter((e) => !e.id.startsWith('gen-')).length;
+      const totalEnemyCount = handCraftedCount + injectedEnemies.length;
       return {
         screen: 'playing',
         currentLevelId: maze.id,
