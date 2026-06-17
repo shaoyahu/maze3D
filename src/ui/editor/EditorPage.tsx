@@ -11,13 +11,12 @@ import { useT } from '../../i18n';
 
 const DRAFT_KEY = 'maze3d.editorDraft.v1';
 const AUTOSAVE_DELAY_MS = 2000;
-// P2-8: these test-stable constants are kept verbatim so the EditorPage
-// test that asserts on DIRTY_EXIT_TITLE / DIRTY_EXIT_MESSAGE constants
-// still works (the test calls the raw exported strings). The runtime
-// dialog text now flows through t() instead.
-export const DIRTY_EXIT_TITLE = '未保存的修改';
-export const DIRTY_EXIT_MESSAGE =
-  '当前关卡有未保存的修改，请选择操作（继续编辑 = 留在此页）。';
+// F-2026-06-17-E-L-3: the dirty-exit dialog wording used to be exposed
+// as `DIRTY_EXIT_TITLE` / `DIRTY_EXIT_MESSAGE` so the P2-7 test could
+// pin the strings. After P2-8 (i18n) landed, the runtime reads the
+// dialog text through `t('editor.dirtyExit.*')` — the exports were
+// no longer referenced by any production code path. Removed: the
+// two exports + the matching test pins.
 
 const PAGE_STYLE = {
   position: 'absolute' as const,

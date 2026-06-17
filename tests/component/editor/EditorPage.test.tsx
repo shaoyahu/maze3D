@@ -2,8 +2,6 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, act, fireEvent, waitFor } from '@testing-library/react';
 import {
   EditorPage,
-  DIRTY_EXIT_TITLE,
-  DIRTY_EXIT_MESSAGE,
 } from '../../../src/ui/editor/EditorPage';
 import { useEditorStore } from '../../../src/store/editorStore';
 import { useLevelStore } from '../../../src/store/levelStore';
@@ -318,20 +316,9 @@ describe('EditorPage (P2-7 ConfirmProvider)', () => {
     expect(screen.queryByTestId('confirm-dialog')).toBeNull();
   });
 
-  // P2-7 regression PINs for the 3-option dirty-exit dialog wording.
-  // The dialog itself is currently unreachable through the toolbar UI
-  // (the "保存并退出" button clears dirty before handleExit's dirty
-  // check runs), but the constants are still wired into handleExit so
-  // a future "plain exit" entry point will reuse the same wording.
-  // Pinning the strings is the most stable guard against drift between
-  // intent ("safe stay" default) and code.
-  it('DIRTY_EXIT_TITLE matches the "未保存的修改" intent', () => {
-    expect(DIRTY_EXIT_TITLE).toMatch(/未保存的修改/);
-  });
-
-  it('DIRTY_EXIT_MESSAGE describes the three-option choice with a safe-stay hint', () => {
-    expect(DIRTY_EXIT_MESSAGE).toMatch(/未保存的修改/);
-    expect(DIRTY_EXIT_MESSAGE).toMatch(/继续编辑/);
-    expect(DIRTY_EXIT_MESSAGE).toMatch(/留在此页/);
-  });
+  // F-2026-06-17-E-L-3: the `DIRTY_EXIT_TITLE` / `DIRTY_EXIT_MESSAGE`
+  // string-pin tests were removed when the corresponding exports were
+  // deleted. The dialog text now flows through t() (P2-8 i18n); a
+  // regression in the runtime wording is guarded by the i18n key
+  // resource tests, not by string-pin tests on dead exports.
 });

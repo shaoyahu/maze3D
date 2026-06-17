@@ -14,7 +14,7 @@
 // drawer anchors to the top of the viewport instead of the centre
 // and the panel slides down rather than rising.
 
-import { useEffect } from 'react';
+import { useEffect, useId } from 'react';
 import { createPortal } from 'react-dom';
 import { useT } from '../../i18n';
 
@@ -28,6 +28,10 @@ export function EditorHelpDrawer({
   onClose,
 }: EditorHelpDrawerProps): React.ReactElement | null {
   const t = useT();
+  // F-2026-06-17-E-L-6: per-instance id so the aria-labelledby contract
+  // stays correct when more than one dialog is open at once. Replaces
+  // the hard-coded `editor-help-title` literal.
+  const titleId = `${useId()}-title`;
 
   // ESC closes the drawer. Bound on document so the binding survives
   // any focusable input inside the drawer losing focus.
@@ -61,13 +65,13 @@ export function EditorHelpDrawer({
       <div
         role="dialog"
         aria-modal="true"
-        aria-labelledby="editor-help-title"
+        aria-labelledby={titleId}
         data-testid="editor-help-drawer"
         className="editor-help__panel"
         onClick={stop}
       >
         <div className="editor-help__header">
-          <h2 id="editor-help-title" className="editor-help__title">
+          <h2 id={titleId} className="editor-help__title">
             {t('editor.help.title')}
           </h2>
           <button

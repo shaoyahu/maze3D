@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useId,
   useRef,
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -105,8 +106,15 @@ export function Dialog({
   // Refs for the action buttons so we can (a) focus the first one on open
   // and (b) implement Tab cycling within the action list.
   const buttonRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const titleId = 'confirm-dialog-title';
-  const messageId = 'confirm-dialog-message';
+  // F-2026-06-17-E-L-6: useId() gives every dialog instance its own
+  // stable id so multiple dialogs can coexist in the DOM without
+  // aria-labelledby collisions. The previous hard-coded
+  // 'confirm-dialog-title' / 'confirm-dialog-message' literals were
+  // fine in isolation but undefined as soon as a second dialog was
+  // mounted (e.g. confirm + help drawer).
+  const reactId = useId();
+  const titleId = `${reactId}-title`;
+  const messageId = `${reactId}-message`;
 
   // Focus the first action button when the dialog opens; reset on close.
   useEffect(() => {

@@ -1,4 +1,4 @@
-import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from 'react';
+import { useEffect, useId, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { useEditorStore } from '../../store/editorStore';
 import { validateDesign, type ValidationIssue } from './editorValidation';
@@ -30,6 +30,9 @@ function WarningsPopup({
   onClose: () => void;
 }): React.ReactElement | null {
   const t = useT();
+  // F-2026-06-17-E-L-6: per-instance id for aria-labelledby. Replaces
+  // the hard-coded `warnings-popup-title` literal.
+  const titleId = `${useId()}-title`;
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') {
@@ -60,14 +63,14 @@ function WarningsPopup({
       <div
         role="dialog"
         aria-modal="true"
-        aria-labelledby="warnings-popup-title"
+        aria-labelledby={titleId}
         data-testid="warnings-popup"
         className="warnings-popup__card"
         onClick={stop}
         onKeyDown={handleKey}
       >
         <div className="warnings-popup__header">
-          <h2 id="warnings-popup-title" className="warnings-popup__title">
+          <h2 id={titleId} className="warnings-popup__title">
             {t('editor.status.issues', { count: issues.length })}
           </h2>
           <button
