@@ -226,6 +226,39 @@ export function validateMaze(raw: unknown, id: string): MazeData {
   }
   const enemies = parseEnemies(m.enemies, id, width, depth, walls);
 
+  // F-2026-06-17-D-CRITICAL-1: P2-11 added 5 fields to MazeData
+  // (i18n, tutorialSteps, hideMinimap, rules.enemyAggression,
+  // rules.requireAllPickups) but the original commit did not extend
+  // the validator. With silent dropping, built-in teaching levels
+  // loaded by JsonMazeProvider lost all P2-11 fields, so English
+  // i18n, TutorialBanner, hideMinimap, and enemyAggression never
+  // reached the runtime. The block below explicitly passes each
+  // field through after type-narrowing; future P2-N fields should
+  // be added here with the same shape (type-guard first, then
+  // assign, no silent spread).
+  let i18n: MazeData['i18n'];
+  if (typeof m.i18n === 'object' && m.i18n !== null) {
+    const rawI18n = m.i18n as Record<string, unknown>;
+    const en = rawI18n.en;
+    if (typeof en === 'string' && en.length > 0) {
+      i18n = { en };
+    }
+  }
+  let tutorialSteps: MazeData['tutorialSteps'];
+  if (Array.isArray(m.tutorialSteps)) {
+    tutorialSteps = m.tutorialSteps as NonNullable<MazeData['tutorialSteps']>;
+  }
+  const hideMinimap = typeof m.hideMinimap === 'boolean' ? m.hideMinimap : undefined;
+  // rules.enemyAggression + rules.requireAllPickups are optional in
+  // LevelRules; patch them in here from the raw record so the
+  // validator never silently drops them.
+  if (r.enemyAggression === 'easy' || r.enemyAggression === 'medium' || r.enemyAggression === 'hard') {
+    rules.enemyAggression = r.enemyAggression;
+  }
+  if (r.requireAllPickups === true) {
+    rules.requireAllPickups = true;
+  }
+
   // F-D-quality-D-15: assemble the MazeData by name instead of `{ ...m,
   // ... } as unknown as MazeData`. Every field is validated above; the
   // literal here gives TypeScript the per-field types it needs to satisfy
@@ -246,6 +279,9 @@ export function validateMaze(raw: unknown, id: string): MazeData {
     pickups: normalizedPickups,
     rules,
     enemies,
+    ...(i18n !== undefined ? { i18n } : {}),
+    ...(tutorialSteps !== undefined ? { tutorialSteps } : {}),
+    ...(hideMinimap !== undefined ? { hideMinimap } : {}),
   };
   return maze;
 }
@@ -299,6 +335,30 @@ function parseEnemies(raw: unknown, id: string, width: number, depth: number, wa
         throw new LevelLoadError(`Maze '${id}': enemy ${clampErrorValue(ee.id)} path[${j}] is on a wall`);
       }
       path.push({ x: nn.x as number, z: nn.z as number });
+      // F-2026-06-17-C-H-2: reject duplicate consecutive path nodes. A
+      // hand-crafted JSON with two equal nodes (e.g. {x:1,z:1} twice)
+      // would cause Enemy.advanceTarget to step into a zero-distance
+      // segment and fall through the headingToward fallback path on
+      // every tick — visually the enemy jitters in place. The duplicate
+      // is almost always a copy/paste mistake in the level file.
+      if (path.length >= 2) {
+        const last = path[path.length - 2]!;
+        const curr = path[path.length - 1]!;
+        if (last.x === curr.x && last.z === curr.z) {
+          throw new LevelLoadError(
+            `Maze '${id}': enemy ${clampErrorValue(ee.id)} path[${j}] duplicates the previous node`,
+          );
+        }
+      }
+      // F-2026-06-17-C-H-2: cap path length at 20 nodes. Defensive
+      // guard against malicious / malformed JSON trying to allocate
+      // huge paths. Existing built-in levels use 2–4 nodes; 20 is well
+      // above any legitimate patrol and well below the threshold at
+      // which Enemy.update per-frame work becomes noticeable.
+      if (path.length > 20) {
+        console.warn(`Maze '${id}': enemy ${ee.id as string} path has ${path.length} nodes; truncating to 20`);
+        break;
+      }
     }
     if (path.length < 2) {
       console.warn(

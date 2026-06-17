@@ -236,10 +236,15 @@ const SECTION_SUBTITLE_KEYS: Record<LevelSource, string> = {
   custom: 'levels.section.customAlt',
   seed: 'levels.section.seed',
 };
+// F-2026-06-17: 'caught-by-enemy' is a teaching-only victory path
+// (the label is shown only if a user picks a level whose victory is
+// caught-by-enemy, which is currently just teaching-03 哨兵回廊).
+// Reuses the same i18n namespace as the other victory labels.
 const VICTORY_LABEL_KEYS: Record<VictoryType, string> = {
   'reach-exit': 'levels.victory.reachExit',
   'time-trial': 'levels.victory.timeTrial',
   survive: 'levels.victory.survive',
+  'caught-by-enemy': 'levels.victory.caughtByEnemy',
 };
 
 export function LevelSelect({

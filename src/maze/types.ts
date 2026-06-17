@@ -1,6 +1,13 @@
 export type CellType = 0 | 1;
 export type PickupType = 'time' | 'health' | 'key';
-export type VictoryType = 'reach-exit' | 'survive' | 'time-trial';
+// F-2026-06-17-A-CRITICAL-2: 'caught-by-enemy' is the 哨兵回廊 teaching-03
+// victory path — the level is won by being caught (tutorial completion
+// pattern). Adding the literal here keeps the union in lockstep with
+// VICTORY_TYPE_VALUES; P2-11 commit 419d89e added the value to the
+// whitelist but missed the union, so typecheck has been red for 30 errors
+// since 2026-06-16. Keep this and VICTORY_TYPE_VALUES sorted identically
+// to make the contract obvious.
+export type VictoryType = 'reach-exit' | 'survive' | 'time-trial' | 'caught-by-enemy';
 
 // F-D-quality-D-16: the level-select source picker has its own literal
 // union. It used to live inline in LevelSelect.tsx, but lifting it here

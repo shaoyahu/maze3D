@@ -204,6 +204,7 @@ export const zh: Translations = {
   'levels.victory.reachExit': '终点模式',
   'levels.victory.timeTrial': '限时模式',
   'levels.victory.survive': '存活模式',
+  'levels.victory.caughtByEnemy': '被抓即胜',
 
   'levels.panel.generator': '生成器',
   'levels.panel.brief': '任务简报',

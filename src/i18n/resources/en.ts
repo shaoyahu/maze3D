@@ -191,6 +191,7 @@ export const en: Translations = {
   'levels.victory.reachExit': 'Reach Exit',
   'levels.victory.timeTrial': 'Time Trial',
   'levels.victory.survive': 'Survive',
+  'levels.victory.caughtByEnemy': 'Caught by Enemy',
 
   'levels.panel.generator': 'Generator',
   'levels.panel.brief': 'Mission Briefing',

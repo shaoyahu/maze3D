@@ -8,6 +8,13 @@ import type { Algorithm, MazeData, MazeProvider, VictoryType } from './types';
 // P2-5 FR-17: the algorithm is an implementation detail; the player only
 // picks a mode. Returns a static mapping; the exhaustive switch keeps
 // it safe when new modes are added.
+//
+// F-2026-06-17: 'caught-by-enemy' is a teaching-only victory path
+// (哨兵回廊 teaching-03 uses JsonMazeProvider, not procedural
+// generation), so there is no algorithm choice to make — fall back to
+// 'recursive-backtracker' as the default. Without this case the
+// `_exhaustive: never` narrowing was tripping typecheck after the
+// P2-11 VictoryType widening.
 export function algorithmForMode(mode: VictoryType): Algorithm {
   switch (mode) {
     case 'reach-exit':
@@ -16,6 +23,8 @@ export function algorithmForMode(mode: VictoryType): Algorithm {
       return 'prim';
     case 'survive':
       return 'kruskal';
+    case 'caught-by-enemy':
+      return 'recursive-backtracker';
     default: {
       const _exhaustive: never = mode;
       throw new Error(`AlgorithmMazeProvider.algorithmForMode: unhandled mode ${String(_exhaustive)}`);
