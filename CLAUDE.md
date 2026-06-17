@@ -40,7 +40,9 @@ npx playwright test tests/e2e/survive.spec.ts
 npx playwright test --grep "specific title"
 ```
 
-覆盖率阈值(`vitest.config.ts` 设置,作用域为 `src/**`):行 80% / 函数 75% / 分支 75% / 语句 80%。v8 provider 仅度量 `src/**` —— E2E 由 Playwright 运行,刻意排除在 vitest 覆盖率作用域外。另有少量文件被额外排除在阈值外(`main.tsx`、`App.tsx`、`engine/{Game,Camera,Renderer,Loop}.ts`、`ui/GameCanvas.tsx`、`maze/types.ts`、`game/GameState.ts`、`vite-env.d.ts`、`playwright.config.ts`)。
+覆盖率阈值(`vitest.config.ts` 设置,作用域为 `src/**`):行 80% / 函数 75% / 分支 75% / 语句 80%。v8 provider 仅度量 `src/**` —— E2E 由 Playwright 运行,刻意排除在 vitest 覆盖率作用域外。另有少量文件被额外排除在阈值外(`main.tsx`、`App.tsx`、`engine/{Game,Camera,Renderer,Loop}.ts`、`ui/GameCanvas.tsx`、`maze/types.ts`、`store/gameStore.ts`、`vite-env.d.ts`、`playwright.config.ts`)。
+
+> 注:旧版 CLAUDE.md 把运行时状态归到 `src/game/GameState.ts`;该文件已被拆分为 `src/engine/Game.ts`(Tick 调度 + Three.js 协调器,无 React 依赖)+ `src/store/gameStore.ts`(Zustand store,UI 订阅)。文档后续若再引用 `game/GameState.ts` 视为历史遗留。
 
 环境要求:**Node 18+**。
 
