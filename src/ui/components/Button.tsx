@@ -59,7 +59,13 @@ export function Button({
         borderRadius: 8,
         border: '1px solid var(--border)',
         background: variant === 'primary' ? 'var(--accent)' : variant === 'danger' ? 'var(--danger)' : 'var(--panel)',
-        color: variant === 'secondary' ? 'var(--fg)' : '#1a1a1a',
+        // F-2026-06-18-design: saturated backgrounds (`--accent` orange,
+        // `--danger` red) get white text so the contrast meets WCAG AA in
+        // both light and dark themes. The light `--panel` background
+        // keeps dark `var(--fg)` text. The old `#1a1a1a` on orange/red
+        // was legible but visually muddy against the dark scene scrim;
+        // white text pops cleanly against the saturated button body.
+        color: variant === 'secondary' ? 'var(--fg)' : '#ffffff',
         opacity: disabled ? 0.5 : 1,
         ...(width !== undefined ? { width } : {}),
       }}

@@ -19,6 +19,7 @@ URL 是关卡状态的唯一真源，刷新 / 分享 / 后退 都会回放同一
 | 状态管理 | Zustand 4 |
 | 单元 / 组件测试 | Vitest + Testing Library + happy-dom |
 | 端到端测试 | Playwright |
+| 国际化 | 自研轻量 i18n（`src/i18n/`，零依赖） |
 
 环境要求：**Node 18+**。
 
@@ -43,18 +44,32 @@ npm run test:e2e     # Playwright 端到端（自动启动 dev server）
 npm run test:e2e:install  # 安装 Playwright 浏览器
 ```
 
+跑单个 Vitest 测试（按文件或名称）：
+
+```bash
+npx vitest run tests/unit/rules.test.ts
+npx vitest run -t "specific describe/it name"
+```
+
+跑单个 Playwright spec：
+
+```bash
+npx playwright test tests/e2e/survive.spec.ts
+npx playwright test --grep "specific title"
+```
+
 ---
 
 ## 3. 路由
 
-应用入口是 `BrowserRouter`，路由如下（`src/App.tsx`）：
+应用入口是 `BrowserRouter`，路由如下（`src/ui/App.tsx`）：
 
 | 路径 | 页面 | 说明 |
 |---|---|---|
 | `/` | MenuPage | 主菜单 |
 | `/levels` | LevelsPage | 关卡选择 |
 | `/settings` | SettingsPage | 偏好设置 |
-| `/editor` | EditorRoutePage | 浏览器内关卡编辑器 |
+| `/editor` | EditorPage | 浏览器内关卡编辑器 |
 | `/game` | GamePage | 进入游戏，查询串携带关卡身份 |
 | `*` | 重定向 | 任意未匹配路径回到 `/` |
 
@@ -118,10 +133,11 @@ npm run test:e2e:install  # 安装 Playwright 浏览器
 `/editor` 提供浏览器内关卡编辑器：
 
 - 工具栏（顶部）：墙体 / 地面 / 门 / 旗 / 起点 / 拾取 / 敌人 / 平移 / 橡皮
-- 左侧抽屉：关卡元信息（标题、规则、胜利模式）
+- 左侧面板：关卡列表 + 文件夹管理 + 元信息编辑
 - 中部视口：实时迷宫预览，鼠标拖拽放置 / 拖动平移
 - 右侧属性面板：当前选中对象的属性（敌人路径节点等）
 - 状态栏：保存 / 导出 JSON / 导入 JSON / 撤销 / 重做 / 脏数据提示
+- 帮助抽屉：快捷键速查表
 
 `EnemySpawn` 描述敌人出生坐标 + 路径节点（`path: {x,z}[]`，≥ 2 节点），
 编辑器输出 JSON 与手写关卡共用同一 `MazeData` schema。
@@ -166,12 +182,9 @@ npm run test:e2e:install  # 安装 Playwright 浏览器
 - **暗色 / 亮色主题**（持久化到 `settingsStore`）
 - **语言** `language`：在「中文 / English」之间切换；切换后整个游戏所有 UI 立即重新渲染（关卡名、菜单、HUD、暂停 / 通关 / 失败遮罩、设置面板、编辑器等）
 - **敌人追击强度** `enemyAggression`：影响敌人 `chase` 状态的反应速度
-- **HUD 数值精度 / 控件偏好**（视版本而定）
+- **鼠标灵敏度 / FOV**（视版本而定）
 
 所有偏好持久化到 `localStorage` 并经过 `sanitizeSettings` 显式校验，校验失败丢弃而非吞错。
-
-`maze3d.settings.v1` schema 含 5 个字段：`pointerSensitivity / fov / darkMode / enemyAggression / language`。
-新增的 `language: 'zh' | 'en'` 默认 `'zh'`，旧 record 无该字段时 lenient 回退（forward-compat）。
 
 ---
 
@@ -182,55 +195,95 @@ src/
 ├── engine/                       # 纯 TypeScript 写的 Three.js 引擎，不引用 React
 │   ├── Camera.ts                 #   相机与视角封装
 │   ├── Collision.ts              #   玩家与墙体的碰撞检测
-│   ├── Game.ts                   #   主循环、Tick 调度
+│   ├── Game.ts                   #   主循环、Tick 调度、scene refs
 │   ├── InputManager.ts           #   键盘 / 鼠标输入
 │   ├── Loop.ts                   #   requestAnimationFrame 循环
 │   ├── Renderer.ts               #   Three.js 渲染器
 │   └── Scene.ts                  #   场景搭建（墙、地面、出口、拾取）
 ├── entities/
-│   ├── Player.ts                 #   玩家位置 / 朝向 / 半径（PLAYER_RADIUS）
+│   ├── Player.ts                 #   玩家位置 / 朝向 / 半径
 │   ├── Pickup.ts                 #   拾取物品的视觉与碰撞表示
 │   └── Enemy.ts                  #   巡逻敌人（patrol / dwell / chase 状态机 + FOV）
 ├── game/
 │   ├── GameState.ts              #   状态机：menu / playing / paused / game-over / win
 │   └── Rules.ts                  #   纯函数规则：跨过出口、捡起物品、使用物品、伤害 / 存活 / 渐进 spawn
 ├── maze/
-│   ├── types.ts                  #   CellType / PickupType / VictoryType / Seed 等
+│   ├── types.ts                  #   CellType / PickupType / VictoryType / Seed / MazeData / ExportEnvelope
 │   ├── JsonMazeProvider.ts       #   从 public/levels/*.json 加载
 │   ├── AlgorithmMazeProvider.ts  #   程序生成
-│   └── generators/               #   4 个纯函数生成器 + 公共辅助
-│       ├── recursiveBacktracker.ts
-│       ├── kruskal.ts
-│       ├── prim.ts
-│       ├── huntAndKill.ts
-│       ├── _isReachable.ts       #   DFS 验证 start ↔ exit 连通
-│       └── _expandThickWall.ts   #   物理墙厚扩展
+│   ├── EditorMazeProvider.ts     #   编辑器导出的关卡（经 localStorage）
+│   ├── builtInLevels.ts          #   静态 import public/levels JSON
+│   ├── generators/               #   4 个纯函数生成器 + 公共辅助
+│   │   ├── recursiveBacktracker.ts
+│   │   ├── kruskal.ts
+│   │   ├── prim.ts
+│   │   ├── huntAndKill.ts
+│   │   ├── _isReachable.ts       #   DFS 验证 start ↔ exit 连通
+│   │   └── _expandThickWall.ts   #   物理墙厚扩展
+│   ├── enemySpawner.ts           #   程序生成时注入敌人
+│   ├── importExport.ts           #   ExportEnvelope (SCHEMA_VERSION = 1) + CUSTOM_LEVEL_PREFIX
+│   └── reachability.ts           #   DFS 验证 start↔exit 连通
 ├── store/
 │   ├── gameStore.ts              #   运行时状态（屏幕、计时、生命、库存等）
-│   ├── levelStore.ts             #   最佳成绩（持久化）
-│   ├── settingsStore.ts          #   用户偏好（暗色模式 / 敌人追击速度 enemyAggression，持久化）
-│   └── persist.ts                #   localStorage 读写 + 校验
+│   ├── levelStore.ts             #   最佳成绩 + 自定义关卡 + 文件夹管理（持久化）
+│   ├── settingsStore.ts          #   用户偏好（暗色模式 / 语言 / 敌人追击速度，持久化）
+│   ├── editorStore.ts            #   编辑器状态
+│   ├── editorHistory.ts          #   编辑器撤销 / 重做
+│   ├── tutorialStore.ts          #   教程状态
+│   ├── persist.ts                #   localStorage 读写 + 校验
+│   └── migrations.ts             #   数据迁移
 ├── ui/
 │   ├── App.tsx                   #   BrowserRouter + Routes 装配
 │   ├── MainMenu.tsx              #   主菜单（含 3D 背景场景）
 │   ├── LevelSelect.tsx           #   关卡选择（手写 / 程序 / 编辑器三类入口）
 │   ├── Settings.tsx              #   偏好设置
-│   ├── GameCanvas.tsx            #   装配 Three.js 画布
+│   ├── GameCanvas.tsx            #   桥接 React ↔ 引擎（创建 Game，装配 GameBridge）
 │   ├── HUD.tsx                   #   状态条（健康 / 时间 / 库存 / 敌人计数 / 受伤屏闪 / 小地图）
-│   ├── overlays/                 #   Pause / GameOver / Win 三个遮罩
+│   ├── PauseOverlay.tsx          #   暂停遮罩
+│   ├── GameOverOverlay.tsx       #   失败遮罩
+│   ├── WinOverlay.tsx            #   通关遮罩
+│   ├── useConfirm.ts             #   自定义 Dialog hook
+│   ├── components/               #   可复用 UI 组件
+│   │   ├── Button.tsx
+│   │   ├── Dialog.tsx
+│   │   ├── Dropdown.tsx
+│   │   ├── Minimap.tsx
+│   │   ├── HealthBar.tsx
+│   │   ├── InventoryBar.tsx
+│   │   ├── Timer.tsx
+│   │   ├── Crosshair.tsx
+│   │   ├── EnemyCounter.tsx
+│   │   ├── TutorialBanner.tsx
+│   │   ├── ControlHints.tsx
+│   │   └── InvulnerableFlash.tsx
 │   └── editor/                   #   浏览器内关卡编辑器
 │       ├── EditorPage.tsx        #     编辑器页面装配
-│       ├── EditorTopBar.tsx      #     工具栏（墙体 / 地面 / 门 / 旗 / 起点 / 拾取 / 敌人 / 平移 / 橡皮）
-│       ├── EditorLeftDrawer.tsx  #     左侧抽屉（关卡元信息）
-│       ├── EditorStatusBar.tsx   #     状态栏（保存 / 导入 / 撤销 / 脏数据）
+│       ├── EditorTopBar.tsx      #     工具栏
+│       ├── EditorToolbar.tsx     #     工具栏（墙体 / 地面 / 门 / 旗 / 起点 / 拾取 / 敌人 / 平移 / 橡皮）
+│       ├── EditorLeftPanel.tsx   #     左侧面板（关卡列表 + 文件夹）
 │       ├── EditorPropertiesPanel.tsx  # 右侧属性面板
+│       ├── EditorStatusBar.tsx   #     状态栏（保存 / 导入 / 撤销 / 脏数据）
 │       ├── EditorViewport.tsx    #     中部视口
+│       ├── EditorHelpDrawer.tsx  #     帮助抽屉（快捷键速查）
 │       └── editorValidation.ts   #     关卡校验
+├── i18n/                         #   自研轻量 i18n（零依赖）
+│   ├── types.ts                  #     类型定义
+│   ├── index.ts                  #     getT / useT / 资源加载
+│   └── resources/
+│       ├── zh.ts                 #     中文资源
+│       └── en.ts                 #     英文资源
 ├── utils/
 │   ├── seed.ts                   #   FNV-1a 哈希 + mulberry32 PRNG + 种子编解码
-│   └── gameUrl.ts                #   /game URL ⇄ 关卡身份 + 选项 解析 / 构造
+│   ├── gameUrl.ts                #   /game URL ⇄ 关卡身份 + 选项 解析 / 构造
+│   ├── getDisplayName.ts         #   关卡显示名（支持 i18n）
+│   ├── id.ts                     #   ID 生成
+│   ├── errors.ts                 #   错误处理
+│   └── time.ts                   #   时间工具
 ├── hooks/                        #   自定义 React hooks
+│   └── useAutoSave.ts            #   编辑器自动保存
 └── styles/                       #   全局样式（含主题令牌）
+    ├── reset.css
+    └── theme.css                 #   [data-theme="dark"] 主题变量
 ```
 
 ### 9.1 关键设计原则
@@ -240,29 +293,50 @@ src/
 - **种子自描述**：`algo-v1-{algorithm}-{size}-{hex}` 把算法、版本、尺寸、16 位熵打包到一个字符串里，可以原样回放到 `AlgorithmMazeProvider.load()` 复现完全相同的迷宫。
 - **URL 是规范**：`/game` 的查询串是关卡身份的唯一来源；`gameUrl.ts` 在边界处显式校验 `isMazeSize` / `isVictoryType` / `normalizeSurviveSeconds`，校验失败回退到默认。
 - **校验在边界**：所有从 `localStorage` 或 URL 读出的数据都会经过 `isBestRecord` / `isValidSeed` 等显式校验函数，校验失败时丢弃而不是静默吞错。
+- **编辑器输出与手写关卡同构**：编辑器导出同样使用 `MazeData` schema，外层包 `ExportEnvelope { schemaVersion: 1, level: MazeData }`。
 
 ---
 
-## 10. 路线图
+## 10. 国际化（i18n）
+
+自研零依赖的轻量 i18n 方案（`src/i18n/`）：
+
+- `getT(locale)` — 纯函数翻译器，返回指定语言的翻译函数
+- `useT()` — 绑定到 `settingsStore.language` 的 React hook，语言切换会重渲染所有消费者
+- 占位符使用 `{name}` 语法
+- 缺失 key → `console.warn` + 原样返回 key 字符串
+- 未知 locale → warn + 回退到 `DEFAULT_LOCALE`（`zh`）
+
+新增翻译写在 `src/i18n/resources/{zh,en}.ts`。关卡可带可选的 `i18n.en` 显示名；
+面向用户显示时用 `getDisplayName(maze, locale)`，缺失时回退到 `maze.name`。
+
+---
+
+## 11. 路线图
 
 Phase 2 增量按序推进，已完成：
 
 | 阶段 | 标题 | 状态 |
 |---|---|---|
-| P2-1 | MVP（手写关卡 + 第一人称 + 通关） | ✅ 已完成 |
-| P2-2 | 暗色模式 + 拾取物品系统 | ✅ 已完成 |
+| P2-2 | 暗色模式 + 拾取物品系统 | ✅ 已完成（14/14） |
 | P2-3 | 程序生成关卡 + 竞速模式 | ✅ 已完成（14/14） |
 | P2-4a | 敌人 + 生存模式（survive） | ✅ 已完成（16/16） |
 | P2-4b | 浏览器内关卡编辑器 | ✅ 已完成（20/20） |
 | P2-5 | UI 改版 + 存活模式重平衡 | ✅ 已完成（16/16） |
 | P2-6 | LevelSelect 级联重构 | ✅ 已完成（10/10） |
 | P2-7 | 自定义 Dialog 系统 | ✅ 已完成（8/8） |
-| P2-8 | 第二语言支持（English） (自研零依赖 i18n：`src/i18n/{types,index}.ts` + `resources/{zh,en}.ts` 270 keys + `getT/locale/useT`；`settingsStore.language` 持久化；Settings 页 `locale-zh/en` 切换控件；4 个内置关卡 JSON 加 `i18n.en` + `getDisplayName` helper；13 个 UI 组件全量迁移) | ✅ 已完成（37 files / 5 commits / 889 tests） |
+| P2-8 | 第二语言支持（English） | ✅ 已完成（37 files / 889 tests） |
+| P2-9 | 编辑器 UX 修复 + 使用手册 | ✅ 已完成 |
+| P2-10 | 代码评审 11 项修复 | ✅ 已完成（11/11） |
+| P2-11 | 教学关卡重设计 | ✅ 已完成（16/16） |
+| P2-13 | 编辑器文件夹系统 + 左侧栏重构 | ✅ 已完成 |
+| P2-14 | 代码评审 batch 1 修复 | ✅ 已完成（12/33） |
+| P2-15 | 代码评审 batch 2 修复 | ✅ 已完成（24/24） |
 
 候选池（待用户决策）：音频管线、移动端 / 触摸支持、额外 pickup 子类型。
 
 详细路线图：`docs/roadmap.md`。
-每个增量有两阶段产物（设计 / 计划 / 评审），位于 `docs/increments/p2-N-<slug>/`。
+每个增量有两阶段产物（设计 / 计划），位于 `docs/increments/p2-N-<slug>/`。
 
 完整设计文档：
 
@@ -273,53 +347,78 @@ Phase 2 增量按序推进，已完成：
 
 ---
 
-## 11. 测试
+## 12. 测试
 
-项目保持 80%+ 测试覆盖率。
+项目保持 70%+ 测试覆盖率（阈值：行 70% / 函数 65% / 分支 65% / 语句 70%）。
 
 ```bash
 npm test                # 单元 + 组件（Vitest）
 npm run test:e2e        # 端到端（Playwright，自动启动 dev server）
 ```
 
+覆盖率阈值（`vitest.config.ts` 设置，作用域为 `src/**`）：行 70% / 函数 65% / 分支 65% / 语句 70%。
+v8 provider 仅度量 `src/**` — E2E 由 Playwright 运行，刻意排除在 vitest 覆盖率作用域外。
+另有少量文件被额外排除在阈值外（`main.tsx`、`App.tsx`、`engine/{Camera,Renderer,Loop}.ts`、`game/GameState.ts`、`vite-env.d.ts`、`playwright.config.ts`）。
+
 测试目录结构：
 
-- `tests/unit/` — 单元测试（utils、maze 生成器、store、Rules、`gameUrl`）
-- `tests/component/` — 组件测试（菜单、HUD、关卡选择、编辑器面板 / 状态栏 / 视口）
-- `tests/e2e/` — Playwright 端到端（关卡选择、生成、暂停、胜利、失败）
+```
+tests/
+├── setup.ts              # localStorage polyfill + happy-dom 配置
+├── unit/                 # 单元测试
+│   ├── rules.test.ts     #   规则函数
+│   ├── maze/             #   迷宫生成器
+│   ├── store/            #   Zustand store
+│   ├── utils/            #   工具函数
+│   ├── i18n/             #   国际化
+│   ├── engine/           #   引擎模块
+│   ├── entities/         #   实体
+│   └── hooks/            #   自定义 hooks
+├── component/            # 组件测试（Testing Library + happy-dom）
+│   ├── editor/           #   编辑器子组件
+│   ├── overlays.test.tsx #   遮罩组件
+│   ├── hud.test.tsx      #   HUD 组件
+│   └── ...               #   其他 UI 组件
+└── e2e/                  # Playwright 端到端（仅 chromium、1 worker、retries=0）
+    ├── play-through.spec.ts
+    ├── editor.spec.ts
+    ├── enemies.spec.ts
+    ├── survive.spec.ts
+    └── ...               #   15 个 e2e spec 文件
+```
 
 ---
 
-## 12. 部署
+## 13. 部署
 
-通过 GitHub Actions 自动部署到 **GitHub Pages**(https://shaoyahu.github.io/maze3D/)。
+通过 GitHub Actions 自动部署到 **GitHub Pages**（https://shaoyahu.github.io/maze3D/）。
 
-工作流定义在 `.github/workflows/deploy.yml`,触发条件:
+工作流定义在 `.github/workflows/deploy.yml`，触发条件：
 
-- push 到 `main` 分支(自动部署)
-- 手动触发(`Actions` 标签页 → `Deploy to GitHub Pages` → `Run workflow`)
+- push 到 `main` 分支（自动部署）
+- 手动触发（`Actions` 标签页 → `Deploy to GitHub Pages` → `Run workflow`）
 
 ### 一次性配置
 
-在 GitHub 仓库页面 **Settings → Pages → Build and deployment → Source** 选 **GitHub Actions**(不是 "Deploy from a branch")。这是新版 `actions/deploy-pages@v4` 部署方式的前置条件 —— 工作流会构建 + 上传 artifact,GitHub Pages 直接发布该 artifact,不再需要 `gh-pages` 分支。
+在 GitHub 仓库页面 **Settings → Pages → Build and deployment → Source** 选 **GitHub Actions**（不是 "Deploy from a branch"）。这是新版 `actions/deploy-pages@v4` 部署方式的前置条件 — 工作流会构建 + 上传 artifact，GitHub Pages 直接发布该 artifact，不再需要 `gh-pages` 分支。
 
 ### 关键细节
 
-- **Vite `base`**:`vite.config.ts` 设 `base: './'`(相对路径)。dev 直接访问 `http://localhost:5173/` 即可;prod 部署到 `https://shaoyahu.github.io/maze3D/` 时,相对路径会从当前 URL 自动解析到该子路径下的资源。比绝对路径 `/maze3D/` 更便携 —— dev 不用记子路径、哪天换部署子路径也不用改 config。
-- **SPA 404 兜底**:工作流在 `npm run build` 之后追加一步 `cp dist/index.html dist/404.html`。项目用 `BrowserRouter` 且 URL 是关卡身份规范来源(`/game?seed=…`);用户分享 / 刷新 / 后退到任意深路径时,GitHub Pages 没有对应 HTML,会回退到 404.html —— 把它做成 index.html 的副本,SPA 启动后由 React Router 接管,`useSearchParams` 仍能读到原本 URL 上的关卡查询串。
-- **权限**:工作流显式声明 `permissions: contents: read / pages: write / id-token: write`,符合 least-privilege 原则。
-- **Node 版本**:固定 `node-version: 20`,与项目 `package.json` 兼容(Node 18+ 即可,但 CI 锁 20 以求稳定)。
-- **依赖安装**:用 `npm ci` 而非 `npm install`,配合 `package-lock.json` 在 CI 中更可靠。
+- **Vite `base`**：`vite.config.ts` 设 `base: './'`（相对路径）。dev 直接访问 `http://localhost:5173/` 即可；prod 部署到 `https://shaoyahu.github.io/maze3D/` 时，相对路径会从当前 URL 自动解析到该子路径下的资源。
+- **SPA 404 兜底**：工作流在 `npm run build` 之后追加一步 `cp dist/index.html dist/404.html`。项目用 `BrowserRouter` 且 URL 是关卡身份规范来源（`/game?seed=…`）；用户分享 / 刷新 / 后退到任意深路径时，GitHub Pages 没有对应 HTML，会回退到 404.html — 把它做成 index.html 的副本，SPA 启动后由 React Router 接管。
+- **权限**：工作流显式声明 `permissions: contents: read / pages: write / id-token: write`，符合 least-privilege 原则。
+- **Node 版本**：固定 `node-version: 20`，与项目 `package.json` 兼容（Node 18+ 即可，但 CI 锁 20 以求稳定）。
+- **依赖安装**：用 `npm ci` 而非 `npm install`，配合 `package-lock.json` 在 CI 中更可靠。
 
 ### 故障排查
 
-- **部署后页面 404 / 资源 404** → 确认 GitHub Pages Source 是 "GitHub Actions";清空浏览器缓存再访问(`shaoyahu.github.io/maze3D/`,不要漏掉尾斜杠)。
+- **部署后页面 404 / 资源 404** → 确认 GitHub Pages Source 是 "GitHub Actions"；清空浏览器缓存再访问（`shaoyahu.github.io/maze3D/`，不要漏掉尾斜杠）。
 - **`/game?seed=…` 链接打开后看到 404 页而非游戏** → 检查 `Actions` 日志确认 `Add SPA fallback (404.html)` 这一步执行成功。
-- **工作流没有自动跑** → Settings → Actions → General → Workflow permissions 选 "Read and write permissions"(若选了 "Read repository contents and packages permissions" 也能跑,但日志调试会受限)。
+- **工作流没有自动跑** → Settings → Actions → General → Workflow permissions 选 "Read and write permissions"。
 
 ---
 
-## 13. 贡献
+## 14. 贡献
 
 - 一次只做一个增量（见 `docs/roadmap.md`）
 - 任务完成后立即勾选 + 更新路线图「已完成」「下一个任务」「最后更新」+ commit + 等用户确认
@@ -327,6 +426,6 @@ npm run test:e2e        # 端到端（Playwright，自动启动 dev server）
 
 ---
 
-## 14. 许可证
+## 15. 许可证
 
-本仓库当前未声明开源许可证，使用前请与作者确认。
+MIT License — 详见 [LICENSE](./LICENSE)。
