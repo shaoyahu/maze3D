@@ -302,6 +302,82 @@ function isFloor(level: MazeData, x: number, z: number): boolean {
   return inBounds(x, z, level.size.width, level.size.depth) && level.walls[z]![x] === 0;
 }
 
+// F-2026-06-18: 4-neighbor adjacency test for enemy patrol-path nodes.
+// The runtime enemy AI walks from node[i] → node[i+1] in a single tick
+// and assumes they share an edge. Diagonal links (|Δx|+|Δz| = 2) would
+// skip cells and animate the marker across empty space; the SVG
+// `marker-end="auto-start-reverse"` would also flip orientation
+// mid-cell. The editor previously allowed diagonal placement via
+// `appendEnemyPathNode` (viewport click in enemy mode), which produced
+// the screenshot's "斜着绘制路径" regression. enforce it here.
+function isAdjacent(
+  a: { x: number; z: number },
+  b: { x: number; z: number },
+): boolean {
+  return Math.abs(a.x - b.x) + Math.abs(a.z - b.z) === 1;
+}
+
+// F-2026-06-18: every editor element (start, exit, pickup, every
+// enemy-path node) occupies exactly one cell. Placing a new element
+// on a cell that's already occupied by another element used to
+// silently succeed; the runtime then refused to load the level via
+// `validateMaze` ("enemy (x, z) collides with start", etc.) and the
+// user had no idea which placement broke. The fix is to detect the
+// collision at click time and surface a stable i18n key.
+//
+// The set of "occupied" cells is the union of:
+//   - start, exit
+//   - every pickup
+//   - every enemy path node (path[0] is the spawn cell, path[i>0]
+//     are waypoints the runtime AI walks through, so any of them
+//     overlapping a pickup or another enemy's path would break
+//     `validateMaze`).
+//
+// The `exclude` map lets callers omit a specific entity so the
+// caller can ask "is (x, z) free, ignoring my own enemy / pickup?"
+// without rebuilding the union. Used by `moveEnemyNode` to allow a
+// path node to stay where it is mid-drag even if the user nudges
+// the entire path.
+type ExcludeKey =
+  | { kind: 'enemy'; id: string }
+  | { kind: 'pickup'; id: string }
+  | { kind: 'start' }
+  | { kind: 'exit' };
+
+function isOccupied(
+  level: MazeData,
+  x: number,
+  z: number,
+  exclude: ExcludeKey | null = null,
+): { occupied: boolean; reason: 'start' | 'exit' | 'pickup' | 'enemy' | null } {
+  const matchesExclude = (e: ExcludeKey): boolean => {
+    if (exclude === null) return false;
+    if (e.kind !== exclude.kind) return false;
+    // For start / exit there's no id to compare — single instance.
+    if (e.kind === 'start' || e.kind === 'exit') return true;
+    return e.id === (exclude as { id: string }).id;
+  };
+  if (!(matchesExclude({ kind: 'start' })) && level.start.x === x && level.start.z === z) {
+    return { occupied: true, reason: 'start' };
+  }
+  if (!(matchesExclude({ kind: 'exit' })) && level.exit.x === x && level.exit.z === z) {
+    return { occupied: true, reason: 'exit' };
+  }
+  for (const p of level.pickups) {
+    if (matchesExclude({ kind: 'pickup', id: p.id })) continue;
+    if (p.x === x && p.z === z) return { occupied: true, reason: 'pickup' };
+  }
+  for (const e of level.enemies) {
+    const isSelf = matchesExclude({ kind: 'enemy', id: e.id });
+    for (let i = 0; i < e.path.length; i += 1) {
+      if (isSelf && i === 0) continue; // path[0] == spawn, handled by enemy exclusion
+      const node = e.path[i]!;
+      if (node.x === x && node.z === z) return { occupied: true, reason: 'enemy' };
+    }
+  }
+  return { occupied: false, reason: null };
+}
+
 // F-2026-06-12-M1: shared helper used by `buildEmptyLevel` (always carves
 // (0,0) and (width-1, depth-1)) and `updateSize` (carves the clamped
 // start/exit). Mutates `walls` in place and returns it so callers can
@@ -585,6 +661,22 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
         set({ lastError: null, lastErrorKey: 'editor.lastError.wallOnExit' });
         return;
       }
+      // F-2026-06-18: walls can't co-exist with pickups or enemy-path
+      // nodes. Without this guard a wall placed on a pickup cell would
+      // pass `validateMaze` only by luck; if the validator added a
+      // stricter "no pickup on wall" check later (it already rejects
+      // pickup on wall at JsonMazeProvider:181) the user would suddenly
+      // see "validate failed" with no editor affordance to find the
+      // offender. Reject at click time instead.
+      const occ = isOccupied(level, x, z);
+      if (occ.occupied && occ.reason === 'pickup') {
+        set({ lastError: null, lastErrorKey: 'editor.lastError.collideWithPickup' });
+        return;
+      }
+      if (occ.occupied && occ.reason === 'enemy') {
+        set({ lastError: null, lastErrorKey: 'editor.lastError.collideWithEnemy' });
+        return;
+      }
       // F-P2-9: set-to-1. A click on an existing wall is now a no-op
       // (avoids redundant history entries and an unexpected "wall
       // disappears" surprise that the legacy toggle caused).
@@ -641,6 +733,20 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
         set({ lastError: null, lastErrorKey: 'editor.lastError.startOnExit' });
         return;
       }
+      // F-2026-06-18: reject pickup / enemy overlap at click time so
+      // the editor matches the runtime contract (validateMaze refuses
+      // "start collides with enemy / pickup"). Without this, dragging
+      // a fresh start onto an existing pickup lands silently and the
+      // user finds out at save time.
+      const occ = isOccupied(level, x, z, { kind: 'start' });
+      if (occ.occupied && occ.reason === 'pickup') {
+        set({ lastError: null, lastErrorKey: 'editor.lastError.collideWithPickup' });
+        return;
+      }
+      if (occ.occupied && occ.reason === 'enemy') {
+        set({ lastError: null, lastErrorKey: 'editor.lastError.collideWithEnemy' });
+        return;
+      }
       // Auto-carve the cell if it's currently a wall — UX win so the user
       // can drop a start on top of an existing wall rather than getting a
       // silent reject. Mirrors the carve-on-resize behaviour.
@@ -664,6 +770,17 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
       // cell IS the current start. See placeStart for rationale.
       if (level.start.x === x && level.start.z === z) {
         set({ lastError: null, lastErrorKey: 'editor.lastError.exitOnStart' });
+        return;
+      }
+      // F-2026-06-18: mirror of placeStart — reject pickup / enemy
+      // overlap at click time. See placeStart for rationale.
+      const occ = isOccupied(level, x, z, { kind: 'exit' });
+      if (occ.occupied && occ.reason === 'pickup') {
+        set({ lastError: null, lastErrorKey: 'editor.lastError.collideWithPickup' });
+        return;
+      }
+      if (occ.occupied && occ.reason === 'enemy') {
+        set({ lastError: null, lastErrorKey: 'editor.lastError.collideWithEnemy' });
         return;
       }
       // Auto-carve the cell if it's currently a wall so the user can drop
@@ -708,6 +825,15 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
         set({ lastError: null, lastErrorKey: 'editor.lastError.pickupDuplicate' });
         return;
       }
+      // F-2026-06-18: a pickup cannot sit on an enemy spawn / patrol
+      // node. The runtime rejects "pickup (x, z) collides with enemy"
+      // at load time; rejecting at click time means the toolbar chip
+      // shows the user *why* the click was dropped.
+      const occ = isOccupied(level, x, z);
+      if (occ.occupied && occ.reason === 'enemy') {
+        set({ lastError: null, lastErrorKey: 'editor.lastError.collideWithEnemy' });
+        return;
+      }
       const newPickup: Pickup = {
         id: generateId(),
         x,
@@ -723,6 +849,23 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
     placeEnemy: (x, z, width) => {
       const { level } = get();
       if (!inBounds(x, z, level.size.width, level.size.depth)) return;
+      // F-2026-06-18: reject enemy spawn on a cell already occupied
+      // by start / exit / pickup / another enemy. The runtime already
+      // catches these via validateMaze but the editor previously
+      // surfaced them as a silent "save failed" chip with no hint
+      // about which click was bad. Map each collision to a specific
+      // lastErrorKey so the toolbar chip tells the user *what* the
+      // click collided with.
+      const occ = isOccupied(level, x, z);
+      if (occ.occupied) {
+        const key =
+          occ.reason === 'start' ? 'editor.lastError.collideWithStart'
+          : occ.reason === 'exit' ? 'editor.lastError.collideWithExit'
+          : occ.reason === 'pickup' ? 'editor.lastError.collideWithPickup'
+          : 'editor.lastError.collideWithEnemy';
+        set({ lastError: null, lastErrorKey: key });
+        return;
+      }
       // Spec: path = [(x,z), (x±1, z)]. We pick x+1 by default, but at the
       // right edge (x === width-1) we fall back to x-1 so the two seed
       // nodes are NEVER identical — a zero-length path segment renders
@@ -782,6 +925,31 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
       if (!target) return;
       const last = target.path[target.path.length - 1];
       if (last && last.x === nx && last.z === nz) return;
+      // F-2026-06-18: reject non-adjacent clicks in enemy mode. A
+      // diagonal placement would render the polyline crossing empty
+      // cells and break the runtime AI which assumes node[i] and
+      // node[i+1] share an edge. The error message mirrors the
+      // existing lastErrorKey pattern (silent-reject + chip).
+      if (last && !isAdjacent(last, { x: nx, z: nz })) {
+        set({ lastError: null, lastErrorKey: 'editor.lastError.pathNotAdjacent' });
+        return;
+      }
+      // F-2026-06-18: a new patrol waypoint cannot collide with start,
+      // exit, a pickup, or another enemy's spawn / waypoint. The
+      // exclude-self flag ignores the path of `enemyId` itself so a
+      // re-click on its own existing nodes still triggers the
+      // no-op-duplicate guard above (rather than reporting a false
+      // collision with itself).
+      const occ = isOccupied(level, nx, nz, { kind: 'enemy', id: enemyId });
+      if (occ.occupied) {
+        const key =
+          occ.reason === 'start' ? 'editor.lastError.collideWithStart'
+          : occ.reason === 'exit' ? 'editor.lastError.collideWithExit'
+          : occ.reason === 'pickup' ? 'editor.lastError.collideWithPickup'
+          : 'editor.lastError.collideWithEnemy';
+        set({ lastError: null, lastErrorKey: key });
+        return;
+      }
       // Carve the new path node — same reason as placeEnemy: a
       // path node on a wall fails validateMaze and breaks auto-save.
       let nextWalls = level.walls;
@@ -998,8 +1166,26 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
     // Called from the panel's path-node input onBlur. Idempotent —
     // repeated calls just push repeated snapshots, but the panel
     // guards with a draft-vs-committed check.
+    //
+    // F-2026-06-18: also validate that every consecutive pair of path
+    // nodes is 4-adjacent. The drag handler (`moveEnemyNode`) is free
+    // to put a node anywhere mid-drag — it never commits during drag —
+    // but the panel input commits on blur, and a hand-typed diagonal
+    // coordinate (or a coordinate computed by a future auto-snap
+    // feature) would otherwise land in history. Surface the same
+    // `pathNotAdjacent` key the viewport uses so the toolbar chip
+    // tells the user what's wrong.
     commitEnemyPath: () => {
-      set(commitLevel(get(), get().level, get().selection));
+      const { level } = get();
+      for (const enemy of level.enemies) {
+        for (let i = 1; i < enemy.path.length; i += 1) {
+          if (!isAdjacent(enemy.path[i - 1]!, enemy.path[i]!)) {
+            set({ lastError: null, lastErrorKey: 'editor.lastError.pathNotAdjacent' });
+            return;
+          }
+        }
+      }
+      set(commitLevel(get(), level, get().selection));
     },
 
     addEnemyNode: (enemyId, x, z) => {
@@ -1076,11 +1262,18 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
         if (enemies.length === level.enemies.length) return;
         nextLevel = { ...level, enemies };
       } else if (selection.kind === 'wall') {
-        // wall — restore the cell to a wall.
+        // wall — carve the cell back to floor. The previous version
+        // set the cell to 1 (wall) which made the "删除墙体" button a
+        // no-op for any selected wall, breaking the delete-Wall flow.
+        // The select tool only arms kind === 'wall' on a wall cell (see
+        // EditorViewport.handleCellClick, the `level.walls[z]?.[x] === 1`
+        // guard), so this branch flips a 1 → 0. A wall cannot sit on
+        // the start or exit by validateMaze contract, so the carve
+        // guards used by placeErase are unnecessary here.
         const { x, z } = selection;
         if (!inBounds(x, z, level.size.width, level.size.depth)) return;
         const walls = level.walls.map((r, zi) =>
-          zi === z ? r.map((c, xi) => (xi === x ? 1 : c)) : r,
+          zi === z ? r.map((c, xi) => (xi === x ? 0 : c)) : r,
         );
         nextLevel = { ...level, walls };
       } else {

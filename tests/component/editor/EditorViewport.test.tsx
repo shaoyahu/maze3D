@@ -261,19 +261,22 @@ describe('EditorViewport (P2-4b #11)', () => {
 
   it('wheel-up increases camera.zoom (clamped to ZOOM_MAX)', () => {
     render(<EditorViewport />);
-    // Many wheel-ups should cap at 3.
-    for (let i = 0; i < 40; i += 1) {
+    // Many wheel-ups should cap at 5 — F-2026-06-18 widened the
+    // editor zoom range from [0.5, 3] to [0.25, 5].
+    for (let i = 0; i < 60; i += 1) {
       fireEvent.wheel(screen.getByTestId('editor-viewport'), { deltaY: -100 });
     }
-    expect(useEditorStore.getState().camera.zoom).toBe(3);
+    expect(useEditorStore.getState().camera.zoom).toBe(5);
   });
 
   it('wheel-down decreases camera.zoom (clamped to ZOOM_MIN)', () => {
     render(<EditorViewport />);
-    for (let i = 0; i < 40; i += 1) {
+    // 60 wheel-downs are enough to drop from 1 to the new floor of
+    // 0.25 (60 × 0.1 = 6, more than enough). F-2026-06-18.
+    for (let i = 0; i < 60; i += 1) {
       fireEvent.wheel(screen.getByTestId('editor-viewport'), { deltaY: 100 });
     }
-    expect(useEditorStore.getState().camera.zoom).toBe(0.5);
+    expect(useEditorStore.getState().camera.zoom).toBe(0.25);
   });
 
   it('right-mouse drag updates camera.x / camera.y', () => {

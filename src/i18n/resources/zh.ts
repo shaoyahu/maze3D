@@ -480,6 +480,11 @@ export const zh: Translations = {
   'editor.lastError.startOnExit': '起点不能与终点重叠',
   'editor.lastError.exitOnStart': '终点不能与起点重叠',
   'editor.lastError.pathOutOfBounds': '路径节点超出网格范围',
+  'editor.lastError.collideWithStart': '该格子已经是起点',
+  'editor.lastError.collideWithExit': '该格子已经是终点',
+  'editor.lastError.collideWithPickup': '该格子上已经有拾取物',
+  'editor.lastError.collideWithEnemy': '该格子上已经有敌人（或巡逻路径节点）',
+  'editor.lastError.pathNotAdjacent': '路径节点必须与上一个节点上下左右相邻（不能斜着放）',
 
   // F-2026-06-17-E-M-7: 关卡检查 (validateDesign) 的全部问题文案。
   // 由 EditorStatusBar 渲染,跟随当前语言。`{id}` / `{value}` 是可选插值。

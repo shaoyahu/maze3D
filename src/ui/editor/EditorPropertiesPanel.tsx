@@ -273,12 +273,57 @@ function LevelMetadataForm({ level }: { level: MazeData }): React.ReactElement {
   }, [level.id]);
 
   useDebouncedCommit(name, (v) => updateName(v), 300);
+  // F-2026-06-18-CRITICAL: the previous version of this effect was a
+  // raw `useEffect(() => setTimeout(updateSize, 300), [width, depth,
+  // updateSize])`. That fires on the FIRST render of
+  // LevelMetadataForm (which mounts whenever the selection becomes
+  // null — e.g. immediately after deleteSelected clears the
+  // selection). The setTimeout then unconditionally calls
+  // `updateSize(currentW, currentD)` after 300ms. `updateSize`
+  // rebuilds the walls array from scratch (all 0s — open floor) and
+  // drops any out-of-bounds pickups / enemies. Reproduce: place 18
+  // walls → select one → click 删除墙体 → selection becomes null →
+  // LevelMetadataForm mounts → 300ms later updateSize wipes the
+  // remaining 17 walls. The user reports this as "deleting one wall
+  // deletes all walls".
+  //
+  // The fix gates the commit on an actual size change: only schedule
+  // `updateSize` when the local width/depth diverges from the level's
+  // current size. On mount both are equal (initialised from
+  // `level.size` in the useState above) so no timeout is ever queued.
+  // The same check covers the same-sized re-render path, so swapping
+  // selection between WallForm and LevelMetadataForm also stays
+  // silent. The 300ms debounce keeps rapid stepper clicks from
+  // spamming `commitLevel` while the user is dragging.
+  const lastCommittedSizeRef = useRef<{ width: number; depth: number }>({
+    width: level.size.width,
+    depth: level.size.depth,
+  });
   useEffect(() => {
+    const target = {
+      width: Math.max(1, Math.floor(width)),
+      depth: Math.max(1, Math.floor(depth)),
+    };
+    if (
+      target.width === lastCommittedSizeRef.current.width &&
+      target.depth === lastCommittedSizeRef.current.depth
+    ) {
+      return;
+    }
     const id = window.setTimeout(() => {
-      updateSize(Math.max(1, Math.floor(width)), Math.max(1, Math.floor(depth)));
+      // Re-check inside the timeout: the user might have reverted the
+      // stepper back to the saved size between scheduling and firing.
+      if (
+        target.width === lastCommittedSizeRef.current.width &&
+        target.depth === lastCommittedSizeRef.current.depth
+      ) {
+        return;
+      }
+      updateSize(target.width, target.depth);
+      lastCommittedSizeRef.current = target;
     }, 300);
     return () => window.clearTimeout(id);
-  }, [width, depth, updateSize]);
+  }, [width, depth, updateSize, level]);
   useDebouncedCommit(initialTime, (v) => updateRule({ initialTime: Math.max(1, Math.floor(v)) }), 300);
   useDebouncedCommit(maxHealth, (v) => updateRule({ maxHealth: Math.max(1, Math.floor(v)) }), 300);
   useDebouncedCommit(timeOnPickup, (v) => updateRule({ timeOnPickup: Math.max(1, Math.floor(v)) }), 300);

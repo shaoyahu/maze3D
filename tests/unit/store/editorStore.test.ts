@@ -813,18 +813,20 @@ describe('useEditorStore', () => {
     it('appends an enemy with a default 2-node path on a non-edge cell', () => {
       // Arrange
       useEditorStore.setState({ past: [] });
-      // Act
-      useEditorStore.getState().placeEnemy(0, 0, 5);
+      // Act — (1, 1) is a non-edge, non-start, non-exit cell so the
+      // new F-2026-06-18 occupancy guard accepts the click and the
+      // second seed node (x+1 = 2) is in-bounds.
+      useEditorStore.getState().placeEnemy(1, 1, 5);
       // Assert
       const enemies = useEditorStore.getState().level.enemies;
       expect(enemies).toHaveLength(1);
       const e = enemies[0]!;
       expect(e.id.length).toBeGreaterThan(0);
-      expect(e.x).toBe(0);
-      expect(e.z).toBe(0);
+      expect(e.x).toBe(1);
+      expect(e.z).toBe(1);
       expect(e.path).toEqual([
-        { x: 0, z: 0 },
-        { x: 1, z: 0 },
+        { x: 1, z: 1 },
+        { x: 2, z: 1 },
       ]);
       expect(useEditorStore.getState().dirty).toBe(true);
       expect(useEditorStore.getState().past.length).toBe(1);
@@ -855,36 +857,37 @@ describe('useEditorStore', () => {
   // -----------------------------------------------------------------------
   describe('appendEnemyPathNode', () => {
     it('appends a new path node and auto-carves a wall under it', () => {
-      // Arrange — fresh enemy whose path ends at (1, 0).
+      // Arrange — fresh enemy whose path ends at (2, 1) after the
+      // placeEnemy(1, 1, 5) default seed.
       useEditorStore.setState({ past: [] });
-      useEditorStore.getState().placeEnemy(0, 0, 5);
+      useEditorStore.getState().placeEnemy(1, 1, 5);
       const enemyId = useEditorStore.getState().level.enemies[0]!.id;
-      // Force (1, 1) to be a wall so we can confirm carve-on-append.
+      // Force (3, 1) to be a wall so we can confirm carve-on-append.
       const lvl = useEditorStore.getState().level;
       const walls = lvl.walls.map((r) => r.slice());
-      walls[1]![1] = 1;
+      walls[1]![3] = 1;
       useEditorStore.setState({ level: { ...lvl, walls } });
       // Act
-      useEditorStore.getState().appendEnemyPathNode(enemyId, 1, 1);
+      useEditorStore.getState().appendEnemyPathNode(enemyId, 3, 1);
       // Assert — node appended, wall carved.
       const next = useEditorStore.getState().level;
       expect(next.enemies[0]!.path).toEqual([
-        { x: 0, z: 0 },
-        { x: 1, z: 0 },
         { x: 1, z: 1 },
+        { x: 2, z: 1 },
+        { x: 3, z: 1 },
       ]);
-      expect(next.walls[1]![1]).toBe(0);
+      expect(next.walls[1]![3]).toBe(0);
       expect(useEditorStore.getState().lastError).toBeNull();
     });
 
     it('rejects duplicate appends (no-op when new node === last node)', () => {
       // Arrange
       useEditorStore.setState({ past: [] });
-      useEditorStore.getState().placeEnemy(0, 0, 5);
+      useEditorStore.getState().placeEnemy(1, 1, 5);
       const enemyId = useEditorStore.getState().level.enemies[0]!.id;
       const beforePath = useEditorStore.getState().level.enemies[0]!.path;
-      // Act — click the already-last cell again.
-      useEditorStore.getState().appendEnemyPathNode(enemyId, 1, 0);
+      // Act — click the already-last cell again. Last is (2, 1).
+      useEditorStore.getState().appendEnemyPathNode(enemyId, 2, 1);
       // Assert — path unchanged. Without this guard the polyline would
       // contain a zero-length segment, breaking SVG marker orientation
       // and the enemy patrol AI's "advance to next node" loop.
@@ -894,11 +897,171 @@ describe('useEditorStore', () => {
 
     it('records lastError and skips the append when the click is out of bounds', () => {
       useEditorStore.setState({ past: [], lastError: null });
-      useEditorStore.getState().placeEnemy(0, 0, 5);
+      useEditorStore.getState().placeEnemy(1, 1, 5);
       const enemyId = useEditorStore.getState().level.enemies[0]!.id;
       useEditorStore.getState().appendEnemyPathNode(enemyId, 99, 99);
       expect(useEditorStore.getState().level.enemies[0]!.path).toHaveLength(2);
       expect(useEditorStore.getState().lastErrorKey).toBe('editor.lastError.pathOutOfBounds');
+    });
+
+    // F-2026-06-18: clicking a diagonal cell was accepted previously,
+    // producing a 斜着 drawn path in the screenshot. The runtime enemy
+    // walks node[i] → node[i+1] in a single tick, so a diagonal link
+    // would teleport the marker through a cell the player can step
+    // into. The new guard rejects the click + surfaces
+    // `pathNotAdjacent` so the toolbar chip tells the user what's
+    // wrong.
+    it('rejects diagonal appends (must be 4-adjacent to the last node)', () => {
+      useEditorStore.setState({ past: [], lastError: null, lastErrorKey: null });
+      useEditorStore.getState().placeEnemy(1, 1, 5);
+      const enemyId = useEditorStore.getState().level.enemies[0]!.id;
+      // Path currently ends at (2, 1). Try to add (3, 0) — diagonal, illegal.
+      useEditorStore.getState().appendEnemyPathNode(enemyId, 3, 0);
+      expect(useEditorStore.getState().level.enemies[0]!.path).toEqual([
+        { x: 1, z: 1 },
+        { x: 2, z: 1 },
+      ]);
+      expect(useEditorStore.getState().lastErrorKey).toBe('editor.lastError.pathNotAdjacent');
+    });
+
+    it('accepts cardinal (up/down/left/right) appends', () => {
+      useEditorStore.setState({ past: [], lastError: null, lastErrorKey: null });
+      useEditorStore.getState().placeEnemy(1, 1, 5);
+      const enemyId = useEditorStore.getState().level.enemies[0]!.id;
+      // Walk right, then down, then left — all 4-adjacent, all should land.
+      useEditorStore.getState().appendEnemyPathNode(enemyId, 3, 1);
+      useEditorStore.getState().appendEnemyPathNode(enemyId, 3, 2);
+      useEditorStore.getState().appendEnemyPathNode(enemyId, 2, 2);
+      expect(useEditorStore.getState().level.enemies[0]!.path).toEqual([
+        { x: 1, z: 1 },
+        { x: 2, z: 1 },
+        { x: 3, z: 1 },
+        { x: 3, z: 2 },
+        { x: 2, z: 2 },
+      ]);
+      expect(useEditorStore.getState().lastError).toBeNull();
+      expect(useEditorStore.getState().lastErrorKey).toBeNull();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // 8c. commitEnemyPath — guards the panel-input "commit on blur" path
+  // against hand-typed diagonal coordinates (or any future auto-snap
+  // feature that lands nodes off-grid). Mirrors the viewport click
+  // guard above so the same adjacency invariant holds regardless of
+  // how the user enters the coordinates.
+  // -----------------------------------------------------------------------
+  describe('commitEnemyPath', () => {
+it('refuses to commit and surfaces pathNotAdjacent when any segment is diagonal', () => {
+      // Arrange — placeEnemy itself pushes one snapshot onto `past`;
+      // clear it so we can assert that commitEnemyPath is the only
+      // possible pusher for the rest of the test. Then mutate the
+      // store directly to plant a diagonal segment (we can't reach
+      // this state through the public API any more — the guard
+      // below is what makes it impossible).
+      useEditorStore.setState({ past: [], lastError: null, lastErrorKey: null });
+      useEditorStore.getState().placeEnemy(1, 1, 5);
+      useEditorStore.setState({ past: [] });
+      const enemy = useEditorStore.getState().level.enemies[0]!;
+      useEditorStore.setState({
+        level: {
+          ...useEditorStore.getState().level,
+          enemies: [
+            // path[0]=(1,1), path[1]=(2,1), path[2]=(3,0) — (2,1)→(3,0)
+            // is a diagonal hop, which commitEnemyPath must reject.
+            { ...enemy, path: [{ x: 1, z: 1 }, { x: 2, z: 1 }, { x: 3, z: 0 }] },
+          ],
+        },
+      });
+      // Act
+      useEditorStore.getState().commitEnemyPath();
+      // Assert — no history snapshot was pushed; error key set.
+      expect(useEditorStore.getState().past).toHaveLength(0);
+      expect(useEditorStore.getState().lastErrorKey).toBe('editor.lastError.pathNotAdjacent');
+    });
+
+    it('commits normally when every segment is 4-adjacent', () => {
+      useEditorStore.setState({ past: [], lastError: null, lastErrorKey: null });
+      useEditorStore.getState().placeEnemy(1, 1, 5);
+      // placeEnemy pushed one snapshot; clear so the test asserts the
+      // count commitEnemyPath alone produces.
+      useEditorStore.setState({ past: [] });
+      // Existing path is (1,1) → (2,1) — already 4-adjacent, commit
+      // should push exactly one snapshot without erroring.
+      useEditorStore.getState().commitEnemyPath();
+      expect(useEditorStore.getState().past).toHaveLength(1);
+      expect(useEditorStore.getState().lastError).toBeNull();
+      expect(useEditorStore.getState().lastErrorKey).toBeNull();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // 8d. F-2026-06-18: every editor element (start, exit, pickup, every
+  // enemy-path node) occupies exactly one cell. The store must reject
+  // overlapping placements at click time so the toolbar chip tells the
+  // user *what* the click collided with — instead of validateMaze
+  // refusing the saved level with a generic "collision" error and the
+  // user having to hunt for the offender.
+  // -----------------------------------------------------------------------
+  describe('placement collisions (no two elements share a cell)', () => {
+    it('rejects placeWall on a pickup cell with collideWithPickup', () => {
+      useEditorStore.setState({ past: [], lastError: null, lastErrorKey: null });
+      // Carve (2, 1) so the pickup can land there (pickup on wall is
+      // rejected by a different guard, before the new collision check
+      // could be exercised).
+      useEditorStore.getState().placeErase(2, 1);
+      useEditorStore.getState().placePickup(2, 1);
+      // Sanity: pickup actually placed.
+      expect(useEditorStore.getState().level.pickups).toHaveLength(1);
+      // Act — try to drop a wall on the same cell.
+      useEditorStore.getState().placeWall(2, 1);
+      // Assert — wall not placed, error key set to collideWithPickup.
+      expect(useEditorStore.getState().level.walls[1]![2]).toBe(0);
+      expect(useEditorStore.getState().lastErrorKey).toBe('editor.lastError.collideWithPickup');
+    });
+
+    it('rejects placePickup on an enemy spawn cell with collideWithEnemy', () => {
+      useEditorStore.setState({ past: [], lastError: null, lastErrorKey: null });
+      useEditorStore.getState().placeEnemy(2, 1, 5);
+      // Act — try to drop a pickup on the enemy spawn.
+      useEditorStore.getState().placePickup(2, 1);
+      // Assert — pickup not added, error key set.
+      expect(useEditorStore.getState().level.pickups).toHaveLength(0);
+      expect(useEditorStore.getState().lastErrorKey).toBe('editor.lastError.collideWithEnemy');
+    });
+
+    it('rejects placeEnemy on the start cell with collideWithStart', () => {
+      useEditorStore.setState({ past: [], lastError: null, lastErrorKey: null });
+      // placeEnemy at (0, 0) is the default start cell.
+      useEditorStore.getState().placeEnemy(0, 0, 5);
+      expect(useEditorStore.getState().level.enemies).toHaveLength(0);
+      expect(useEditorStore.getState().lastErrorKey).toBe('editor.lastError.collideWithStart');
+    });
+
+    it('rejects placeStart on a pickup cell with collideWithPickup', () => {
+      useEditorStore.setState({ past: [], lastError: null, lastErrorKey: null });
+      useEditorStore.getState().placeErase(1, 1);
+      useEditorStore.getState().placePickup(1, 1);
+      // Act — move start to (1, 1).
+      useEditorStore.getState().placeStart(1, 1);
+      // Assert — start was not moved (default grid keeps start at (0, 0)).
+      expect(useEditorStore.getState().level.start).toEqual({ x: 0, z: 0 });
+      expect(useEditorStore.getState().lastErrorKey).toBe('editor.lastError.collideWithPickup');
+    });
+
+    it('rejects appendEnemyPathNode into a cell that holds a pickup', () => {
+      useEditorStore.setState({ past: [], lastError: null, lastErrorKey: null });
+      useEditorStore.getState().placeEnemy(1, 1, 5);
+      const enemyId = useEditorStore.getState().level.enemies[0]!.id;
+      // The enemy path ends at (2, 1). Plant a pickup at (2, 2),
+      // which is 4-adjacent to (2, 1) — adjacent check passes, so
+      // the F-2026-06-18 occupancy guard is the one that must fire.
+      useEditorStore.getState().placeErase(2, 2);
+      useEditorStore.getState().placePickup(2, 2);
+      useEditorStore.getState().appendEnemyPathNode(enemyId, 2, 2);
+      // Path unchanged (still 2 nodes), collision key surfaced.
+      expect(useEditorStore.getState().level.enemies[0]!.path).toHaveLength(2);
+      expect(useEditorStore.getState().lastErrorKey).toBe('editor.lastError.collideWithPickup');
     });
   });
 
@@ -1162,11 +1325,14 @@ describe('useEditorStore', () => {
       expect(useEditorStore.getState().past.length).toBe(1);
     });
 
-    it('restores the wall (sets walls[z][x]=1) when selection.kind = "wall"', () => {
-      // Arrange — (2,1) is a floor, selected for deletion.
+    it('carves the selected wall back to floor (sets walls[z][x]=0) when selection.kind = "wall"', () => {
+      // Arrange — (2,1) is a wall, selected for deletion. The select
+      // tool only arms kind === 'wall' on a wall cell, so the branch
+      // must flip 1 → 0 (not 1 → 1 which would make the panel's
+      // "删除墙体" button a silent no-op — see editorStore.ts F-2026-06-18).
       const walls: CellType[][] = [
         [0, 1, 1, 1, 1],
-        [1, 0, 1, 1, 1],
+        [1, 1, 1, 1, 1],
         [1, 1, 1, 1, 1],
         [1, 1, 1, 1, 1],
       ];
@@ -1177,8 +1343,9 @@ describe('useEditorStore', () => {
       });
       // Act
       useEditorStore.getState().deleteSelected();
-      // Assert
-      expect(useEditorStore.getState().level.walls[1]![2]).toBe(1);
+      // Assert — that one cell is carved; every other cell is untouched.
+      expect(useEditorStore.getState().level.walls[1]![2]).toBe(0);
+      expect(useEditorStore.getState().level.walls[0]![1]).toBe(1);
       expect(useEditorStore.getState().past.length).toBe(1);
     });
 

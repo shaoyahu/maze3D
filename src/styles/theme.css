@@ -17,6 +17,16 @@
   --fg-muted:     #4a5563;   /* medium cool gray */
   --fg-dim:       #7a8290;   /* lighter cool gray */
 
+  /* F-2026-06-18: foreground scale for text drawn on top of
+     *intentionally dark* surfaces (editor-viewport-empty /
+     editor-viewport-pan-hint cards, dark overlay chips). The base
+     `--fg` is near-black for the light theme; on a dark card that
+     becomes invisible. These tokens stay light in BOTH themes so a
+     card can hardcode a dark background and still read. */
+  --fg-on-dark:        #e8eaf0;
+  --fg-on-dark-muted:  #b3b8c4;
+  --fg-on-dark-dim:    #8a8f9c;
+
   /* ----- Borders ----- */
   --border:        #d9dde2;   /* cool light border */
   --border-strong: #98a0aa;   /* medium cool gray (SVG walls) */
@@ -112,6 +122,13 @@
   --fg:           #e8eaf0;
   --fg-muted:     #8a8f9c;
   --fg-dim:       #5b6070;
+  /* F-2026-06-18: same on-dark scale as the light theme — the
+     editor-viewport empty / pan-hint cards keep a hardcoded dark
+     surface in BOTH themes, so the text colour must stay light in
+     both. (See F-2026-06-18 in :root above.) */
+  --fg-on-dark:        #e8eaf0;
+  --fg-on-dark-muted:  #b3b8c4;
+  --fg-on-dark-dim:    #8a8f9c;
   --border:        #1c1f29;
   --border-strong: #2c303c;
   --accent:        #a4b8ff;   /* cool periwinkle — opposite of light's amber */
@@ -1324,73 +1341,166 @@
 }
 
 .editor-viewport-empty {
+  /* F-2026-06-18: empty-grid hint was an `inset: 0` flex-center column
+     that visually overlaid the empty canvas and obscured the start /
+     exit markers (the only things actually rendered on an empty
+     floor). Now rendered as a small speech-bubble card pinned to the
+     left edge — `pointer-events: none` so it never blocks cell clicks.
+     The bubble stays out of the central viewport area, leaving the
+     grid clean for the user to pick the first placement tool. */
   position: absolute;
-  inset: 0;
+  left: 22px;
+  top: 50%;
+  transform: translateY(-50%);
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none;
-  color: var(--fg-muted);
-  font-family: var(--font-display);
-  font-size: 13px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  align-items: flex-start;
   gap: 6px;
-  opacity: 0.7;
+  padding: 10px 14px 10px 12px;
+  pointer-events: none;
+  background: rgba(20, 22, 30, 0.82);
+  border: 1px solid var(--border-strong);
+  border-left: 2px solid var(--accent);
+  border-radius: var(--r-sm);
+  /* F-2026-06-18: the card background is intentionally dark
+     (rgba(20,22,30,0.82)) in BOTH themes, so text colour must be
+     the on-dark scale — `var(--fg)` is near-black in light mode
+     and became invisible. */
+  color: var(--fg-on-dark);
+  font-family: var(--font-display);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  max-width: 200px;
+  box-shadow: var(--shadow-1);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 4;
+  animation: editor-card-reveal 240ms ease-out;
+}
+
+/* Tail: a 10px square rotated 45° that shares the bubble's border
+   color on two of its sides. Positioned flush with the right edge so
+   it visually points into the canvas — "the action happens to your
+   right". `pointer-events: none` matches the bubble itself so the
+   tail never intercepts cell clicks. */
+.editor-viewport-empty::after {
+  content: '';
+  position: absolute;
+  right: -6px;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  transform: translateY(-50%) rotate(45deg);
+  background: rgba(20, 22, 30, 0.82);
+  border-right: 1px solid var(--border-strong);
+  border-top: 1px solid var(--border-strong);
+  pointer-events: none;
 }
 
 .editor-viewport-empty__accent {
   color: var(--accent);
   font-family: var(--font-mono);
   font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  line-height: 1.45;
 }
 
 .editor-viewport-pan-hint {
+  /* F-2026-06-18: pan-mode hint used to be a full-canvas gradient with
+     a giant 56px pulsing circle + vertically stacked title / body /
+     sub, which made the text feel like a wall of overlapping labels.
+     Now rendered as a compact right-edge bubble with a horizontal
+     layout (icon left, text-stack right) so the icon and copy no
+     longer compete for the same vertical band. The dark gradient is
+     dropped — the grid stays fully visible while the hint is on. The
+     bubble is `pointer-events: none` so it never intercepts pan
+     drag-start. */
   position: absolute;
-  inset: 0;
+  right: 22px;
+  top: 50%;
+  transform: translateY(-50%);
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
   pointer-events: none;
-  background: linear-gradient(180deg, rgba(12, 13, 18, 0) 0%, rgba(12, 13, 18, 0.55) 100%);
+  background: rgba(20, 22, 30, 0.82);
+  border: 1px solid var(--border-strong);
+  border-right: 2px solid var(--accent);
+  border-radius: var(--r-sm);
   font-family: var(--font-display);
-  color: var(--fg);
-  gap: 6px;
+  /* F-2026-06-18: see .editor-viewport-empty — the card background
+     is intentionally dark, so the text colour must be the on-dark
+     scale. */
+  color: var(--fg-on-dark);
+  max-width: 260px;
+  box-shadow: var(--shadow-1);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   z-index: 4;
   animation: editor-card-reveal 240ms ease-out;
 }
 
+/* Tail: 10px square pointing left (into canvas). */
+.editor-viewport-pan-hint::after {
+  content: '';
+  position: absolute;
+  left: -6px;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  transform: translateY(-50%) rotate(45deg);
+  background: rgba(20, 22, 30, 0.82);
+  border-left: 1px solid var(--border-strong);
+  border-bottom: 1px solid var(--border-strong);
+  pointer-events: none;
+}
+
 .editor-viewport-pan-hint__icon {
-  font-size: 32px;
-  color: var(--accent);
-  width: 56px;
-  height: 56px;
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
   background: var(--accent-soft);
   border: 1px solid var(--accent);
-  box-shadow: 0 0 24px var(--accent-soft);
-  margin-bottom: 4px;
+  color: var(--accent);
+  font-size: 16px;
+  line-height: 1;
+  box-shadow: 0 0 12px var(--accent-soft);
   animation: editor-port-pulse 2s ease-out infinite;
 }
 
+.editor-viewport-pan-hint__text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+}
+
 .editor-viewport-pan-hint__title {
-  font-size: 15px;
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--accent);
+  line-height: 1.2;
 }
 
 .editor-viewport-pan-hint__body {
-  font-size: 13px;
-  color: var(--fg-muted);
+  font-size: 12px;
+  /* F-2026-06-18: body copy is the main content of the bubble;
+     use the on-dark scale (light text on dark card). */
+  color: var(--fg-on-dark);
   letter-spacing: 0.01em;
-  text-align: center;
+  line-height: 1.4;
 }
 
 .editor-viewport-pan-hint__body kbd {
@@ -1398,18 +1508,19 @@
   background: var(--bg-elevated);
   border: 1px solid var(--border-strong);
   border-radius: 4px;
-  padding: 2px 8px;
-  font-size: 11px;
-  color: var(--fg);
-  margin: 0 2px;
+  padding: 1px 6px;
+  font-size: 10px;
+  color: var(--fg-on-dark);
+  margin: 0 1px;
   box-shadow: 0 1px 0 var(--border);
 }
 
 .editor-viewport-pan-hint__sub {
   font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--fg-dim);
-  margin-top: 6px;
+  font-size: 10px;
+  /* F-2026-06-18: sub-line is the tertiary text — use the on-dark
+     muted scale for visual hierarchy. */
+  color: var(--fg-on-dark-dim);
   letter-spacing: 0.04em;
 }
 
@@ -1458,6 +1569,64 @@
   cursor: pointer;
   padding: 0 2px;
   line-height: 1;
+}
+
+/* ----- Non-blocking toast (lastError reminder) -----
+   F-2026-06-18: replaces the previous "must-click OK" modal. The
+   toast is purely advisory — the user can keep clicking / drawing
+   while it's on screen and it auto-fades after 2.5s. Pinned to the
+   top-center of the viewport, with a soft drop-shadow + entrance
+   animation so it's noticeable but never blocks input. */
+.editor-toast {
+  position: fixed;
+  top: 76px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  min-width: 220px;
+  max-width: 460px;
+  background: rgba(20, 22, 30, 0.92);
+  border: 1px solid var(--danger);
+  border-left: 3px solid var(--danger);
+  border-radius: var(--r-sm);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.32);
+  color: var(--fg-on-dark);
+  font-family: var(--font-display);
+  font-size: 13px;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  pointer-events: none;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: editor-toast-in 180ms ease-out;
+}
+.editor-toast__icon {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-weight: 700;
+  font-size: 13px;
+}
+.editor-toast__body {
+  flex: 1;
+  min-width: 0;
+}
+@keyframes editor-toast-in {
+  from { opacity: 0; transform: translate(-50%, -6px); }
+  to   { opacity: 1; transform: translate(-50%, 0);    }
+}
+@media (prefers-reduced-motion: reduce) {
+  .editor-toast { animation: none; }
 }
 
 /* ----- Clickable chip variant (used by the warning indicator) ----- */

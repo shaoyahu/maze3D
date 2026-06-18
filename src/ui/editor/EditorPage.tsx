@@ -50,6 +50,14 @@ export function EditorPage({ onExit }: EditorPageProps): React.ReactElement {
   const loadDraft = useEditorStore((s) => s.loadDraft);
   const level = useEditorStore((s) => s.level);
   const confirm = useConfirm();
+  // F-2026-06-18: lastError is now surfaced as a modal dialog
+  // (see useConfirm below) instead of a toolbar chip, because the
+  // chip was 1200px+ from where the user clicked and timed out in
+  // 3s — both easy to miss. The modal can't auto-dismiss and the
+  // backdrop blocks input until the user explicitly OKs.
+  const lastError = useEditorStore((s) => s.lastError);
+  const lastErrorKey = useEditorStore((s) => s.lastErrorKey);
+  const clearLastError = useEditorStore((s) => s.clearLastError);
 
   // ---- Draft recovery on mount ----------------------------------------
   const [showDraftPrompt, setShowDraftPrompt] = useState(false);
@@ -87,6 +95,39 @@ export function EditorPage({ onExit }: EditorPageProps): React.ReactElement {
       cancelled = true;
     };
   }, [showDraftPrompt, confirm, loadDraft, t]);
+
+  // F-2026-06-18: surface lastError / lastErrorKey as a non-blocking
+  // toast at the top-center of the editor. The toast auto-dismisses
+  // after 2.5s and never blocks clicks — the user can keep
+  // placing/erasing while the previous rejection is still on screen.
+  // (Earlier this used a `useConfirm` modal, but the user asked
+  // for a *reminder* not a *blocker* — see F-2026-06-18 below.)
+  const [toast, setToast] = useState<{ id: number; message: string; tone: 'warn' | 'error' } | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
+  const lastShownIdRef = useRef<number>(0);
+  useEffect(() => {
+    const message = lastErrorKey !== null ? t(lastErrorKey) : lastError;
+    if (message === null) return;
+    // Bump the id even on identical messages so consecutive rejections
+    // still restart the fade-out timer.
+    lastShownIdRef.current += 1;
+    const id = lastShownIdRef.current;
+    setToast({ id, message, tone: 'warn' });
+    if (toastTimerRef.current !== null) {
+      window.clearTimeout(toastTimerRef.current);
+    }
+    toastTimerRef.current = window.setTimeout(() => {
+      setToast((cur) => (cur && cur.id === id ? null : cur));
+      clearLastError();
+      toastTimerRef.current = null;
+    }, 2500);
+    return () => {
+      if (toastTimerRef.current !== null) {
+        window.clearTimeout(toastTimerRef.current);
+        toastTimerRef.current = null;
+      }
+    };
+  }, [lastError, lastErrorKey, clearLastError, t]);
 
   // ---- Autosave: 2s debounce on level identity change ------------------
   const autosaveTimer = useRef<number | null>(null);
@@ -194,6 +235,21 @@ export function EditorPage({ onExit }: EditorPageProps): React.ReactElement {
         <EditorPropertiesPanel />
       </div>
       <EditorStatusBar />
+      {/* F-2026-06-18: non-blocking lastError toast. `pointer-events:
+          none` on the wrapper means the user can keep clicking cells
+          while a previous rejection's message is still on screen —
+          no OK button, no backdrop, just a 2.5s reminder. */}
+      {toast !== null && (
+        <div
+          className="editor-toast"
+          role="status"
+          aria-live="polite"
+          data-testid="editor-toast"
+        >
+          <span className="editor-toast__icon" aria-hidden>!</span>
+          <div className="editor-toast__body">{toast.message}</div>
+        </div>
+      )}
     </div>
   );
 }

@@ -368,9 +368,9 @@ describe('EditorPropertiesPanel (P2-4b #12)', () => {
     expect(useEditorStore.getState().level.enemies).toEqual([]);
   });
 
-  it('wall Delete button calls deleteSelected (restores the wall to 1)', () => {
+  it('wall Delete button calls deleteSelected (carves the wall back to floor)', () => {
     useEditorStore.setState({ level: makeMaze() });
-    // Make a wall at (1,1) floor the user wants to remove via Delete.
+    // Place a wall at (1, 2) the user wants to remove via Delete.
     useEditorStore.setState({
       level: {
         ...useEditorStore.getState().level,
@@ -385,7 +385,11 @@ describe('EditorPropertiesPanel (P2-4b #12)', () => {
     useEditorStore.setState({ selection: { kind: 'wall', x: 1, z: 2 } });
     render(<EditorPropertiesPanel />);
     fireEvent.click(screen.getByText('删除墙体'));
-    expect(useEditorStore.getState().level.walls[2]![1]).toBe(1);
+    // F-2026-06-18: deleteSelected on a wall kind must flip the cell
+    // from 1 (wall) to 0 (floor). The previous assertion expected 1,
+    // which made the panel's "删除墙体" button a silent no-op for any
+    // selected wall.
+    expect(useEditorStore.getState().level.walls[2]![1]).toBe(0);
   });
 
   // F-editor-back-to-level: when an object is selected, the user can

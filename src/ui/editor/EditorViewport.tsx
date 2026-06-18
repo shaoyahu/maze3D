@@ -15,8 +15,13 @@ const ENEMY_COLOR = '#ff8a3d';
 const WALL_COLOR = '#1d1f27';
 const FLOOR_COLOR = '#e0e0ea';
 const CELL_SIZE = 24;
-const ZOOM_MIN = 0.5;
-const ZOOM_MAX = 3.0;
+// F-2026-06-18: widened the editor zoom range from [0.5, 3] to
+// [0.25, 5]. 50% was too coarse for wide overview shots (15×15 grids
+// couldn't be inspected at a glance) and 300% capped too early for
+// fine-grained path-node placement on dense maps. Wheel-step stays
+// at 0.1 so the rate of change between clicks feels unchanged.
+const ZOOM_MIN = 0.25;
+const ZOOM_MAX = 5.0;
 const ZOOM_STEP = 0.1;
 
 interface CellLookup {
@@ -556,11 +561,17 @@ export function EditorViewport(): React.ReactElement {
       {tool === 'pan' && !hasPanned && (
         <div className="editor-viewport-pan-hint" data-testid="editor-viewport-pan-hint">
           <div className="editor-viewport-pan-hint__icon" aria-hidden>✥</div>
-          <div className="editor-viewport-pan-hint__title">{t('editor.viewport.panHintTitle')}</div>
-          <div className="editor-viewport-pan-hint__body">
-            {t('editor.viewport.panHintDrag')}
+          {/* F-2026-06-18: wrap title / body / sub in a text column so
+              the icon stays on the left and the copy stacks tightly on
+              the right — the old full-canvas vertical stack made the
+              labels visually run together. */}
+          <div className="editor-viewport-pan-hint__text">
+            <div className="editor-viewport-pan-hint__title">{t('editor.viewport.panHintTitle')}</div>
+            <div className="editor-viewport-pan-hint__body">
+              {t('editor.viewport.panHintDrag')}
+            </div>
+            <div className="editor-viewport-pan-hint__sub">{t('editor.viewport.panHintSub')}</div>
           </div>
-          <div className="editor-viewport-pan-hint__sub">{t('editor.viewport.panHintSub')}</div>
         </div>
       )}
 

@@ -463,6 +463,11 @@ export const en: Translations = {
   'editor.lastError.startOnExit': "Start can't overlap the exit cell",
   'editor.lastError.exitOnStart': "Exit can't overlap the start cell",
   'editor.lastError.pathOutOfBounds': 'Path node is out of grid bounds',
+  'editor.lastError.pathNotAdjacent': 'Path nodes must be 4-adjacent (up / down / left / right) — diagonals are not allowed',
+  'editor.lastError.collideWithStart': 'That cell is already the start',
+  'editor.lastError.collideWithExit': 'That cell is already the exit',
+  'editor.lastError.collideWithPickup': 'That cell already has a pickup',
+  'editor.lastError.collideWithEnemy': 'That cell already has an enemy (or a patrol path node)',
 
   // F-2026-06-17-E-M-7: design-rule issues rendered in the editor
   // warnings popup. Keys mirror the 8 ValidationIssue.messageKey values

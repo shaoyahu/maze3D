@@ -12,8 +12,6 @@ import { useConfirm } from '../useConfirm';
 import { useLevelStore } from '../../store/levelStore';
 import { useT } from '../../i18n';
 
-const LAST_ERROR_DISPLAY_MS = 3000;
-
 const TOOL_HINT_KEYS: Record<EditorTool, string> = {
   select: 'editor.toolbar.hint.select',
   wall:   'editor.toolbar.hint.wall',
@@ -56,7 +54,14 @@ export function EditorTopBar({ onExit, onSaveAndExit }: EditorTopBarProps): Reac
   const importJson = useEditorStore((s) => s.importJson);
   const lastError = useEditorStore((s) => s.lastError);
   const lastErrorKey = useEditorStore((s) => s.lastErrorKey);
-  const clearLastError = useEditorStore((s) => s.clearLastError);
+  // F-2026-06-18: lastError / lastErrorKey are now surfaced as a
+  // modal dialog in EditorPage (so the user can't miss a blocked
+  // click). The TopBar no longer renders the small chip; the
+  // 3-second auto-clear is also gone — the modal stays open until
+  // the user dismisses it, and clicking "OK" (or Esc / backdrop)
+  // routes through the dialog's onClose which resolves the modal
+  // promise, after which EditorPage calls `clearLastError()`.
+  void lastError; void lastErrorKey;
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [status, setStatus] = useState<Status>({ kind: 'idle' });
@@ -65,12 +70,6 @@ export function EditorTopBar({ onExit, onSaveAndExit }: EditorTopBarProps): Reac
     onAutoSaved: (ts) => setStatus({ kind: 'ok', message: t('editor.toolbar.autoSaved', { time: formatHHMMSS(ts) }) }),
     onAutoSaveError: (msg) => setStatus({ kind: 'error', message: t('editor.toolbar.autoSaveError', { msg }) }),
   });
-
-  useEffect(() => {
-    if (lastError === null && lastErrorKey === null) return undefined;
-    const id = window.setTimeout(() => clearLastError(), LAST_ERROR_DISPLAY_MS);
-    return () => window.clearTimeout(id);
-  }, [lastError, lastErrorKey, clearLastError]);
 
   const prevDirtyRef = useRef<boolean>(dirty);
   useEffect(() => {
@@ -153,14 +152,13 @@ export function EditorTopBar({ onExit, onSaveAndExit }: EditorTopBarProps): Reac
     }
   };
 
+  // F-2026-06-18: lastError / lastErrorKey branches removed — they
+  // are surfaced as a modal by EditorPage. The TopBar's status
+  // chip now only carries `autoSaved` / `autoSaveError` (from
+  // useAutoSave) and the inline `setStatus` messages triggered by
+  // the user pressing the "新建 / 保存 / 导入" buttons.
   const display: { kind: 'ok' | 'error'; message: string } | null =
-    lastErrorKey !== null
-      ? { kind: 'error', message: t(lastErrorKey) }
-      : lastError !== null
-        ? { kind: 'error', message: lastError }
-        : status.kind !== 'idle'
-          ? status
-          : null;
+    status.kind !== 'idle' ? status : null;
 
   return (
     <header data-testid="editor-toolbar" className="editor-topbar">
