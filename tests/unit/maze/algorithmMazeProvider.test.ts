@@ -1,7 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { encodeSeed, decodeSeed, fnv1a, mulberry32, parseHexSeed, InvalidSeedError } from '../../../src/utils/seed';
-import { AlgorithmMazeProvider } from '../../../src/maze/AlgorithmMazeProvider';
-import type { Algorithm, MazeSize } from '../../../src/maze/types';
+import {
+  AlgorithmMazeProvider,
+  filterPickupsAgainstSpawn,
+} from '../../../src/maze/AlgorithmMazeProvider';
+import type { Algorithm, MazeSize, Pickup } from '../../../src/maze/types';
 
 const ALGOS: Algorithm[] = ['recursive-backtracker', 'kruskal', 'prim', 'hunt-and-kill'];
 const SIZES: MazeSize[] = [15, 30, 50];
@@ -97,5 +100,55 @@ describe('AlgorithmMazeProvider', () => {
     // provider; exercise them here to keep the import honest.
     expect(parseHexSeed('0000000000000001')).toBe(1n);
     expect(typeof mulberry32(fnv1a('seed'))).toBe('function');
+  });
+});
+
+// F-2026-06-17-D-M-1 (false positive — see AlgorithmMazeProvider.ts for
+// the rationale). The review finding assumed generators randomly placed
+// pickups near the exit; in reality every generator only emits walls,
+// and AlgorithmMazeProvider.load() returns `pickups: []`. These tests
+// pin both the "no procedural pickups" contract and the defensive
+// helper's behavior so a future regression that re-introduces random
+// pickup placement fails loudly.
+describe('F-2026-06-17-D-M-1 pickup-spawn guard', () => {
+  it('AlgorithmMazeProvider.load().pickups is always [] across all algorithms × sizes × seeds', async () => {
+    const provider = new AlgorithmMazeProvider();
+    const hexes = ['0000000000000001', '0123456789abcdef', 'deadbeefcafebabe'];
+    for (const algorithm of ALGOS) {
+      for (const size of SIZES) {
+        for (const hex of hexes) {
+          const data = await provider.load(seedId(algorithm, size, hex));
+          expect(data.pickups).toEqual([]);
+        }
+      }
+    }
+  });
+
+  it('filterPickupsAgainstSpawn removes pickups within 1 cell of exit', () => {
+    const exit = { x: 10, z: 10 };
+    const start = { x: 0, z: 0 };
+    const pickups: Pickup[] = [
+      { id: 'near', x: 10, z: 10, type: 'time', value: 1 },
+      { id: 'corner', x: 11, z: 11, type: 'time', value: 1 },
+      { id: 'far', x: 0, z: 10, type: 'time', value: 1 },
+    ];
+    const filtered = filterPickupsAgainstSpawn(pickups, exit, start);
+    expect(filtered.map((p) => p.id)).toEqual(['far']);
+  });
+
+  it('filterPickupsAgainstSpawn removes pickups within 2 cells of start', () => {
+    const exit = { x: 10, z: 10 };
+    const start = { x: 0, z: 0 };
+    const pickups: Pickup[] = [
+      { id: 'at', x: 0, z: 0, type: 'health', value: 1 },
+      { id: 'adjacent', x: 2, z: 0, type: 'health', value: 1 },
+      { id: 'far', x: 5, z: 5, type: 'health', value: 1 },
+    ];
+    const filtered = filterPickupsAgainstSpawn(pickups, exit, start);
+    expect(filtered.map((p) => p.id)).toEqual(['far']);
+  });
+
+  it('filterPickupsAgainstSpawn returns empty array unchanged', () => {
+    expect(filterPickupsAgainstSpawn([], { x: 10, z: 10 }, { x: 0, z: 0 })).toEqual([]);
   });
 });

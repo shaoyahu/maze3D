@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { useEditorStore } from '../../store/editorStore';
-import type { EnemySpawn, MazeData, Pickup, PickupType, VictoryType } from '../../maze/types';
+import type { MazeData, PickupType, VictoryType } from '../../maze/types';
 import { isPickupType, isVictoryType, VICTORY_TYPE_VALUES } from '../../maze/types';
 import { Button } from '../components/Button';
 import { Dropdown, type DropdownOption } from '../components/Dropdown';
@@ -405,17 +405,37 @@ function BackToLevel(): React.ReactElement {
   );
 }
 
-function PickupForm({ pickup }: { pickup: Pickup }): React.ReactElement {
+// F-2026-06-17-M-6: take `pickupId` (primitive) instead of the whole
+// `Pickup` object so React.memo can short-circuit re-renders when the
+// parent's level array reference changes but the same entity is
+// re-selected (the typical scene-editor case). The form looks up the
+// entity via selector inside; the `pickupId` prop is stable across
+// store updates that don't move the selection.
+function PickupFormImpl({ pickupId }: { pickupId: string }): React.ReactElement {
   const t = useT();
+  // F-2026-06-17-M-6: lookup primitive projection — keep this selector
+  // returning the full Pickup object (not a new {id, type, value} tuple)
+  // so referential equality is preserved across re-renders that don't
+  // actually mutate the entity. Zustand's default shallow comparison
+  // would otherwise see a fresh object on every store update.
+  const pickup = useEditorStore((s) => s.level.pickups.find((p) => p.id === pickupId));
   const updatePickup = useEditorStore((s) => s.updatePickup);
   const deleteSelected = useEditorStore((s) => s.deleteSelected);
-  const [type, setType] = useState<PickupType>(pickup.type);
-  const [value, setValue] = useState(pickup.value);
+  // F-2026-06-17-M-6: lazy initial state from the (possibly-missing)
+  // lookup. If the pickup is missing on first render, fall back to
+  // harmless defaults; useEffect below will re-sync as soon as the
+  // entity appears in the store.
+  const [type, setType] = useState<PickupType>(() => pickup?.type ?? 'time');
+  const [value, setValue] = useState<number>(() => pickup?.value ?? 0);
 
   useEffect(() => {
-    setType(pickup.type);
-    setValue(pickup.value);
-  }, [pickup.id, pickup.type, pickup.value]);
+    if (pickup) {
+      setType(pickup.type);
+      setValue(pickup.value);
+    }
+  }, [pickup?.id, pickup?.type, pickup?.value]);
+
+  if (!pickup) return <SelectionMissing kind="pickup" />;
 
   return (
     <div data-testid="pickup-form" className="editor-properties__form">
@@ -463,8 +483,18 @@ function PickupForm({ pickup }: { pickup: Pickup }): React.ReactElement {
   );
 }
 
-function EnemyForm({ enemy }: { enemy: EnemySpawn }): React.ReactElement {
+const PickupForm = memo(PickupFormImpl);
+
+// F-2026-06-17-M-6: primitive-projection props (`enemyId`) so React.memo
+// can skip re-renders when the parent's level array changes but the same
+// entity remains selected. Lookup happens via selector; useEffect
+// re-syncs local state when the entity mutates in the store.
+function EnemyFormImpl({ enemyId }: { enemyId: string }): React.ReactElement {
   const t = useT();
+  // F-2026-06-17-M-6: see PickupForm — keep selector returning the
+  // existing entity reference (not a fresh tuple) so memo's shallow
+  // comparison sees a stable identity.
+  const enemy = useEditorStore((s) => s.level.enemies.find((e) => e.id === enemyId));
   // F-P2-9: read `level` so the "+ node" button can compute in-bounds
   // defaults based on the current grid size (used in the onClick below).
   const level = useEditorStore((s) => s.level);
@@ -474,19 +504,25 @@ function EnemyForm({ enemy }: { enemy: EnemySpawn }): React.ReactElement {
   const removeEnemyNode = useEditorStore((s) => s.removeEnemyNode);
   const deleteSelected = useEditorStore((s) => s.deleteSelected);
 
-  const [dwellTime, setDwellTime] = useState(enemy.dwellTime ?? 0);
-  const [fovRange, setFovRange] = useState(enemy.fovRange ?? 3);
-  const [fovAngleDeg, setFovAngleDeg] = useState(enemy.fovAngleDeg ?? 60);
+  // F-2026-06-17-M-6: lazy initial state with safe defaults; useEffect
+  // re-syncs as soon as the entity is available in the store.
+  const [dwellTime, setDwellTime] = useState<number>(() => enemy?.dwellTime ?? 0);
+  const [fovRange, setFovRange] = useState<number>(() => enemy?.fovRange ?? 3);
+  const [fovAngleDeg, setFovAngleDeg] = useState<number>(() => enemy?.fovAngleDeg ?? 60);
 
   useEffect(() => {
-    setDwellTime(enemy.dwellTime ?? 0);
-    setFovRange(enemy.fovRange ?? 3);
-    setFovAngleDeg(enemy.fovAngleDeg ?? 60);
-  }, [enemy.id, enemy.dwellTime, enemy.fovRange, enemy.fovAngleDeg]);
+    if (enemy) {
+      setDwellTime(enemy.dwellTime ?? 0);
+      setFovRange(enemy.fovRange ?? 3);
+      setFovAngleDeg(enemy.fovAngleDeg ?? 60);
+    }
+  }, [enemy?.id, enemy?.dwellTime, enemy?.fovRange, enemy?.fovAngleDeg]);
 
-  useDebouncedCommit(dwellTime, (v) => updateEnemy(enemy.id, { dwellTime: Math.max(0, v) }), 300);
-  useDebouncedCommit(fovRange, (v) => updateEnemy(enemy.id, { fovRange: Math.max(0, v) }), 300);
-  useDebouncedCommit(fovAngleDeg, (v) => updateEnemy(enemy.id, { fovAngleDeg: Math.max(0, v) }), 300);
+  useDebouncedCommit(dwellTime, (v) => updateEnemy(enemyId, { dwellTime: Math.max(0, v) }), 300);
+  useDebouncedCommit(fovRange, (v) => updateEnemy(enemyId, { fovRange: Math.max(0, v) }), 300);
+  useDebouncedCommit(fovAngleDeg, (v) => updateEnemy(enemyId, { fovAngleDeg: Math.max(0, v) }), 300);
+
+  if (!enemy) return <SelectionMissing kind="enemy" />;
 
   return (
     <div data-testid="enemy-form" className="editor-properties__form">
@@ -628,7 +664,12 @@ function EnemyForm({ enemy }: { enemy: EnemySpawn }): React.ReactElement {
   );
 }
 
-function WallForm({ x, z }: { x: number; z: number }): React.ReactElement {
+const EnemyForm = memo(EnemyFormImpl);
+
+// F-2026-06-17-M-6: WallForm already takes primitive {x, z} props — wrap
+// with React.memo to short-circuit re-renders when an unrelated store
+// update fires (e.g. dirty flag toggle).
+function WallFormImpl({ x, z }: { x: number; z: number }): React.ReactElement {
   const t = useT();
   const deleteSelected = useEditorStore((s) => s.deleteSelected);
   return (
@@ -649,6 +690,8 @@ function WallForm({ x, z }: { x: number; z: number }): React.ReactElement {
   );
 }
 
+const WallForm = memo(WallFormImpl);
+
 type RenderBodyArgs = {
   selection: ReturnType<typeof useEditorStore.getState>['selection'];
   level: MazeData;
@@ -656,12 +699,15 @@ type RenderBodyArgs = {
 function renderBody({ selection, level }: RenderBodyArgs): React.ReactNode {
   if (selection === null) return <LevelMetadataForm level={level} />;
   if (selection.kind === 'pickup') {
-    const pickup = level.pickups.find((p) => p.id === selection.id);
-    return pickup ? <PickupForm pickup={pickup} /> : <SelectionMissing kind="pickup" />;
+    // F-2026-06-17-M-6: pass `pickupId` (primitive) instead of the entity
+    // object so React.memo can skip re-renders when the level array
+    // reference changes but the same pickup is re-selected. The form
+    // looks up the entity via selector inside.
+    return <PickupForm pickupId={selection.id} />;
   }
   if (selection.kind === 'enemy') {
-    const enemy = level.enemies.find((e) => e.id === selection.id);
-    return enemy ? <EnemyForm enemy={enemy} /> : <SelectionMissing kind="enemy" />;
+    // F-2026-06-17-M-6: same primitive-projection rationale as PickupForm.
+    return <EnemyForm enemyId={selection.id} />;
   }
   if (selection.kind === 'wall') {
     return <WallForm x={selection.x} z={selection.z} />;

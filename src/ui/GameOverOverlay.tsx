@@ -3,6 +3,20 @@ import { Button } from './components/Button';
 import { useGameStore } from '../store/gameStore';
 import { formatTime } from '../utils/time';
 import { useT } from '../i18n';
+import type { VictoryType } from '../maze/types';
+
+// F-2026-06-17-L-4: Record<VictoryType, string> instead of isSurvive ternary.
+// A 5th VictoryType will now force a compile error here until mapped, instead
+// of silently falling through to the non-survive branch. `reach-exit` and
+// `caught-by-enemy` don't normally trigger the game-over overlay; they map
+// to titleTimeTrial as a defensive default — same effective behavior as the
+// previous ternary, just exhaustive at the type level.
+const GAMEOVER_TITLE_KEYS: Record<VictoryType, string> = {
+  'reach-exit': 'overlays.gameOver.titleTimeTrial',
+  'time-trial': 'overlays.gameOver.titleTimeTrial',
+  survive: 'overlays.gameOver.titleSurvive',
+  'caught-by-enemy': 'overlays.gameOver.titleTimeTrial',
+};
 
 export function GameOverOverlay({ onRetry, onQuit }: { onRetry: () => void; onQuit: () => void; }) {
   const t = useT();
@@ -13,7 +27,7 @@ export function GameOverOverlay({ onRetry, onQuit }: { onRetry: () => void; onQu
   return (
     <div style={overlayStyle}>
       <h2 style={{ color: 'var(--danger)' }}>
-        {isSurvive ? t('overlays.gameOver.titleSurvive') : t('overlays.gameOver.titleTimeTrial')}
+        {t(GAMEOVER_TITLE_KEYS[currentMode])}
       </h2>
       {isSurvive && (
         <>

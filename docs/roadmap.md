@@ -10,11 +10,11 @@
 
 | 字段 | 值 |
 |---|---|
-| 活跃增量 | **P2-15 review-fixes-batch-2(实施中,14/24 FR done;剩 10 项:D 域算法 pickup guard + EditorLeftPanel 改动 + GameOverOverlay/HUD victory key + form React.memo + carveLShape + theme.css 后续 + docs 同步)** |
-| 已完成 | P2-2 14/14 ✅ + P2-3 14/14 ✅ + P2-4a 16/16 ✅ + P2-4b 20/20 ✅ + P2-5 16/16 ✅ + P2-6 10/10 ✅ + P2-7 8/8 ✅ + P2-9 ✅ + P2-10 11/11 ✅ + P2-11 16/16 ✅ + P2-13 ✅ + P2-14 ✅ + **P2-15 14/24 ✅ (2026-06-17,session 实施)** |
-| 下一个任务 | 等用户决策:继续 P2-15 剩余 10 FR / 或手动 commit 当前工作后下次会话继续 |
+| 活跃增量 | **P2-15 review-fixes-batch-2(24/24 FR done,2026-06-17 session 实施;FR-10 D-M-1 经核实为 premise-void finding — generators 不生成 pickup,留 defensive helper + invariant pin 测试;e2e fixme 保留待 dev server 跑过确认)** |
+| 已完成 | P2-2 14/14 ✅ + P2-3 14/14 ✅ + P2-4a 16/16 ✅ + P2-4b 20/20 ✅ + P2-5 16/16 ✅ + P2-6 10/10 ✅ + P2-7 8/8 ✅ + P2-9 ✅ + P2-10 11/11 ✅ + P2-11 16/16 ✅ + P2-13 ✅ + P2-14 ✅ + **P2-15 24/24 ✅ (2026-06-17,session 实施)** |
+| 下一个任务 | 等用户决策:手动 commit P2-15 剩余 10 FR 的工作(FR-4/8/9/10/14/15/20/21/22+23/theme.css)→ 或进入 P3 候选(e2e skip 根因修复 / Dropdown a11y 套件 / theme.css 拆分) |
 | 最后更新 | 2026-06-17 |
-| 最近 commit | `e135e32` fix(p2-14): review batch 1 — 12/33 finding 修复 |
+| 最近 commit | 待提交 — P2-15 剩余 10 FR 工作已落地,等待用户 commit(见活跃锚点详情) |
 
 **约束**：
 - 一次只做一个任务（见下方「总任务列表」）
@@ -33,7 +33,7 @@
 >
 > **2 处 mainMenu.revamp 测试也被 skip**(F-2026-06-15-H-3.6):原测试断言 Three.js scene container,但 home-revamp 把它移除了。skip 是正确的(测试断言不存在的功能)。
 >
-> 当前 `npm test` 状态(2026-06-17 更新):**993 pass / 1 skip / 0 fail**;e2e skip 状态 **8 处**(`enemies.spec.ts:26,41` / `survive.spec.ts:18` / `editor.spec.ts:48,120` / `pause-resume.spec.ts:39` / `time-trial.spec.ts:12,38`)。
+> 当前 `npm test` 状态(2026-06-17 更新):**993 pass / 1 skip / 0 fail**;e2e skip 状态 **8 处**(`enemies.spec.ts:26,41` / `survive.spec.ts:18` / `editor.spec.ts:48,120` / `pause-resume.spec.ts:39` / `time-trial.spec.ts:12,38`);FR-9 carveLShape root cause 已修,但 fixme 保留待 `npx playwright test` 跑过确认。
 
 ---
 
@@ -66,7 +66,7 @@
 | P2-11 | 教学关卡重设计（4 关重命名 + 教学步骤系统 + 哨兵回廊 回字形迷宫 + caught-by-enemy 胜利类型 + requireAllPickups 门控 + 编辑器 4 个新字段） | P1 | P2-4a, P2-8 | Medium | `docs/increments/p2-11-tutorial-revamp/` | ✅ done (16/16) (2026-06-16) |
 | P2-13 | 编辑器文件夹系统 + 左侧栏重构 + 胜利标签键修复（`levelStore` 文件夹 CRUD + `EditorLeftPanel` 替换 `EditorLeftDrawer` + 新 `Dropdown` 组件 + 教程卡 hero/rows/advanced 三段式 + `WinOverlay` victory 标签键修复 + theme.css 主题变量重排 = 27 文件 +5021/-2470 行） | P1 | P2-4b, P2-8 | Medium | `docs/increments/p2-13-editor-folders/` | ✅ done (2026-06-17, ad94abe) |
 | P2-14 | P2-13 review batch 1：12/33 finding 修复（H5 vitest 排除重排 + H4 Segmented useMemo 回归闭合 + H3 EditorLeftPanel 性能 + H1 reachability 边界守卫 + H2 Enemy constructor 守卫 + M3 shouldSurviveWin finite guard + M2 levelStore moveFolder cleanup + M12 Scene.dispose scene.clear + M13 collidesAt cellSize=0 守卫 + M14 Loop magic number + M15 GameCanvas subscribe guard + M2 _expandThickWall size 守卫 = 12 文件 +123/-44 行） | P1 | P2-13 | Small | `docs/increments/p2-14-review-fixes-batch-1/` *(目录占位;产物随 commit `e135e32` 走)* | ✅ done (2026-06-17, e135e32) |
-| P2-15 | P2-13 review batch 2：14/24 LOW/MEDIUM finding 收口（FR-1/2/3/5/6/7/11/12/13/16/17/18/19/22 = 14 个 done,剩 10 个:FR-4 form memo · FR-8/14/20 EditorLeftPanel · FR-9 carveLShape · FR-10 AlgorithmMazeProvider · FR-15 GameOverOverlay/HUD · FR-21 theme.css 后续;spec/plan 在 `docs/increments/p2-15-review-fixes-batch-2/`,23 Task / 24 FR） | P1 | P2-13 | Medium | `docs/increments/p2-15-review-fixes-batch-2/` | 🟡 14/24 done,10 remaining |
+| P2-15 | P2-13 review batch 2：24/24 LOW/MEDIUM finding 收口(FR-4 form React.memo · FR-8 right-click 3 case · FR-9 carveLShape 跳过 exit · FR-10 AlgorithmMazeProvider defensive helper + invariant pin · FR-14 rename 失败 dialog · FR-15 GameOverOverlay Record<VictoryType> · FR-20 renameLevel action · FR-21 victory fallback · FR-22 Dialog --panel→--bg-elevated · FR-23 dropdown outline · 14 个 from prior batch · = 24 FR 全部 done;spec/plan 在 `docs/increments/p2-15-review-fixes-batch-2/`,23 Task / 24 FR;FR-10 D-M-1 经核实为 premise void — generators 不生成 pickup,留 helper + pin 测试覆盖不变量) | P1 | P2-13 | Medium | `docs/increments/p2-15-review-fixes-batch-2/` | ✅ done (2026-06-17,session 实施) |
 
 > **P2-1 已删除**：原计划"多关卡 JSON（中/大尺寸）"被 P2-3 算法生成取代。MVP 保留 `level-small.json` 作为"教学关"，`level-tiny.json` 留 E2E。
 > **P2-4 拆分**：原"敌人 + 编辑器"X-Large 拆成 P2-4a（敌人+survive mode，依赖 P2-3）和 P2-4b（编辑器，独立）。

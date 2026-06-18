@@ -13,14 +13,21 @@ async function freshPage(page: Page): Promise<void> {
 // Carve a 5x4 default level into a navigable L-shape: top row (z=0) plus
 // right column (x=4). The wall tool toggles the cell, so clicking each
 // listed cell turns a wall into a floor.
+//
+// F-2026-06-17-M-11 / F-2026-06-15-H-3.7 root cause: the original loop
+// carved cells z=1..3, which includes (4, 3) — the default exit cell.
+// Carving an exit cell overwrites it with a wall, so the subsequent
+// save / export tests failed validation and fell through to the
+// `lastError` fallback. Stop at z=2 so (4, 3) is preserved.
 async function carveLShape(page: Page): Promise<void> {
   await page.getByTestId('tool-wall').click();
   // Top row.
   for (let x = 0; x < 5; x += 1) {
     await page.getByTestId(`cell-${x}-0`).click();
   }
-  // Right column (skip (4,0) — already done in the top-row loop).
-  for (let z = 1; z < 4; z += 1) {
+  // Right column (skip (4,0) — already done in the top-row loop; skip
+  // (4,3) — it's the default exit cell, must remain a floor).
+  for (let z = 1; z < 3; z += 1) {
     await page.getByTestId(`cell-4-${z}`).click();
   }
 }

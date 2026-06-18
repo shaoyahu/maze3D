@@ -544,7 +544,7 @@ export function LevelSelect({
                             <DifficultyBar value={difficultyOf(lv.data)} t={t} />
                             <span className="console-card__id">
                               {lv.data
-                                ? t(VICTORY_LABEL_KEYS[lv.data.rules.victory] ?? '')
+                                ? t(VICTORY_LABEL_KEYS[lv.data.rules.victory] ?? 'levels.victory.reachExit')
                                 : 'N/A'}
                             </span>
                           </div>
@@ -644,7 +644,7 @@ export function LevelSelect({
                         <DifficultyBar value={difficultyOf(lv.data)} t={t} />
                         <span className="console-card__id">
                           {lv.data
-                            ? t(VICTORY_LABEL_KEYS[lv.data.rules.victory] ?? '')
+                            ? t(VICTORY_LABEL_KEYS[lv.data.rules.victory] ?? 'levels.victory.reachExit')
                             : 'N/A'}
                         </span>
                       </div>

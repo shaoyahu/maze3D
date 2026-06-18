@@ -93,7 +93,8 @@ function actionButtonStyle(variant: ConfirmAction['variant']): CSSProperties {
     border: '1px solid var(--border)',
     cursor: 'pointer',
     fontFamily: 'inherit',
-    background: v === 'primary' ? 'var(--accent)' : v === 'danger' ? 'var(--danger)' : 'var(--panel)',
+    // F-2026-06-17-L-11: prefer --bg-elevated over deprecated --panel (see theme.css:91).
+    background: v === 'primary' ? 'var(--accent)' : v === 'danger' ? 'var(--danger)' : 'var(--bg-elevated)',
     color: v === 'secondary' ? 'var(--fg)' : '#1a1a1a',
   };
 }

@@ -106,4 +106,44 @@ describe('EditorLeftPanel (P2-13)', () => {
     expect(useLevelStore.getState().folders[sub.id]).toBeUndefined();
     expect(useLevelStore.getState().customLevels['l1']).toBeUndefined();
   });
+
+  // F-2026-06-17-M-10: right-click menu coverage. The three new cases pin
+  // the rename / move-to-folder / move-folder-to-parent flows so a
+  // future refactor of EditorLeftPanel.tsx's RowMenu can't silently
+  // regress the wiring between menu items and the levelStore actions.
+  it('right-click rename prompts for a new name and calls renameLevel', () => {
+    useLevelStore.setState({
+      customLevels: { l1: makeMaze('l1', 'OldName') },
+      folders: { [DEFAULT_FOLDER_ID]: { id: DEFAULT_FOLDER_ID, name: '我的', createdAt: 1 } },
+    });
+    const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue('NewName');
+    render(<ConfirmProvider><EditorLeftPanel /></ConfirmProvider>);
+    fireEvent.click(screen.getByTestId('row-menu-level-l1'));
+    fireEvent.click(screen.getByTestId('row-rename-level-l1'));
+    promptSpy.mockRestore();
+    expect(useLevelStore.getState().customLevels['l1'].name).toBe('NewName');
+  });
+
+  it('right-click move-to-folder calls moveLevel', () => {
+    const sub = useLevelStore.getState().createFolder('Sub');
+    useLevelStore.setState({
+      customLevels: { l1: makeMaze('l1', 'L1') },
+    });
+    render(<ConfirmProvider><EditorLeftPanel /></ConfirmProvider>);
+    fireEvent.click(screen.getByTestId('row-menu-level-l1'));
+    fireEvent.click(screen.getByTestId(`row-move-level-l1-to-${sub.id}`));
+    expect(useLevelStore.getState().customLevels['l1'].folderId).toBe(sub.id);
+  });
+
+  it('right-click move-folder-to-parent calls moveFolder', () => {
+    // Create a sibling folder, then move `Sub` (currently at root) into
+    // the default folder via the row menu. `allFolderOptions` excludes
+    // `Sub` itself, so DEFAULT_FOLDER_ID appears as a valid target.
+    const sub = useLevelStore.getState().createFolder('Sub');
+    expect(useLevelStore.getState().folders[sub.id].parentId).toBeUndefined();
+    render(<ConfirmProvider><EditorLeftPanel /></ConfirmProvider>);
+    fireEvent.click(screen.getByTestId('row-menu-folder-' + sub.id));
+    fireEvent.click(screen.getByTestId(`row-move-folder-${sub.id}-to-${DEFAULT_FOLDER_ID}`));
+    expect(useLevelStore.getState().folders[sub.id].parentId).toBe(DEFAULT_FOLDER_ID);
+  });
 });
