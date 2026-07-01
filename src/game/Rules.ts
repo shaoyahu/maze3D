@@ -1,4 +1,4 @@
-import type { InventorySlot, MazeData, Pickup, SpawnSchedule } from '../maze/types';
+import type { InventorySlot, KeyColor, MazeData, Pickup, SpawnSchedule, Trap } from '../maze/types';
 import { ENEMY_COUNT_MAX, clampEnemyCount } from '../maze/types';
 
 // Cell convention: cell i owns [i*cs, (i+1)*cs). floor() matches Collision.
@@ -46,25 +46,109 @@ export function findPickupAt(player: { x: number; z: number }, maze: MazeData, r
   return null;
 }
 
+// P2-18: find the trap at the player's current cell, if any. Returns
+// null when the cell has no trap or the trap is on a wall cell (shouldn't
+// happen in valid levels, but guards against corrupted data).
+export function findTrapAt(
+  player: { x: number; z: number },
+  traps: Trap[],
+  cs: number,
+): Trap | null {
+  const px = cellX(player, cs);
+  const pz = cellZ(player, cs);
+  for (const t of traps) {
+    if (t.x === px && t.z === pz) return t;
+  }
+  return null;
+}
+
+// P2-18: compute the speed multiplier based on whether the player is
+// currently slowed by a water trap. Returns 1.0 when not slowed, 0.5
+// when slowed. The caller (Game.update) re-applies this every frame.
+export function computeSlowMultiplier(now: number, slowUntil: number): number {
+  if (now < slowUntil) return 0.5;
+  return 1.0;
+}
+
 // P2-2 #10: useItem handler. Pure function over (slot, inventory, maze) —
-// the store action calls it and reacts to the result. In the current
-// no-lock world the only effect is a UI flash; future P2-4a lock cells
-// would be resolved here and `consumed` would flip to true once a key
-// opens a door.
+// the store action calls it and reacts to the result.
 export interface UseItemResult {
   flash: boolean;
   consumed: boolean;
+  // P2-18: when the used item is a key with a keyColor that matches an
+  // adjacent closed door, this is that door's id. The store uses it to
+  // call bridge.onDoorUnlocked(id). Null when no door was unlocked.
+  unlockedDoorId: string | null;
 }
 
 export function onUseItem(
   slot: InventorySlot,
   inventory: (Pickup | null)[],
   maze: MazeData | null,
+  // P2-18: set of "x,z" coordinate keys for doors that are still closed.
+  // Closed doors not in this set are considered open (already unlocked).
+  // F-2026-07-01-C-1: changed from openedDoorIds (door ids) to
+  // closedDoorCells (coordinate strings) for consistency with the
+  // collision system.
+  closedDoorCells?: ReadonlySet<string>,
+  // P2-18: player's current cell coordinates, needed for adjacency check.
+  // F-2026-07-01-H-1: added so findAdjacentDoorForUnlock can verify
+  // the player is actually next to the door before unlocking.
+  playerCellX?: number,
+  playerCellZ?: number,
 ): UseItemResult {
-  if (!maze) return { flash: false, consumed: false };
-  if (slot < 0 || slot >= inventory.length) return { flash: false, consumed: false };
-  if (!inventory[slot]) return { flash: false, consumed: false };
-  return { flash: true, consumed: false };
+  if (!maze) return { flash: false, consumed: false, unlockedDoorId: null };
+  if (slot < 0 || slot >= inventory.length) return { flash: false, consumed: false, unlockedDoorId: null };
+  const item = inventory[slot];
+  if (!item) return { flash: false, consumed: false, unlockedDoorId: null };
+
+  // P2-18: key + keyColor → try to unlock an adjacent matching door.
+  if (item.type === 'key' && item.keyColor) {
+    const doorId = findAdjacentDoorForUnlock(
+      item.keyColor,
+      playerCellX ?? -1,
+      playerCellZ ?? -1,
+      maze,
+      closedDoorCells,
+    );
+    if (doorId) {
+      return { flash: true, consumed: true, unlockedDoorId: doorId };
+    }
+  }
+
+  return { flash: true, consumed: false, unlockedDoorId: null };
+}
+
+// P2-18: find a closed door adjacent to the player's current cell that
+// matches the given key color. "Adjacent" = 4-neighbour (Manhattan
+// distance 1). Returns the first matching door id, or null.
+// F-2026-07-01-C-1: changed parameter from openedDoorIds (door ids) to
+// closedDoorCells ("x,z" coordinate keys) to match the key space used
+// by the collision system.
+function findAdjacentDoorForUnlock(
+  keyColor: KeyColor,
+  playerX: number,
+  playerZ: number,
+  maze: MazeData,
+  closedDoorCells?: ReadonlySet<string>,
+): string | null {
+  const closedSet = closedDoorCells ?? new Set<string>();
+  // F-2026-07-01-H-1: check 4-neighbour cells (Manhattan distance 1)
+  // instead of scanning all doors. This matches the function name and
+  // the design spec's "adjacent" requirement.
+  const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  for (const [dx, dz] of dirs) {
+    const nx = playerX + dx;
+    const nz = playerZ + dz;
+    for (const door of maze.doors) {
+      if (door.x !== nx || door.z !== nz) continue;
+      if (door.keyColor !== keyColor) continue;
+      // Door is still closed if its cell is in closedDoorCells
+      if (!closedSet.has(`${door.x},${door.z}`)) continue;
+      return door.id;
+    }
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------

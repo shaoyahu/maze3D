@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useEditorStore } from '../../store/editorStore';
-import type { EditorTool, EnemySpawn, MazeData, Pickup, PickupType } from '../../maze/types';
+import type { EditorTool, EnemySpawn, MazeData, Pickup, PickupType, Trap, Door } from '../../maze/types';
 import type { EditorSelection } from '../../store/editorStore';
 import { EditorHelpDrawer } from './EditorHelpDrawer';
 import { useT } from '../../i18n';
@@ -12,6 +12,9 @@ const PICKUP_CSS_COLOR: Record<PickupType, string> = {
   health: '#ff5050',
   key: '#5fa8ff',
 };
+// F-2026-07-01-L-2: centralized color constants imported from utils/colors.ts
+// instead of locally duplicated.
+import { TRAP_CSS_COLOR, KEY_COLOR_CSS } from '../../utils/colors';
 const ENEMY_COLOR = '#ff8a3d';
 const WALL_COLOR = '#1d1f27';
 const FLOOR_COLOR = '#e0e0ea';
@@ -28,18 +31,26 @@ const ZOOM_STEP = 0.1;
 interface CellLookup {
   pickupByCell: Map<string, Pickup>;
   enemyByCell: Map<string, EnemySpawn>;
+  // P2-18: trap and door cell lookups for selection + glyph rendering.
+  trapByCell: Map<string, Trap>;
+  doorByCell: Map<string, Door>;
 }
 
 function cellKey(x: number, z: number): string {
   return `${x},${z}`;
 }
 
-function buildLookups(level: { pickups: Pickup[]; enemies: EnemySpawn[] }): CellLookup {
+function buildLookups(level: { pickups: Pickup[]; enemies: EnemySpawn[]; traps: Trap[]; doors: Door[] }): CellLookup {
   const pickupByCell = new Map<string, Pickup>();
   for (const p of level.pickups) pickupByCell.set(cellKey(p.x, p.z), p);
   const enemyByCell = new Map<string, EnemySpawn>();
   for (const e of level.enemies) enemyByCell.set(cellKey(e.x, e.z), e);
-  return { pickupByCell, enemyByCell };
+  // P2-18: trap and door cell lookups.
+  const trapByCell = new Map<string, Trap>();
+  for (const t of level.traps) trapByCell.set(cellKey(t.x, t.z), t);
+  const doorByCell = new Map<string, Door>();
+  for (const d of level.doors) doorByCell.set(cellKey(d.x, d.z), d);
+  return { pickupByCell, enemyByCell, trapByCell, doorByCell };
 }
 
 function pathPointsAttr(path: Array<{ x: number; z: number }>): string {
@@ -80,6 +91,9 @@ export function EditorViewport({ anyOverlayOpen = false }: EditorViewportProps):
   const placePickup = useEditorStore((s) => s.placePickup);
   const placeEnemy = useEditorStore((s) => s.placeEnemy);
   const appendEnemyPathNode = useEditorStore((s) => s.appendEnemyPathNode);
+  // P2-18: trap and door placement actions.
+  const placeTrap = useEditorStore((s) => s.placeTrap);
+  const placeDoor = useEditorStore((s) => s.placeDoor);
   const select = useEditorStore((s) => s.select);
   const clearSelection = useEditorStore((s) => s.clearSelection);
   const setTool = useEditorStore((s) => s.setTool);
@@ -161,7 +175,7 @@ export function EditorViewport({ anyOverlayOpen = false }: EditorViewportProps):
   // L-2 gate can read them — see the F-P2-9 comment on the first
   // declaration.)
 
-  const { pickupByCell, enemyByCell } = useMemo(() => buildLookups(level), [level]);
+  const { pickupByCell, enemyByCell, trapByCell, doorByCell } = useMemo(() => buildLookups(level), [level]);
   const panStateRef = useRef<{ x: number; y: number } | null>(null);
 
   // F-2026-06-15-M-45: was an inline arrow rebuilt on every render, which
@@ -182,9 +196,18 @@ export function EditorViewport({ anyOverlayOpen = false }: EditorViewportProps):
         const e = enemyByCell.get(cellKey(x, z));
         return e ? e.id === selection.id : false;
       }
+      // P2-18: trap and door selection branches.
+      if (selection.kind === 'trap') {
+        const t = trapByCell.get(cellKey(x, z));
+        return t ? t.id === selection.id : false;
+      }
+      if (selection.kind === 'door') {
+        const d = doorByCell.get(cellKey(x, z));
+        return d ? d.id === selection.id : false;
+      }
       return false;
     },
-    [selection, pickupByCell, enemyByCell],
+    [selection, pickupByCell, enemyByCell, trapByCell, doorByCell],
   );
 
   const handleCellClick = (x: number, z: number): void => {
@@ -198,6 +221,17 @@ export function EditorViewport({ anyOverlayOpen = false }: EditorViewportProps):
       const enemy = enemyByCell.get(cellKey(x, z));
       if (enemy) {
         select({ kind: 'enemy', id: enemy.id });
+        return;
+      }
+      // P2-18: select trap or door on click.
+      const trap = trapByCell.get(cellKey(x, z));
+      if (trap) {
+        select({ kind: 'trap', id: trap.id });
+        return;
+      }
+      const door = doorByCell.get(cellKey(x, z));
+      if (door) {
+        select({ kind: 'door', id: door.id });
         return;
       }
       if (level.walls[z]?.[x] === 1) {
@@ -221,7 +255,11 @@ export function EditorViewport({ anyOverlayOpen = false }: EditorViewportProps):
         return;
       }
       placeEnemy(x, z, level.size.width);
-    } else {
+    }
+    // P2-18: trap and door placement.
+    else if (tool === 'trap') placeTrap(x, z);
+    else if (tool === 'door') placeDoor(x, z);
+    else {
       // F-2026-06-16-M-4: exhaustiveness check. If a new EditorTool
       // variant is added without a branch here, the `never` assignment
       // fails to compile (tool narrows to `never` after every known
@@ -400,7 +438,9 @@ export function EditorViewport({ anyOverlayOpen = false }: EditorViewportProps):
   const isEmpty =
     level.walls.every((row) => row.every((c) => c === 0)) &&
     level.pickups.length === 0 &&
-    level.enemies.length === 0;
+    level.enemies.length === 0 &&
+    level.traps.length === 0 &&
+    level.doors.length === 0;
 
   return (
     <div className="editor-viewport-shell" data-testid="editor-viewport-shell">
@@ -520,12 +560,16 @@ export function EditorViewport({ anyOverlayOpen = false }: EditorViewportProps):
               const isWall = level.walls[z]?.[x] === 1;
               const isStart = level.start.x === x && level.start.z === z;
               const isExit = level.exit.x === x && level.exit.z === z;
-              if (!isWall && !isStart && !isExit) return null;
-              const className = isStart
-                ? 'editor-viewport-minimap__cell editor-viewport-minimap__cell--start'
-                : isExit
-                  ? 'editor-viewport-minimap__cell editor-viewport-minimap__cell--exit'
-                  : 'editor-viewport-minimap__cell';
+              // P2-18: trap and door minimap pixels.
+              const trap = trapByCell.get(cellKey(x, z));
+              const door = doorByCell.get(cellKey(x, z));
+              if (!isWall && !isStart && !isExit && !trap && !door) return null;
+              let className: string;
+              if (isStart) className = 'editor-viewport-minimap__cell editor-viewport-minimap__cell--start';
+              else if (isExit) className = 'editor-viewport-minimap__cell editor-viewport-minimap__cell--exit';
+              else if (trap) className = `editor-viewport-minimap__cell editor-viewport-minimap__cell--trap-${trap.kind}`;
+              else if (door) className = 'editor-viewport-minimap__cell editor-viewport-minimap__cell--door';
+              else className = 'editor-viewport-minimap__cell';
               return (
                 <div
                   key={cellKey(x, z)}
@@ -810,6 +854,83 @@ const GridBody = memo(function GridBody({
                 background: ENEMY_COLOR,
                 border: '2px solid #0c0d12',
                 boxShadow: '0 0 0 1px ' + ENEMY_COLOR,
+              }}
+            />
+          </div>
+        );
+      })}
+
+      {/* P2-18: trap glyphs — fire (warm orange disc) and water (cool blue disc). */}
+      {level.traps.map((t) => {
+        const selected = selection?.kind === 'trap' && selection.id === t.id;
+        return (
+          <div
+            key={t.id}
+            data-testid={`trap-${t.id}`}
+            data-trap-kind={t.kind}
+            style={{
+              position: 'absolute',
+              left: t.x * CELL_SIZE,
+              top: t.z * CELL_SIZE,
+              width: CELL_SIZE,
+              height: CELL_SIZE,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              pointerEvents: 'none',
+              outline: selected ? '2px solid var(--accent)' : 'none',
+              outlineOffset: '-2px',
+              zIndex: 2,
+            }}
+          >
+            <span
+              aria-hidden
+              style={{
+                display: 'inline-block',
+                width: 12,
+                height: 12,
+                borderRadius: '50%',
+                background: TRAP_CSS_COLOR[t.kind],
+                border: '2px solid #0c0d12',
+                opacity: 0.85,
+              }}
+            />
+          </div>
+        );
+      })}
+
+      {/* P2-18: door glyphs — colored rectangle matching the key color. */}
+      {level.doors.map((d) => {
+        const selected = selection?.kind === 'door' && selection.id === d.id;
+        return (
+          <div
+            key={d.id}
+            data-testid={`door-${d.id}`}
+            data-door-key-color={d.keyColor}
+            style={{
+              position: 'absolute',
+              left: d.x * CELL_SIZE,
+              top: d.z * CELL_SIZE,
+              width: CELL_SIZE,
+              height: CELL_SIZE,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              pointerEvents: 'none',
+              outline: selected ? '2px solid var(--accent)' : 'none',
+              outlineOffset: '-2px',
+              zIndex: 2,
+            }}
+          >
+            <span
+              aria-hidden
+              style={{
+                display: 'inline-block',
+                width: 18,
+                height: 14,
+                borderRadius: 2,
+                background: KEY_COLOR_CSS[d.keyColor],
+                border: '2px solid #0c0d12',
               }}
             />
           </div>

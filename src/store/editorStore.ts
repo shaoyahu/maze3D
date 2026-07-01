@@ -25,6 +25,8 @@ import type {
   MinimapMode,
   MapOpenBehavior,
   ParchmentLifecycle,
+  Trap,
+  Door,
 } from '../maze/types';
 import { isMinimapMode, isMapOpenBehavior, isParchmentLifecycle } from '../maze/types';
 import {
@@ -198,6 +200,9 @@ interface EditorStoreState {
   placeExit: (x: number, z: number) => void;
   placePickup: (x: number, z: number) => void;
   placeEnemy: (x: number, z: number, width: number) => void;
+  // P2-18: trap and door placement actions.
+  placeTrap: (x: number, z: number) => void;
+  placeDoor: (x: number, z: number) => void;
   // Append a new patrol waypoint to the given enemy. Used by the
   // "click a cell to extend the patrol path" viewport interaction.
   appendEnemyPathNode: (enemyId: string, x: number, z: number) => void;
@@ -205,6 +210,9 @@ interface EditorStoreState {
   // patch actions (mark dirty; history is debounced/blurred separately)
   updatePickup: (id: string, patch: Partial<Pickup>) => void;
   updateEnemy: (id: string, patch: Partial<EnemySpawn>) => void;
+  // P2-18: trap and door patch actions.
+  updateTrap: (id: string, patch: Partial<Trap>) => void;
+  updateDoor: (id: string, patch: Partial<Door>) => void;
   updateRule: (patch: Partial<LevelRules>) => void;
   updateName: (name: string) => void;
   updateSize: (width: number, depth: number) => void;
@@ -296,6 +304,9 @@ function buildEmptyLevel(width: number, depth: number): MazeData {
     walls,
     pickups: [],
     enemies: [],
+    // P2-18: traps and doors start empty.
+    traps: [],
+    doors: [],
     rules: { ...DEFAULT_RULES },
   };
 }
@@ -354,6 +365,9 @@ function isAdjacent(
 type ExcludeKey =
   | { kind: 'enemy'; id: string }
   | { kind: 'pickup'; id: string }
+  // P2-18: exclude a specific trap or door when checking occupancy.
+  | { kind: 'trap'; id: string }
+  | { kind: 'door'; id: string }
   | { kind: 'start' }
   | { kind: 'exit' };
 
@@ -362,7 +376,7 @@ function isOccupied(
   x: number,
   z: number,
   exclude: ExcludeKey | null = null,
-): { occupied: boolean; reason: 'start' | 'exit' | 'pickup' | 'enemy' | null } {
+): { occupied: boolean; reason: 'start' | 'exit' | 'pickup' | 'enemy' | 'trap' | 'door' | null } {
   const matchesExclude = (e: ExcludeKey): boolean => {
     if (exclude === null) return false;
     if (e.kind !== exclude.kind) return false;
@@ -387,6 +401,15 @@ function isOccupied(
       const node = e.path[i]!;
       if (node.x === x && node.z === z) return { occupied: true, reason: 'enemy' };
     }
+  }
+  // P2-18: check trap and door overlap.
+  for (const t of level.traps) {
+    if (matchesExclude({ kind: 'trap', id: t.id })) continue;
+    if (t.x === x && t.z === z) return { occupied: true, reason: 'trap' };
+  }
+  for (const d of level.doors) {
+    if (matchesExclude({ kind: 'door', id: d.id })) continue;
+    if (d.x === x && d.z === z) return { occupied: true, reason: 'door' };
   }
   return { occupied: false, reason: null };
 }
@@ -734,6 +757,15 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
         set({ lastError: null, lastErrorKey: 'editor.lastError.collideWithEnemy' });
         return;
       }
+      // P2-18: walls can't co-exist with traps or doors.
+      if (occ.occupied && occ.reason === 'trap') {
+        set({ lastError: null, lastErrorKey: 'editor.lastError.collideWithTrap' });
+        return;
+      }
+      if (occ.occupied && occ.reason === 'door') {
+        set({ lastError: null, lastErrorKey: 'editor.lastError.collideWithDoor' });
+        return;
+      }
       // F-P2-9: set-to-1. A click on an existing wall is now a no-op
       // (avoids redundant history entries and an unexpected "wall
       // disappears" surprise that the legacy toggle caused).
@@ -804,6 +836,15 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
         set({ lastError: null, lastErrorKey: 'editor.lastError.collideWithEnemy' });
         return;
       }
+      // P2-18: start can't overlap trap or door.
+      if (occ.occupied && occ.reason === 'trap') {
+        set({ lastError: null, lastErrorKey: 'editor.lastError.collideWithTrap' });
+        return;
+      }
+      if (occ.occupied && occ.reason === 'door') {
+        set({ lastError: null, lastErrorKey: 'editor.lastError.collideWithDoor' });
+        return;
+      }
       // Auto-carve the cell if it's currently a wall — UX win so the user
       // can drop a start on top of an existing wall rather than getting a
       // silent reject. Mirrors the carve-on-resize behaviour.
@@ -838,6 +879,15 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
       }
       if (occ.occupied && occ.reason === 'enemy') {
         set({ lastError: null, lastErrorKey: 'editor.lastError.collideWithEnemy' });
+        return;
+      }
+      // P2-18: exit can't overlap trap or door.
+      if (occ.occupied && occ.reason === 'trap') {
+        set({ lastError: null, lastErrorKey: 'editor.lastError.collideWithTrap' });
+        return;
+      }
+      if (occ.occupied && occ.reason === 'door') {
+        set({ lastError: null, lastErrorKey: 'editor.lastError.collideWithDoor' });
         return;
       }
       // Auto-carve the cell if it's currently a wall so the user can drop
@@ -891,6 +941,15 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
         set({ lastError: null, lastErrorKey: 'editor.lastError.collideWithEnemy' });
         return;
       }
+      // P2-18: pickup can't overlap trap or door.
+      if (occ.occupied && occ.reason === 'trap') {
+        set({ lastError: null, lastErrorKey: 'editor.lastError.collideWithTrap' });
+        return;
+      }
+      if (occ.occupied && occ.reason === 'door') {
+        set({ lastError: null, lastErrorKey: 'editor.lastError.collideWithDoor' });
+        return;
+      }
       const newPickup: Pickup = {
         id: generateId(),
         x,
@@ -919,6 +978,8 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
           occ.reason === 'start' ? 'editor.lastError.collideWithStart'
           : occ.reason === 'exit' ? 'editor.lastError.collideWithExit'
           : occ.reason === 'pickup' ? 'editor.lastError.collideWithPickup'
+          : occ.reason === 'trap' ? 'editor.lastError.collideWithTrap'
+          : occ.reason === 'door' ? 'editor.lastError.collideWithDoor'
           : 'editor.lastError.collideWithEnemy';
         set({ lastError: null, lastErrorKey: key });
         return;
@@ -965,6 +1026,91 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
       });
     },
 
+    // P2-18: place a trap on the given cell. Traps cannot be placed on
+    // walls, start, exit, or cells already occupied by pickups, enemies,
+    // traps, or doors.
+    placeTrap: (x, z) => {
+      const { level } = get();
+      if (!isFloor(level, x, z)) {
+        set({ lastError: null, lastErrorKey: 'editor.lastError.trapOnWall' });
+        return;
+      }
+      if (level.start.x === x && level.start.z === z) {
+        set({ lastError: null, lastErrorKey: 'editor.lastError.collideWithStart' });
+        return;
+      }
+      if (level.exit.x === x && level.exit.z === z) {
+        set({ lastError: null, lastErrorKey: 'editor.lastError.collideWithExit' });
+        return;
+      }
+      const occ = isOccupied(level, x, z);
+      if (occ.occupied) {
+        const key =
+          occ.reason === 'pickup' ? 'editor.lastError.collideWithPickup'
+          : occ.reason === 'enemy' ? 'editor.lastError.collideWithEnemy'
+          : occ.reason === 'trap' ? 'editor.lastError.trapDuplicate'
+          : occ.reason === 'door' ? 'editor.lastError.collideWithDoor'
+          : 'editor.lastError.collideWithPickup';
+        set({ lastError: null, lastErrorKey: key });
+        return;
+      }
+      const newTrap: Trap = {
+        id: generateId(),
+        x,
+        z,
+        kind: 'fire',
+        damage: 1,
+      };
+      const nextLevel: MazeData = { ...level, traps: [...level.traps, newTrap] };
+      set({
+        ...commitLevel(get(), nextLevel, { kind: 'trap', id: newTrap.id }),
+        lastError: null,
+        lastErrorKey: null,
+      });
+    },
+
+    // P2-18: place a door on the given cell. Doors cannot be placed on
+    // walls, start, exit, or cells already occupied by pickups, enemies,
+    // traps, or doors.
+    placeDoor: (x, z) => {
+      const { level } = get();
+      if (!isFloor(level, x, z)) {
+        set({ lastError: null, lastErrorKey: 'editor.lastError.doorOnWall' });
+        return;
+      }
+      if (level.start.x === x && level.start.z === z) {
+        set({ lastError: null, lastErrorKey: 'editor.lastError.collideWithStart' });
+        return;
+      }
+      if (level.exit.x === x && level.exit.z === z) {
+        set({ lastError: null, lastErrorKey: 'editor.lastError.collideWithExit' });
+        return;
+      }
+      const occ = isOccupied(level, x, z);
+      if (occ.occupied) {
+        const key =
+          occ.reason === 'pickup' ? 'editor.lastError.collideWithPickup'
+          : occ.reason === 'enemy' ? 'editor.lastError.collideWithEnemy'
+          : occ.reason === 'trap' ? 'editor.lastError.collideWithTrap'
+          : occ.reason === 'door' ? 'editor.lastError.doorDuplicate'
+          : 'editor.lastError.collideWithPickup';
+        set({ lastError: null, lastErrorKey: key });
+        return;
+      }
+      const newDoor: Door = {
+        id: generateId(),
+        x,
+        z,
+        keyColor: 'red',
+      };
+      const nextLevel: MazeData = { ...level, doors: [...level.doors, newDoor] };
+      set({
+        ...commitLevel(get(), nextLevel, { kind: 'door', id: newDoor.id }),
+        lastError: null,
+        lastErrorKey: null,
+      });
+    },
+
     // Append a node to an enemy's patrol path. The first click after
     // selecting an enemy (in enemy tool mode) lands here — used by the
     // viewport's "click to add path waypoint" interaction.
@@ -1003,6 +1149,8 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
           occ.reason === 'start' ? 'editor.lastError.collideWithStart'
           : occ.reason === 'exit' ? 'editor.lastError.collideWithExit'
           : occ.reason === 'pickup' ? 'editor.lastError.collideWithPickup'
+          : occ.reason === 'trap' ? 'editor.lastError.collideWithTrap'
+          : occ.reason === 'door' ? 'editor.lastError.collideWithDoor'
           : 'editor.lastError.collideWithEnemy';
         set({ lastError: null, lastErrorKey: key });
         return;
@@ -1072,6 +1220,44 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
         // any rule field is a clear "I accepted the previous state"
         // signal — keeping `editor.lastError.*` on screen would be
         // misleading and stale.
+        lastError: null,
+        lastErrorKey: null,
+      });
+    },
+
+    // P2-18: patch a trap's properties (kind, damage, slowDurationSec).
+    updateTrap: (id, patch) => {
+      const { level } = get();
+      let touched = false;
+      const nextTraps = level.traps.map((t) => {
+        if (t.id !== id) return t;
+        touched = true;
+        return { ...t, ...patch } as Trap;
+      });
+      if (!touched) return;
+      const nextLevel: MazeData = { ...level, traps: nextTraps };
+      set({
+        level: nextLevel,
+        dirty: levelHash(nextLevel) !== get().lastSavedHash,
+        lastError: null,
+        lastErrorKey: null,
+      });
+    },
+
+    // P2-18: patch a door's properties (keyColor).
+    updateDoor: (id, patch) => {
+      const { level } = get();
+      let touched = false;
+      const nextDoors = level.doors.map((d) => {
+        if (d.id !== id) return d;
+        touched = true;
+        return { ...d, ...patch } as Door;
+      });
+      if (!touched) return;
+      const nextLevel: MazeData = { ...level, doors: nextDoors };
+      set({
+        level: nextLevel,
+        dirty: levelHash(nextLevel) !== get().lastSavedHash,
         lastError: null,
         lastErrorKey: null,
       });
@@ -1175,12 +1361,21 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
           e.z < depth &&
           e.path.every((n) => n.x >= 0 && n.x < width && n.z >= 0 && n.z < depth),
       );
+      // P2-18: filter traps and doors that fell outside the new bounds.
+      const filteredTraps = level.traps.filter(
+        (t) => t.x >= 0 && t.x < width && t.z >= 0 && t.z < depth,
+      );
+      const filteredDoors = level.doors.filter(
+        (d) => d.x >= 0 && d.x < width && d.z >= 0 && d.z < depth,
+      );
       const nextLevel: MazeData = {
         ...level,
         size: { width, depth },
         walls,
         pickups: filteredPickups,
         enemies: filteredEnemies,
+        traps: filteredTraps,
+        doors: filteredDoors,
         start: { x: startX, z: startZ },
         exit: { x: exitX, z: exitZ },
       };
@@ -1199,6 +1394,10 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
           if (!nextLevel.pickups.some((p) => p.id === sel.id)) nextSelection = null;
         } else if (sel.kind === 'enemy') {
           if (!nextLevel.enemies.some((e) => e.id === sel.id)) nextSelection = null;
+        } else if (sel.kind === 'trap') {
+          if (!nextLevel.traps.some((t) => t.id === sel.id)) nextSelection = null;
+        } else if (sel.kind === 'door') {
+          if (!nextLevel.doors.some((d) => d.id === sel.id)) nextSelection = null;
         }
       }
       set(commitLevel(get(), nextLevel, nextSelection));
@@ -1335,6 +1534,16 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
         const enemies = level.enemies.filter((e) => e.id !== selection.id);
         if (enemies.length === level.enemies.length) return;
         nextLevel = { ...level, enemies };
+      } else if (selection.kind === 'trap') {
+        // P2-18: delete the selected trap.
+        const traps = level.traps.filter((t) => t.id !== selection.id);
+        if (traps.length === level.traps.length) return;
+        nextLevel = { ...level, traps };
+      } else if (selection.kind === 'door') {
+        // P2-18: delete the selected door.
+        const doors = level.doors.filter((d) => d.id !== selection.id);
+        if (doors.length === level.doors.length) return;
+        nextLevel = { ...level, doors };
       } else if (selection.kind === 'wall') {
         // wall — carve the cell back to floor. The previous version
         // set the cell to 1 (wall) which made the "删除墙体" button a

@@ -1,0 +1,29 @@
+{
+  "id": "teaching-06",
+  "name": "涉水而行",
+  "i18n": { "en": "Wade Through" },
+  "size": { "width": 7, "depth": 1 },
+  "cellSize": 2,
+  "start": { "x": 0, "z": 0 },
+  "exit": { "x": 6, "z": 0 },
+  "walls": [
+    [0, 0, 0, 0, 0, 0, 0]
+  ],
+  "pickups": [],
+  "traps": [
+    { "id": "00000000-0000-0000-0000-000000000031", "x": 3, "z": 0, "kind": "water", "slowDurationSec": 3 }
+  ],
+  "doors": [],
+  "rules": {
+    "initialTime": 30,
+    "maxHealth": 3,
+    "victory": "reach-exit",
+    "timeOnPickup": 10
+  },
+  "enemies": [],
+  "tutorialSteps": [
+    { "id": "intro", "messageKey": "tutorial.teaching06.step1", "trigger": { "type": "timeout", "timeoutSec": 1.5 } },
+    { "id": "slowed", "messageKey": "tutorial.teaching06.step2", "trigger": { "type": "timeout", "timeoutSec": 5 } },
+    { "id": "exit", "messageKey": "tutorial.teaching06.step3", "trigger": { "type": "reached-exit" } }
+  ]
+}

@@ -30,6 +30,8 @@ const parchmentMaze: MazeData = {
     minimapMode: 'parchment',
   },
   enemies: [],
+  traps: [],
+  doors: [],
 };
 
 const normalMaze: MazeData = {

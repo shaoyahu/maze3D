@@ -1,5 +1,9 @@
 export type CellType = 0 | 1;
 export type PickupType = 'time' | 'health' | 'key';
+// P2-18: trap kinds — fire (damage + burn mark) and water (slow + water mark).
+export type TrapKind = 'fire' | 'water';
+// P2-18: key colors for color-keyed doors. 4 colors per user decision.
+export type KeyColor = 'red' | 'blue' | 'green' | 'yellow';
 // F-2026-06-17-A-CRITICAL-2: 'caught-by-enemy' is the 哨兵回廊 teaching-03
 // victory path — the level is won by being caught (tutorial completion
 // pattern). Adding the literal here keeps the union in lockstep with
@@ -21,6 +25,9 @@ export type LevelSource = 'teaching' | 'random' | 'custom' | 'seed';
 // (readonly tuple of literals) lets `isFoo` narrow the input type without
 // an `as never` cast on the includes() call.
 export const PICKUP_TYPE_VALUES: readonly PickupType[] = ['time', 'health', 'key'];
+// P2-18: runtime whitelists for trap kinds and key colors.
+export const TRAP_KIND_VALUES: readonly TrapKind[] = ['fire', 'water'];
+export const KEY_COLOR_VALUES: readonly KeyColor[] = ['red', 'blue', 'green', 'yellow'];
 export const VICTORY_TYPE_VALUES: readonly VictoryType[] = [
   'reach-exit',
   'survive',
@@ -47,6 +54,16 @@ export const MAZE_SIZE_VALUES: readonly MazeSize[] = [15, 30, 50];
 //   - values outside the literal union via the readonly whitelist
 export function isPickupType(v: unknown): v is PickupType {
   return typeof v === 'string' && (PICKUP_TYPE_VALUES as readonly string[]).includes(v);
+}
+
+// P2-18: type guards for TrapKind and KeyColor, mirroring the existing
+// isPickupType / isVictoryType pattern.
+export function isTrapKind(v: unknown): v is TrapKind {
+  return typeof v === 'string' && (TRAP_KIND_VALUES as readonly string[]).includes(v);
+}
+
+export function isKeyColor(v: unknown): v is KeyColor {
+  return typeof v === 'string' && (KEY_COLOR_VALUES as readonly string[]).includes(v);
 }
 
 export function isVictoryType(v: unknown): v is VictoryType {
@@ -92,6 +109,32 @@ export interface Pickup {
   z: number;
   type: PickupType;
   value: number;
+  // P2-18: optional key color. When type === 'key', this determines which
+  // color-keyed door the key can unlock. Omitting keyColor leaves the key
+  // as a generic/unlockable placeholder (backward-compat for existing levels).
+  keyColor?: KeyColor;
+}
+
+// P2-18: a cell-level trap that triggers when the player walks onto it.
+export interface Trap {
+  id: string;
+  x: number;
+  z: number;
+  kind: TrapKind;
+  // fire: damage per hit (defaults to 1 when omitted)
+  damage?: number;
+  // water: slow duration in seconds (defaults to 1.5 when omitted)
+  slowDurationSec?: number;
+}
+
+// P2-18: a color-keyed door. Initially locked (treated as a wall by
+// collision); opened by using a matching-keyColor pickup from inventory.
+// Door state resets on every startLevel (engine-side Set<string>).
+export interface Door {
+  id: string;
+  x: number;
+  z: number;
+  keyColor: KeyColor;
 }
 
 export interface LevelRules {
@@ -140,6 +183,9 @@ export interface MazeData {
   pickups: Pickup[];
   rules: LevelRules;
   enemies: EnemySpawn[];
+  // P2-18: traps and doors on this level.
+  traps: Trap[];
+  doors: Door[];
   // P2-11: when true, the runtime skips rendering the Minimap. Used by
   // 哨兵回廊 to hide the map during the chase.
   //
@@ -413,6 +459,9 @@ export type EditorTool =
   | 'exit'
   | 'pickup'
   | 'enemy'
+  // P2-18: trap and door placement tools.
+  | 'trap'
+  | 'door'
   | 'pan';
 
 // reject anything whose schemaVersion is not exactly this value.

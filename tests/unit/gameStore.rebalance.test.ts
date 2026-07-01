@@ -14,6 +14,8 @@ function makeMaze(overrides: Partial<MazeData> = {}): MazeData {
     pickups: [],
     rules: { initialTime: 30, maxHealth: 3, victory: 'reach-exit', timeOnPickup: 15 },
     enemies: [],
+    traps: [],
+    doors: [],
     ...overrides,
   };
 }

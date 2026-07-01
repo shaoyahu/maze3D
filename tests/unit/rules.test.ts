@@ -8,9 +8,12 @@ import {
   shouldProgressSpawn,
   isPlayerCaughtByEnemy,
   ENEMY_INVULNERABLE_SECONDS,
+  // P2-18
+  findTrapAt,
+  computeSlowMultiplier,
 } from '../../src/game/Rules';
 import { SPAWN_SCHEDULE_DEFAULT } from '../../src/maze/types';
-import type { MazeData, SpawnSchedule } from '../../src/maze/types';
+import type { MazeData, SpawnSchedule, Trap } from '../../src/maze/types';
 
 const maze: MazeData = {
   id: 'm', name: 't', size: { width: 3, depth: 3 }, cellSize: 2,
@@ -19,6 +22,8 @@ const maze: MazeData = {
   pickups: [{ id: crypto.randomUUID(), x: 1, z: 1, type: 'time', value: 5 }],
   rules: { initialTime: 60, maxHealth: 3, victory: 'reach-exit', timeOnPickup: 15 },
   enemies: [],
+  traps: [],
+  doors: [],
 };
 
 describe('Rules', () => {
@@ -103,28 +108,28 @@ describe('Rules', () => {
     const keyPickup = { id: crypto.randomUUID(), x: 0, z: 0, type: 'key' as const, value: 1 };
 
     it('returns flash=false when maze is null', () => {
-      expect(onUseItem(0, [keyPickup, null], null)).toEqual({ flash: false, consumed: false });
+      expect(onUseItem(0, [keyPickup, null], null)).toEqual({ flash: false, consumed: false, unlockedDoorId: null });
     });
 
     it('returns flash=false when the slot is empty', () => {
-      expect(onUseItem(0, [null, null], maze)).toEqual({ flash: false, consumed: false });
+      expect(onUseItem(0, [null, null], maze)).toEqual({ flash: false, consumed: false, unlockedDoorId: null });
     });
 
     it('returns flash=false when the slot index is out of bounds', () => {
       // Cast: the runtime guard exists to protect against bad input that
       // bypassed the type system (e.g. wider `number` callers). The literal
       // 5 isn't assignable to `InventorySlot = 0 | 1` without a cast.
-      expect(onUseItem(5 as unknown as 0 | 1, [keyPickup, null], maze)).toEqual({ flash: false, consumed: false });
+      expect(onUseItem(5 as unknown as 0 | 1, [keyPickup, null], maze)).toEqual({ flash: false, consumed: false, unlockedDoorId: null });
     });
 
     it('returns flash=true and consumed=false for a filled slot in the no-lock world', () => {
       // MVP has no lock cells, so a useItem only triggers a UI flash; future
       // P2-4a lock logic would flip consumed to true once a key opens a door.
-      expect(onUseItem(0, [keyPickup, null], maze)).toEqual({ flash: true, consumed: false });
+      expect(onUseItem(0, [keyPickup, null], maze)).toEqual({ flash: true, consumed: false, unlockedDoorId: null });
     });
 
     it('works for slot 1 as well', () => {
-      expect(onUseItem(1, [null, keyPickup], maze)).toEqual({ flash: true, consumed: false });
+      expect(onUseItem(1, [null, keyPickup], maze)).toEqual({ flash: true, consumed: false, unlockedDoorId: null });
     });
   });
 
@@ -271,6 +276,147 @@ describe('Rules', () => {
       });
       expect(r.triggered).toBe(true);
       expect(r.nextEnemyCount).toBe(10);
+    });
+  });
+
+  // ── P2-18: findTrapAt ──
+  describe('findTrapAt (P2-18)', () => {
+    const traps: Trap[] = [
+      { id: 'fire-1', x: 2, z: 2, kind: 'fire', damage: 1 },
+      { id: 'water-1', x: 4, z: 4, kind: 'water', slowDurationSec: 2 },
+    ];
+    const cs = 2; // cellSize
+
+    it('returns the trap when the player is on a trap cell', () => {
+      // cell (2,2) → world (4,4) with cellSize 2
+      const hit = findTrapAt({ x: 4.5, z: 4.5 }, traps, cs);
+      expect(hit).toEqual(traps[0]);
+    });
+
+    it('returns the water trap when on that cell', () => {
+      const hit = findTrapAt({ x: 8.5, z: 8.5 }, traps, cs);
+      expect(hit).toEqual(traps[1]);
+    });
+
+    it('returns null when the player is not on any trap', () => {
+      const miss = findTrapAt({ x: 0.5, z: 0.5 }, traps, cs);
+      expect(miss).toBeNull();
+    });
+
+    it('returns null when traps array is empty', () => {
+      expect(findTrapAt({ x: 4, z: 4 }, [], cs)).toBeNull();
+    });
+  });
+
+  // ── P2-18: computeSlowMultiplier ──
+  describe('computeSlowMultiplier (P2-18)', () => {
+    it('returns 1.0 when not slowed (slowUntil <= now)', () => {
+      expect(computeSlowMultiplier(10, 5)).toBe(1.0);
+      expect(computeSlowMultiplier(10, 10)).toBe(1.0);
+    });
+
+    it('returns 0.5 when slowed (now < slowUntil)', () => {
+      expect(computeSlowMultiplier(5, 10)).toBe(0.5);
+    });
+
+    it('returns 1.0 when slowUntil is 0 (never slowed)', () => {
+      expect(computeSlowMultiplier(5, 0)).toBe(1.0);
+    });
+  });
+
+  // ── P2-18: onUseItem with key + door ──
+  describe('onUseItem key+door (P2-18)', () => {
+    const doorId = 'door-red-1';
+    const mazeWithDoor: MazeData = {
+      ...maze,
+      doors: [{ id: doorId, x: 1, z: 2, keyColor: 'red' }],
+      pickups: [
+        { id: 'key-red', x: 1, z: 1, type: 'key', value: 0, keyColor: 'red' },
+      ],
+    };
+
+    // F-2026-07-01-C-1 + H-1: tests now use closedDoorCells (coordinate keys
+    // "x,z") instead of openedDoorIds (door ids), and pass player cell
+    // coordinates for adjacency checking.
+
+    it('returns unlockedDoorId when a matching key opens an adjacent door', () => {
+      // Player at cell (1,1), door at (1,2) — adjacent (Manhattan dist 1)
+      const closedDoorCells = new Set<string>(['1,2']);
+      const result = onUseItem(
+        0,
+        [mazeWithDoor.pickups[0]],
+        mazeWithDoor,
+        closedDoorCells,
+        1, // playerCellX
+        1, // playerCellZ
+      );
+      expect(result.unlockedDoorId).toBe(doorId);
+      expect(result.consumed).toBe(true);
+      expect(result.flash).toBe(true);
+    });
+
+    it('returns null unlockedDoorId when keyColor does not match', () => {
+      const blueKey = { ...mazeWithDoor.pickups[0], keyColor: 'blue' as const, id: 'key-blue' };
+      const closedDoorCells = new Set<string>(['1,2']);
+      const result = onUseItem(0, [blueKey], mazeWithDoor, closedDoorCells, 1, 1);
+      expect(result.unlockedDoorId).toBeNull();
+      expect(result.consumed).toBe(false);
+    });
+
+    it('returns null unlockedDoorId when the door is already opened (not in closedDoorCells)', () => {
+      // Door at (1,2) not in closedDoorCells means it's already open
+      const closedDoorCells = new Set<string>();
+      const result = onUseItem(
+        0,
+        [mazeWithDoor.pickups[0]],
+        mazeWithDoor,
+        closedDoorCells,
+        1,
+        1,
+      );
+      expect(result.unlockedDoorId).toBeNull();
+    });
+
+    it('returns null unlockedDoorId when key has no keyColor', () => {
+      const plainKey = { ...mazeWithDoor.pickups[0], keyColor: undefined };
+      const result = onUseItem(0, [plainKey], mazeWithDoor);
+      expect(result.unlockedDoorId).toBeNull();
+    });
+
+    it('returns null unlockedDoorId when there are no doors', () => {
+      const mazeNoDoors = { ...mazeWithDoor, doors: [] };
+      const result = onUseItem(
+        0,
+        [mazeWithDoor.pickups[0]],
+        mazeNoDoors,
+      );
+      expect(result.unlockedDoorId).toBeNull();
+    });
+
+    it('returns null unlockedDoorId when the door is not adjacent to the player (F-2026-07-01-H-1)', () => {
+      // Player at cell (0,0), door at (1,2) — NOT adjacent (Manhattan dist 3)
+      const closedDoorCells = new Set<string>(['1,2']);
+      const result = onUseItem(
+        0,
+        [mazeWithDoor.pickups[0]],
+        mazeWithDoor,
+        closedDoorCells,
+        0, // playerCellX — far away
+        0, // playerCellZ — far away
+      );
+      expect(result.unlockedDoorId).toBeNull();
+      expect(result.consumed).toBe(false);
+    });
+
+    it('returns unlockedDoorId when player is one cell away in any direction', () => {
+      // Test all 4 adjacency directions
+      const closedDoorCells = new Set<string>(['1,2']);
+      // Player at (1,3) — south of door
+      const resultSouth = onUseItem(0, [mazeWithDoor.pickups[0]], mazeWithDoor, closedDoorCells, 1, 3);
+      expect(resultSouth.unlockedDoorId).toBe(doorId);
+      // Player at (2,2) — east of door
+      const resultEast = onUseItem(0, [mazeWithDoor.pickups[0]], mazeWithDoor, closedDoorCells, 2, 2);
+      expect(resultEast.unlockedDoorId).toBe(doorId);
     });
   });
 });

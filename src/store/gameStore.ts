@@ -16,6 +16,7 @@ import { injectEnemySpawns } from '../maze/enemySpawner';
 import {
   applyDamage,
   applySpawnTrigger,
+  computeSlowMultiplier,
   onUseItem,
   shouldSurviveWin,
 } from '../game/Rules';
@@ -109,6 +110,15 @@ export interface GameState {
   // Null when the player hasn't won yet.
   lastWinKind: 'reach-exit' | 'caught-by-enemy' | null;
 
+  // P2-18: wall-clock timestamp (seconds) until which the player is slowed
+  // by a water trap. 0 = not slowed. The engine reads this via
+  // getPlayerSpeedMultiplier() to recalculate player.speed per frame.
+  slowUntil: number;
+  // P2-18: id of the most recently unlocked door, set by useItem when
+  // a key+door match is found. The bridge's onUseItem reads this to
+  // call game.openDoor(id). Reset to null after the bridge consumes it.
+  lastUnlockedDoorId: string | null;
+
   // F-2026-06-30: P2-16 — hand-held parchment map state. Mirrors the
   // engine-side `Game.parchment` field; the engine pushes via
   // `setParchment` on every reference change, and the UI subscribes
@@ -148,9 +158,22 @@ export interface GameState {
   // P2-11: `source` defaults to 'other' so existing callers (and tests)
   // keep their behavior. The engine passes 'enemy' from onEnemyContact.
   damage: (n: number, now?: number, source?: 'enemy' | 'other') => void;
-  useItem: (slot: InventorySlot) => void;
+  // F-2026-07-01-C-1 + H-1: added closedDoorCells and player cell position
+  // parameters so Rules.onUseItem can check door adjacency.
+  useItem: (
+    slot: InventorySlot,
+    closedDoorCells?: ReadonlySet<string>,
+    playerCellX?: number,
+    playerCellZ?: number,
+  ) => void;
   reachExit: (isNewRecord?: boolean) => void;
   goToMenu: () => void;
+  // P2-18: set the wall-clock timestamp until which the player is slowed.
+  // Called by the bridge's onTrapHit handler when a water trap fires.
+  setSlowUntil: (until: number) => void;
+  // P2-18: returns the current speed multiplier (1.0 normal, 0.5 slowed).
+  // The engine calls this every frame via bridge.getPlayerSpeedMultiplier().
+  getPlayerSpeedMultiplier: () => number;
 }
 
 export const useGameStore = create<GameState>((set, get) => ({
@@ -178,6 +201,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   // accidentally trigger the caught-by-enemy branch on a stale value.
   lastHitBy: 'other',
   lastWinKind: null,
+  // P2-18: not slowed at boot.
+  slowUntil: 0,
+  lastUnlockedDoorId: null,
 
   // F-2026-06-30: P2-16 — empty parchment at boot. Mirrors the
   // engine-side `Game.parchment` default; the engine pushes the
@@ -274,6 +300,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         // reach-exit level and produce a false caught-by-enemy signal.
         lastHitBy: 'other',
         lastWinKind: null,
+        // P2-18: reset slow debuff on every level start.
+        slowUntil: 0,
+        lastUnlockedDoorId: null,
         // F-2026-06-30: P2-16 — clear the parchment at every level
         // start so visited cells + damage regions from the previous
         // level don't bleed into the new one. The engine pushes its
@@ -488,7 +517,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
   },
 
-  useItem: (slot) => {
+  useItem: (slot, closedDoorCells?, playerCellX?, playerCellZ?) => {
     const s = get();
     if (s.screen !== 'playing') {
       // F3: surface the silent ignore so a Digit1/Digit2 press during
@@ -498,12 +527,23 @@ export const useGameStore = create<GameState>((set, get) => ({
       if (import.meta.env.DEV) console.debug('[useItem] ignored: screen =', s.screen);
       return;
     }
-    const result = onUseItem(slot, s.inventory, s.currentMaze);
+    const result = onUseItem(slot, s.inventory, s.currentMaze, closedDoorCells, playerCellX, playerCellZ);
     if (!result.flash) return;
-    // F-L15: removed the long-standing TODO. `result.consumed` is
-    // currently always false (no lock-cell feature yet) so it has no
-    // effect; the inventory-clear contract can be reintroduced when
-    // P2-4a actually lands. The store-side wiring here stays generic.
+    // P2-18: when a key+door match is found, the result tells us which
+    // door to unlock. We notify the engine via bridge.onDoorUnlocked
+    // and consume the slot (remove from inventory).
+    if (result.consumed && result.unlockedDoorId) {
+      const inv = [...s.inventory];
+      inv[slot] = null;
+      set({
+        inventory: inv,
+        useItemFlash: { slot, version: (s.useItemFlash?.version ?? 0) + 1 },
+        // P2-18: store the unlocked door id so the bridge can call
+        // game.openDoor(id). Cleared after the bridge reads it.
+        lastUnlockedDoorId: result.unlockedDoorId,
+      });
+      return;
+    }
     set({
       useItemFlash: { slot, version: (s.useItemFlash?.version ?? 0) + 1 },
     });
@@ -552,5 +592,20 @@ export const useGameStore = create<GameState>((set, get) => ({
       // `parchmentLifecycle: 'persist'` would override this in a
       // future death-increment; the engine hook isn't wired yet.
       parchment: createEmptyParchment(),
+      // P2-18: reset slow debuff on menu exit.
+      slowUntil: 0,
+      lastUnlockedDoorId: null,
     }),
+
+  // P2-18: set the slow-until timestamp (called by bridge's onTrapHit
+  // handler when a water trap fires).
+  setSlowUntil: (until) => set({ slowUntil: until }),
+
+  // P2-18: returns the current speed multiplier based on whether the
+  // player is still in the slow window. Called by the engine every frame
+  // via bridge.getPlayerSpeedMultiplier().
+  getPlayerSpeedMultiplier: () => {
+    const s = get();
+    return computeSlowMultiplier(Date.now() / 1000, s.slowUntil);
+  },
 }));

@@ -29,6 +29,8 @@ const maze: MazeData = {
     timeOnPickup: 10,
   },
   enemies: [],
+  traps: [],
+  doors: [],
 };
 
 describe('gameStore parchment (P2-16)', () => {

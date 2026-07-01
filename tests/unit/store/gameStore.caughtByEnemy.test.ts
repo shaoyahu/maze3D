@@ -18,6 +18,8 @@ const mazeCaught: MazeData = {
     timeOnPickup: 0,
   },
   enemies: [],
+  traps: [],
+  doors: [],
 };
 
 const mazeReach: MazeData = {

@@ -3,7 +3,7 @@ import { render, fireEvent, screen, act } from '@testing-library/react';
 import { EditorPropertiesPanel } from '../../../src/ui/editor/EditorPropertiesPanel';
 import { useEditorStore } from '../../../src/store/editorStore';
 import { useLevelStore } from '../../../src/store/levelStore';
-import type { EnemySpawn, MazeData, Pickup } from '../../../src/maze/types';
+import type { EnemySpawn, MazeData, Pickup, Trap, Door } from '../../../src/maze/types';
 
 function makeMaze(overrides: Partial<MazeData> = {}): MazeData {
   return {
@@ -21,6 +21,8 @@ function makeMaze(overrides: Partial<MazeData> = {}): MazeData {
     ],
     pickups: [],
     enemies: [],
+    traps: [],
+    doors: [],
     rules: { initialTime: 60, maxHealth: 3, victory: 'reach-exit', timeOnPickup: 10 },
     ...overrides,
   };
@@ -520,6 +522,65 @@ describe('EditorPropertiesPanel (P2-4b #12)', () => {
       fireEvent.click(screen.getByTestId('back-to-level'));
       expect(useEditorStore.getState().selection).toBeNull();
       expect(screen.getByTestId('level-metadata-form')).toBeInTheDocument();
+    });
+  });
+
+  // P2-18: TrapForm / DoorForm
+  describe('P2-18 — TrapForm', () => {
+    it('renders the trap form when a trap is selected', () => {
+      const trap: Trap = { id: 't1', x: 2, z: 1, kind: 'fire', damage: 1 };
+      resetEditor(makeMaze({ traps: [trap] }));
+      useEditorStore.setState({ selection: { kind: 'trap', id: 't1' } });
+      render(<EditorPropertiesPanel />);
+      expect(screen.getByTestId('trap-form')).toBeInTheDocument();
+    });
+
+    it('shows a delete button that removes the trap', () => {
+      const trap: Trap = { id: 't1', x: 2, z: 1, kind: 'fire', damage: 1 };
+      resetEditor(makeMaze({ traps: [trap] }));
+      useEditorStore.setState({ selection: { kind: 'trap', id: 't1' } });
+      render(<EditorPropertiesPanel />);
+      const deleteBtn = screen.getByTestId('delete-trap');
+      fireEvent.click(deleteBtn);
+      expect(useEditorStore.getState().level.traps).toHaveLength(0);
+    });
+  });
+
+  describe('P2-18 — DoorForm', () => {
+    it('renders the door form when a door is selected', () => {
+      const door: Door = { id: 'd1', x: 2, z: 1, keyColor: 'red' };
+      resetEditor(makeMaze({ doors: [door] }));
+      useEditorStore.setState({ selection: { kind: 'door', id: 'd1' } });
+      render(<EditorPropertiesPanel />);
+      expect(screen.getByTestId('door-form')).toBeInTheDocument();
+    });
+
+    it('shows a delete button that removes the door', () => {
+      const door: Door = { id: 'd1', x: 2, z: 1, keyColor: 'red' };
+      resetEditor(makeMaze({ doors: [door] }));
+      useEditorStore.setState({ selection: { kind: 'door', id: 'd1' } });
+      render(<EditorPropertiesPanel />);
+      const deleteBtn = screen.getByTestId('delete-door');
+      fireEvent.click(deleteBtn);
+      expect(useEditorStore.getState().level.doors).toHaveLength(0);
+    });
+
+    it('shows a warning when no matching key exists on the level', () => {
+      const door: Door = { id: 'd1', x: 2, z: 1, keyColor: 'blue' };
+      resetEditor(makeMaze({ doors: [door], pickups: [] }));
+      useEditorStore.setState({ selection: { kind: 'door', id: 'd1' } });
+      render(<EditorPropertiesPanel />);
+      // Should show a warning about missing key
+      expect(screen.getByTestId('door-missing-key-warn')).toBeInTheDocument();
+    });
+
+    it('does not show a warning when a matching key exists', () => {
+      const door: Door = { id: 'd1', x: 2, z: 1, keyColor: 'red' };
+      const key: Pickup = { id: 'k1', x: 1, z: 1, type: 'key', value: 0, keyColor: 'red' };
+      resetEditor(makeMaze({ doors: [door], pickups: [key] }));
+      useEditorStore.setState({ selection: { kind: 'door', id: 'd1' } });
+      render(<EditorPropertiesPanel />);
+      expect(screen.queryByTestId('door-missing-key-warn')).toBeNull();
     });
   });
 });

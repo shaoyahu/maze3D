@@ -25,6 +25,8 @@ function makeFallbackLevel(id: string): Record<string, unknown> {
       timeOnPickup: 10,
     },
     enemies: [],
+    traps: [],
+    doors: [],
   };
 }
 
@@ -50,6 +52,8 @@ function makeCustomLevel(id: string, name: string): MazeData {
       timeOnPickup: 10,
     },
     enemies: [],
+    traps: [],
+    doors: [],
   };
 }
 

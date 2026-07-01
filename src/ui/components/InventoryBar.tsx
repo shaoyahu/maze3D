@@ -1,5 +1,8 @@
 import { useGameStore } from '../../store/gameStore';
 import type { Pickup } from '../../maze/types';
+// F-2026-07-01-L-2: centralized key color constant imported from utils/colors.ts
+// instead of locally duplicated.
+import { KEY_COLOR_CSS as KEY_COLOR_SWATCH } from '../../utils/colors';
 
 export function InventoryBar({ slots }: { slots: (Pickup | null)[] }) {
   const flash = useGameStore((s) => s.useItemFlash);
@@ -29,6 +32,24 @@ export function InventoryBar({ slots }: { slots: (Pickup | null)[] }) {
                 screen readers. React renders `undefined` as nothing, so a null
                 slot paints an empty box. */}
             {s?.type}
+            {/* P2-18: when the slot holds a key with a keyColor, render a
+                small color swatch in the bottom-right corner so the player
+                can distinguish red/blue/green/yellow keys at a glance. */}
+            {s?.type === 'key' && s?.keyColor && (
+              <span
+                style={{
+                  position: 'absolute',
+                  bottom: 4,
+                  right: 4,
+                  width: 8,
+                  height: 8,
+                  borderRadius: 2,
+                  background: KEY_COLOR_SWATCH[s.keyColor],
+                  border: '1px solid rgba(0,0,0,0.3)',
+                  pointerEvents: 'none',
+                }}
+              />
+            )}
             <span style={{
               position: 'absolute', top: 1, left: 4, fontSize: 10,
               color: 'var(--border)', pointerEvents: 'none',

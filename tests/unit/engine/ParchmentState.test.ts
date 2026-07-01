@@ -291,3 +291,46 @@ describe('ParchmentState — constants', () => {
     expect(DAMAGE_TRIGGER_PROBABILITY).toBe(0.5);
   });
 });
+
+// P2-18: forceType parameter in maybeRecordDamage
+describe('ParchmentState — maybeRecordDamage (forceType) (P2-18)', () => {
+  it('uses the forced type instead of random sampling', () => {
+    const s0 = createEmptyParchment();
+    // Stub prng: first draw < 0.5 (pass probability gate),
+    // second draw for radius. We only need 2 draws because
+    // forceType skips the third (type) draw.
+    const prng = stubPrng([0.1, 0.5]);
+    const s1 = maybeRecordDamage(s0, 5, 5, 0, prng, 'burn');
+    expect(s1.damageRegions).toHaveLength(1);
+    expect(s1.damageRegions[0].type).toBe('burn');
+  });
+
+  it('uses water as forced type', () => {
+    const s0 = createEmptyParchment();
+    const prng = stubPrng([0.1, 0.5]);
+    const s1 = maybeRecordDamage(s0, 3, 7, 0, prng, 'water');
+    expect(s1.damageRegions).toHaveLength(1);
+    expect(s1.damageRegions[0].type).toBe('water');
+  });
+
+  it('still respects the probability gate even with forceType', () => {
+    const s0 = createEmptyParchment();
+    // First draw >= 0.5 → gate fails → no damage recorded
+    const prng = stubPrng([0.99]);
+    const s1 = maybeRecordDamage(s0, 5, 5, 0, prng, 'burn');
+    expect(s1.damageRegions).toHaveLength(0);
+    expect(s1).toBe(s0);
+  });
+
+  it('still respects the no-stack rule with forceType', () => {
+    const s0 = createEmptyParchment();
+    const prng1 = stubPrng([0.1, 0.5]);
+    const s1 = maybeRecordDamage(s0, 5, 5, 0, prng1, 'burn');
+    expect(s1.damageRegions).toHaveLength(1);
+    // Second call on the same cell → no-stack → same reference
+    const prng2 = stubPrng([0.1, 0.5]);
+    const s2 = maybeRecordDamage(s1, 5, 5, 0, prng2, 'water');
+    expect(s2).toBe(s1);
+    expect(s2.damageRegions).toHaveLength(1);
+  });
+});

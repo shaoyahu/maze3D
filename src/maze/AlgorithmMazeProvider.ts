@@ -88,6 +88,9 @@ export class AlgorithmMazeProvider implements MazeProvider {
         timeOnPickup: 15,
       },
       enemies: [],
+      // P2-18: no traps or doors in procedurally generated levels.
+      traps: [],
+      doors: [],
     };
   }
 }

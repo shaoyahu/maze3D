@@ -16,6 +16,9 @@ export const HISTORY_LIMIT = 50;
 export type EditorSelection =
   | { kind: 'pickup'; id: string }
   | { kind: 'enemy'; id: string }
+  // P2-18: trap and door selection variants.
+  | { kind: 'trap'; id: string }
+  | { kind: 'door'; id: string }
   | { kind: 'wall'; x: number; z: number };
 
 export interface Snapshot {

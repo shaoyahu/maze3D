@@ -12,6 +12,10 @@ const EXPECTED_BUILT_IN_IDS = [
   'teaching-02',
   'teaching-03',
   'teaching-04',
+  'teaching-05',
+  'teaching-06',
+  'teaching-07',
+  'teaching-08',
 ] as const;
 
 describe('BUILT_IN_JSON_PROVIDER (F-project-review-2026-06-13-A-HIGH-4)', () => {

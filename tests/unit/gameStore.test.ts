@@ -9,6 +9,8 @@ const initialMaze: MazeData = {
   pickups: [],
   rules: { initialTime: 60, maxHealth: 3, victory: 'reach-exit' as const, timeOnPickup: 15 },
   enemies: [],
+  traps: [],
+  doors: [],
 };
 
 describe('gameStore', () => {

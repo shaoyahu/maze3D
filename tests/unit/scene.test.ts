@@ -15,6 +15,8 @@ const maze: MazeData = {
   pickups: [{ id: crypto.randomUUID(), x: 1, z: 1, type: 'time', value: 15 }],
   rules: { initialTime: 30, maxHealth: 3, victory: 'reach-exit', timeOnPickup: 15 },
   enemies: [],
+  traps: [],
+  doors: [],
 };
 
 describe('buildScene', () => {

@@ -118,12 +118,19 @@ export function recordVisit(
 // Returns the input state unchanged when:
 //   - the prng's first draw is >= DAMAGE_TRIGGER_PROBABILITY (no trigger)
 //   - the cell already has any damage region (no stacking)
+// P2-18: `forceType` lets the caller override the random damage-type
+// sampling. When provided (e.g. a fire trap forces 'burn', a water trap
+// forces 'water'), the `typeRoll` draw is skipped entirely and the
+// given type is used directly. This reuses the same probability gate
+// and no-stacking rules, so trap damage and enemy damage share one
+// pipeline without duplicating logic.
 export function maybeRecordDamage(
   state: ParchmentState,
   cellX: number,
   cellZ: number,
   nowTick: number,
   prng: () => number,
+  forceType?: DamageType,
 ): ParchmentState {
   // 1. Probability gate.
   const roll = prng();
@@ -151,10 +158,14 @@ export function maybeRecordDamage(
   const radiusSpan = DAMAGE_RADIUS_MAX - DAMAGE_RADIUS_MIN + 1;
   const radius = DAMAGE_RADIUS_MIN + Math.floor(radiusRoll * radiusSpan);
 
-  // 4. Sample the damage type uniformly.
-  const typeRoll = prng();
-  const typeIndex = Math.floor(typeRoll * DAMAGE_TYPES.length);
-  const type = DAMAGE_TYPES[typeIndex] ?? DAMAGE_TYPES[0];
+  // 4. Determine damage type. When `forceType` is provided (P2-18:
+  //    trap-sourced damage), skip the random sampling and use it
+  //    directly. Otherwise sample uniformly from DAMAGE_TYPES.
+  const type: DamageType = forceType ?? (() => {
+    const typeRoll = prng();
+    const typeIndex = Math.floor(typeRoll * DAMAGE_TYPES.length);
+    return DAMAGE_TYPES[typeIndex] ?? DAMAGE_TYPES[0];
+  })();
 
   // 5. Stable seed for the procedural shape (tear polygon vertices,
   //    burn hole edges). A second `Math.floor(prng() * 1e9)` keeps

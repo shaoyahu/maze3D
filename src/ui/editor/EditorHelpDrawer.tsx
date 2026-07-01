@@ -143,6 +143,17 @@ export function EditorHelpDrawer({
                   <td><kbd>M</kbd></td>
                   <td>{t('editor.help.tool.enemyDesc')}</td>
                 </tr>
+                {/* P2-18: trap + door tool rows */}
+                <tr>
+                  <td>{t('editor.help.tool.trap')}</td>
+                  <td><kbd>T</kbd></td>
+                  <td>{t('editor.help.tool.trapDesc')}</td>
+                </tr>
+                <tr>
+                  <td>{t('editor.help.tool.door')}</td>
+                  <td><kbd>D</kbd></td>
+                  <td>{t('editor.help.tool.doorDesc')}</td>
+                </tr>
                 <tr>
                   <td>{t('editor.help.tool.pan')}</td>
                   <td><kbd>H</kbd></td>
@@ -204,6 +215,8 @@ export function EditorHelpDrawer({
               <li>{t('editor.help.checklist.pickups')}</li>
               <li>{t('editor.help.checklist.enemyPath')}</li>
               <li>{t('editor.help.checklist.rules')}</li>
+              {/* P2-18: trap + door checklist */}
+              <li>{t('editor.help.checklist.trapsAndDoors')}</li>
             </ul>
           </section>
         </div>

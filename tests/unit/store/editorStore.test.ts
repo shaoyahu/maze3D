@@ -35,6 +35,8 @@ function makeMaze(over: Partial<MazeData> = {}): MazeData {
     pickups: [],
     rules: { initialTime: 60, maxHealth: 3, victory: 'reach-exit', timeOnPickup: 10 },
     enemies: [],
+    traps: [],
+    doors: [],
     ...over,
   };
 }
@@ -1634,6 +1636,8 @@ it('refuses to commit and surfaces pathNotAdjacent when any segment is diagonal'
         ],
         pickups: [],
         enemies: [],
+        traps: [],
+        doors: [],
         rules: { initialTime: 30, maxHealth: 3, victory: 'reach-exit', timeOnPickup: 10 },
       };
     }
@@ -1695,6 +1699,215 @@ it('refuses to commit and surfaces pathNotAdjacent when any segment is diagonal'
         .getState()
         .updateParchmentLifecycle('keep' as unknown as 'persist');
       expect(useEditorStore.getState().level.rules.parchmentLifecycle).toBeUndefined();
+    });
+  });
+
+  // ── P2-18: trap + door actions ──
+  describe('P2-18 — placeTrap', () => {
+    // Fixture with floor cells at (1,1) and (2,1) for trap placement.
+    const mazeWithFloor = makeMaze({
+      walls: [
+        [1, 1, 1, 1, 1],
+        [1, 0, 0, 1, 1],
+        [1, 1, 1, 1, 1],
+        [1, 1, 1, 1, 1],
+      ],
+    });
+
+    it('appends a trap with default kind=fire, damage=1', () => {
+      useEditorStore.setState({ level: mazeWithFloor, dirty: false });
+      useEditorStore.getState().placeTrap(1, 1);
+      const lvl = useEditorStore.getState().level;
+      expect(lvl.traps).toHaveLength(1);
+      expect(lvl.traps[0].kind).toBe('fire');
+      expect(lvl.traps[0].damage).toBe(1);
+      expect(lvl.traps[0].x).toBe(1);
+      expect(lvl.traps[0].z).toBe(1);
+      expect(useEditorStore.getState().dirty).toBe(true);
+    });
+
+    it('is a no-op on a wall cell and sets lastErrorKey (trapOnWall)', () => {
+      useEditorStore.setState({ level: mazeWithFloor, dirty: false });
+      useEditorStore.getState().placeTrap(0, 0);
+      expect(useEditorStore.getState().level.traps).toHaveLength(0);
+      expect(useEditorStore.getState().lastErrorKey).toBe('editor.lastError.trapOnWall');
+    });
+
+    it('is a no-op on the start cell', () => {
+      const maze = makeMaze({
+        walls: [
+          [0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0],
+        ],
+      });
+      useEditorStore.setState({ level: maze, dirty: false });
+      useEditorStore.getState().placeTrap(0, 0);
+      expect(useEditorStore.getState().level.traps).toHaveLength(0);
+      expect(useEditorStore.getState().lastErrorKey).toBe('editor.lastError.collideWithStart');
+    });
+
+    it('is a no-op when a trap already exists on that cell', () => {
+      useEditorStore.setState({ level: mazeWithFloor, dirty: false });
+      useEditorStore.getState().placeTrap(1, 1);
+      useEditorStore.getState().placeTrap(1, 1);
+      expect(useEditorStore.getState().level.traps).toHaveLength(1);
+      expect(useEditorStore.getState().lastErrorKey).toBe('editor.lastError.trapDuplicate');
+    });
+  });
+
+  describe('P2-18 — placeDoor', () => {
+    const mazeWithFloor = makeMaze({
+      walls: [
+        [1, 1, 1, 1, 1],
+        [1, 0, 0, 1, 1],
+        [1, 1, 1, 1, 1],
+        [1, 1, 1, 1, 1],
+      ],
+    });
+
+    it('appends a door with default keyColor=red', () => {
+      useEditorStore.setState({ level: mazeWithFloor, dirty: false });
+      useEditorStore.getState().placeDoor(1, 1);
+      const lvl = useEditorStore.getState().level;
+      expect(lvl.doors).toHaveLength(1);
+      expect(lvl.doors[0].keyColor).toBe('red');
+      expect(lvl.doors[0].x).toBe(1);
+      expect(lvl.doors[0].z).toBe(1);
+      expect(useEditorStore.getState().dirty).toBe(true);
+    });
+
+    it('is a no-op on a wall cell and sets lastErrorKey (doorOnWall)', () => {
+      useEditorStore.setState({ level: mazeWithFloor, dirty: false });
+      useEditorStore.getState().placeDoor(0, 0);
+      expect(useEditorStore.getState().level.doors).toHaveLength(0);
+      expect(useEditorStore.getState().lastErrorKey).toBe('editor.lastError.doorOnWall');
+    });
+
+    it('is a no-op on the exit cell', () => {
+      const maze = makeMaze({
+        walls: [
+          [0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0],
+        ],
+      });
+      useEditorStore.setState({ level: maze, dirty: false });
+      useEditorStore.getState().placeDoor(4, 3);
+      expect(useEditorStore.getState().level.doors).toHaveLength(0);
+      expect(useEditorStore.getState().lastErrorKey).toBe('editor.lastError.collideWithExit');
+    });
+
+    it('is a no-op when a door already exists on that cell', () => {
+      useEditorStore.setState({ level: mazeWithFloor, dirty: false });
+      useEditorStore.getState().placeDoor(1, 1);
+      useEditorStore.getState().placeDoor(1, 1);
+      expect(useEditorStore.getState().level.doors).toHaveLength(1);
+      expect(useEditorStore.getState().lastErrorKey).toBe('editor.lastError.doorDuplicate');
+    });
+
+    it('is a no-op when a trap is already on that cell', () => {
+      const maze = makeMaze({
+        walls: [
+          [1, 1, 1, 1, 1],
+          [1, 0, 0, 1, 1],
+          [1, 1, 1, 1, 1],
+          [1, 1, 1, 1, 1],
+        ],
+        traps: [{ id: 'trap-1', x: 1, z: 1, kind: 'fire', damage: 1 }],
+      });
+      useEditorStore.setState({ level: maze, dirty: false });
+      useEditorStore.getState().placeDoor(1, 1);
+      expect(useEditorStore.getState().level.doors).toHaveLength(0);
+      expect(useEditorStore.getState().lastErrorKey).toBe('editor.lastError.collideWithTrap');
+    });
+  });
+
+  describe('P2-18 — updateTrap / updateDoor', () => {
+    it('updateTrap patches the matching trap and marks dirty', () => {
+      const maze = makeMaze({
+        walls: [
+          [1, 1, 1, 1, 1],
+          [1, 0, 0, 1, 1],
+          [1, 1, 1, 1, 1],
+          [1, 1, 1, 1, 1],
+        ],
+        traps: [{ id: 't1', x: 1, z: 1, kind: 'fire', damage: 1 }],
+      });
+      useEditorStore.setState({ level: maze, dirty: false });
+      useEditorStore.getState().updateTrap('t1', { kind: 'water', slowDurationSec: 2 });
+      const trap = useEditorStore.getState().level.traps[0];
+      expect(trap.kind).toBe('water');
+      expect(trap.slowDurationSec).toBe(2);
+      expect(useEditorStore.getState().dirty).toBe(true);
+    });
+
+    it('updateDoor patches the matching door keyColor', () => {
+      const maze = makeMaze({
+        walls: [
+          [1, 1, 1, 1, 1],
+          [1, 0, 0, 1, 1],
+          [1, 1, 1, 1, 1],
+          [1, 1, 1, 1, 1],
+        ],
+        doors: [{ id: 'd1', x: 1, z: 1, keyColor: 'red' }],
+      });
+      useEditorStore.setState({ level: maze, dirty: false });
+      useEditorStore.getState().updateDoor('d1', { keyColor: 'blue' });
+      const door = useEditorStore.getState().level.doors[0];
+      expect(door.keyColor).toBe('blue');
+      expect(useEditorStore.getState().dirty).toBe(true);
+    });
+
+    it('updateTrap is a silent no-op when id does not match', () => {
+      const maze = makeMaze({
+        walls: [
+          [1, 1, 1, 1, 1],
+          [1, 0, 0, 1, 1],
+          [1, 1, 1, 1, 1],
+          [1, 1, 1, 1, 1],
+        ],
+        traps: [{ id: 't1', x: 1, z: 1, kind: 'fire', damage: 1 }],
+      });
+      useEditorStore.setState({ level: maze, dirty: false });
+      useEditorStore.getState().updateTrap('nonexistent', { kind: 'water' });
+      expect(useEditorStore.getState().dirty).toBe(false);
+    });
+  });
+
+  describe('P2-18 — deleteSelected (trap / door)', () => {
+    it('removes the matching trap when selection.kind = trap', () => {
+      const maze = makeMaze({
+        walls: [
+          [1, 1, 1, 1, 1],
+          [1, 0, 0, 1, 1],
+          [1, 1, 1, 1, 1],
+          [1, 1, 1, 1, 1],
+        ],
+        traps: [{ id: 't1', x: 1, z: 1, kind: 'fire', damage: 1 }],
+      });
+      useEditorStore.setState({ level: maze, selection: { kind: 'trap', id: 't1' }, dirty: false });
+      useEditorStore.getState().deleteSelected();
+      expect(useEditorStore.getState().level.traps).toHaveLength(0);
+      expect(useEditorStore.getState().dirty).toBe(true);
+    });
+
+    it('removes the matching door when selection.kind = door', () => {
+      const maze = makeMaze({
+        walls: [
+          [1, 1, 1, 1, 1],
+          [1, 0, 0, 1, 1],
+          [1, 1, 1, 1, 1],
+          [1, 1, 1, 1, 1],
+        ],
+        doors: [{ id: 'd1', x: 1, z: 1, keyColor: 'red' }],
+      });
+      useEditorStore.setState({ level: maze, selection: { kind: 'door', id: 'd1' }, dirty: false });
+      useEditorStore.getState().deleteSelected();
+      expect(useEditorStore.getState().level.doors).toHaveLength(0);
+      expect(useEditorStore.getState().dirty).toBe(true);
     });
   });
 });

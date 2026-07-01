@@ -538,4 +538,169 @@ describe('JsonMazeProvider', () => {
       expect(data.rules.minimapMode).toBe('parchment');
     });
   });
+
+  // P2-18: parseTraps / parseDoors validation
+  describe('P2-18 — parseTraps', () => {
+    it('accepts a well-formed trap array', async () => {
+      const level = makeValidLevel({
+        traps: [
+          { id: 'fire-1', x: 1, z: 1, kind: 'fire', damage: 2 },
+          { id: 'water-1', x: 2, z: 1, kind: 'water', slowDurationSec: 3 },
+        ],
+      });
+      const provider = new JsonMazeProvider({ 'level-test': level });
+      const data = await provider.load('level-test');
+      expect(data.traps).toHaveLength(2);
+      expect(data.traps[0].kind).toBe('fire');
+      expect(data.traps[0].damage).toBe(2);
+      expect(data.traps[1].kind).toBe('water');
+      expect(data.traps[1].slowDurationSec).toBe(3);
+    });
+
+    it('mints an id when trap omits the id field', async () => {
+      const level = makeValidLevel({
+        traps: [{ x: 1, z: 1, kind: 'fire' }],
+      });
+      const provider = new JsonMazeProvider({ 'level-test': level });
+      const data = await provider.load('level-test');
+      expect(data.traps[0].id).toBeTruthy();
+    });
+
+    it('returns empty array when traps is missing', async () => {
+      const level = makeValidLevel();
+      delete (level as Record<string, unknown>).traps;
+      const provider = new JsonMazeProvider({ 'level-test': level });
+      const data = await provider.load('level-test');
+      expect(data.traps).toEqual([]);
+    });
+
+    it('throws LevelLoadError when a trap is on a wall cell', async () => {
+      const level = makeValidLevel({
+        walls: [
+          [1, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0],
+        ],
+        traps: [{ x: 0, z: 0, kind: 'fire' }],
+      });
+      const provider = new JsonMazeProvider({ 'level-test': level });
+      await expect(provider.load('level-test')).rejects.toThrow(LevelLoadError);
+    });
+
+    it('throws LevelLoadError when a trap is on the start cell', async () => {
+      const level = makeValidLevel({
+        traps: [{ x: 0, z: 0, kind: 'fire' }],
+      });
+      const provider = new JsonMazeProvider({ 'level-test': level });
+      await expect(provider.load('level-test')).rejects.toThrow(/start/i);
+    });
+
+    it('throws LevelLoadError when a trap is on the exit cell', async () => {
+      const level = makeValidLevel({
+        traps: [{ x: 4, z: 2, kind: 'water' }],
+      });
+      const provider = new JsonMazeProvider({ 'level-test': level });
+      await expect(provider.load('level-test')).rejects.toThrow(/exit/i);
+    });
+
+    it('throws LevelLoadError for duplicate trap on the same cell', async () => {
+      const level = makeValidLevel({
+        traps: [
+          { x: 1, z: 1, kind: 'fire' },
+          { x: 1, z: 1, kind: 'water' },
+        ],
+      });
+      const provider = new JsonMazeProvider({ 'level-test': level });
+      await expect(provider.load('level-test')).rejects.toThrow(/duplicate/i);
+    });
+
+    it('throws LevelLoadError for invalid trap kind', async () => {
+      const level = makeValidLevel({
+        traps: [{ x: 1, z: 1, kind: 'ice' }],
+      });
+      const provider = new JsonMazeProvider({ 'level-test': level });
+      await expect(provider.load('level-test')).rejects.toThrow(/kind/i);
+    });
+  });
+
+  describe('P2-18 — parseDoors', () => {
+    it('accepts a well-formed door array', async () => {
+      const level = makeValidLevel({
+        doors: [
+          { id: 'door-red-1', x: 1, z: 1, keyColor: 'red' },
+          { id: 'door-blue-1', x: 2, z: 1, keyColor: 'blue' },
+        ],
+      });
+      const provider = new JsonMazeProvider({ 'level-test': level });
+      const data = await provider.load('level-test');
+      expect(data.doors).toHaveLength(2);
+      expect(data.doors[0].keyColor).toBe('red');
+      expect(data.doors[1].keyColor).toBe('blue');
+    });
+
+    it('mints an id when door omits the id field', async () => {
+      const level = makeValidLevel({
+        doors: [{ x: 1, z: 1, keyColor: 'green' }],
+      });
+      const provider = new JsonMazeProvider({ 'level-test': level });
+      const data = await provider.load('level-test');
+      expect(data.doors[0].id).toBeTruthy();
+    });
+
+    it('returns empty array when doors is missing', async () => {
+      const level = makeValidLevel();
+      delete (level as Record<string, unknown>).doors;
+      const provider = new JsonMazeProvider({ 'level-test': level });
+      const data = await provider.load('level-test');
+      expect(data.doors).toEqual([]);
+    });
+
+    it('throws LevelLoadError when a door is on a wall cell', async () => {
+      const level = makeValidLevel({
+        walls: [
+          [1, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0],
+        ],
+        doors: [{ x: 0, z: 0, keyColor: 'red' }],
+      });
+      const provider = new JsonMazeProvider({ 'level-test': level });
+      await expect(provider.load('level-test')).rejects.toThrow(LevelLoadError);
+    });
+
+    it('throws LevelLoadError when a door is on the start cell', async () => {
+      const level = makeValidLevel({
+        doors: [{ x: 0, z: 0, keyColor: 'red' }],
+      });
+      const provider = new JsonMazeProvider({ 'level-test': level });
+      await expect(provider.load('level-test')).rejects.toThrow(/start/i);
+    });
+
+    it('throws LevelLoadError when a door is on the exit cell', async () => {
+      const level = makeValidLevel({
+        doors: [{ x: 4, z: 2, keyColor: 'yellow' }],
+      });
+      const provider = new JsonMazeProvider({ 'level-test': level });
+      await expect(provider.load('level-test')).rejects.toThrow(/exit/i);
+    });
+
+    it('throws LevelLoadError for duplicate door on the same cell', async () => {
+      const level = makeValidLevel({
+        doors: [
+          { x: 1, z: 1, keyColor: 'red' },
+          { x: 1, z: 1, keyColor: 'blue' },
+        ],
+      });
+      const provider = new JsonMazeProvider({ 'level-test': level });
+      await expect(provider.load('level-test')).rejects.toThrow(/duplicate/i);
+    });
+
+    it('throws LevelLoadError for invalid keyColor', async () => {
+      const level = makeValidLevel({
+        doors: [{ x: 1, z: 1, keyColor: 'purple' }],
+      });
+      const provider = new JsonMazeProvider({ 'level-test': level });
+      await expect(provider.load('level-test')).rejects.toThrow(/keyColor/i);
+    });
+  });
 });

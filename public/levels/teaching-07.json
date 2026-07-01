@@ -1,0 +1,35 @@
+{
+  "id": "teaching-07",
+  "name": "红钥开门",
+  "i18n": { "en": "Red Key, Red Door" },
+  "size": { "width": 5, "depth": 5 },
+  "cellSize": 2,
+  "start": { "x": 0, "z": 2 },
+  "exit": { "x": 4, "z": 2 },
+  "walls": [
+    [0, 0, 0, 0, 0],
+    [0, 1, 0, 1, 1],
+    [0, 1, 0, 0, 0],
+    [1, 1, 0, 1, 1],
+    [0, 0, 0, 0, 0]
+  ],
+  "pickups": [
+    { "id": "00000000-0000-0000-0000-000000000032", "x": 1, "z": 0, "type": "key", "value": 1, "keyColor": "red" }
+  ],
+  "traps": [],
+  "doors": [
+    { "id": "00000000-0000-0000-0000-000000000033", "x": 2, "z": 1, "keyColor": "red" }
+  ],
+  "rules": {
+    "initialTime": 30,
+    "maxHealth": 3,
+    "victory": "reach-exit",
+    "timeOnPickup": 10
+  },
+  "enemies": [],
+  "tutorialSteps": [
+    { "id": "pickup", "messageKey": "tutorial.teaching07.step1", "trigger": { "type": "pickup-collected", "count": 1 } },
+    { "id": "useKey", "messageKey": "tutorial.teaching07.step2", "trigger": { "type": "timeout", "timeoutSec": 8 } },
+    { "id": "exit", "messageKey": "tutorial.teaching07.step3", "trigger": { "type": "reached-exit" } }
+  ]
+}

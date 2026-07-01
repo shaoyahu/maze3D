@@ -10,11 +10,11 @@
 
 | 字段 | 值 |
 |---|---|
-| 活跃增量 | **P2-17 editor-tutorial-manual(2026-06-30 session 实施,6/6 Task done;8 文件 +960/-5 行;全测试 85 files / 1128 tests pass;typecheck + build 0 错误;待用户 commit)** |
-| 已完成 | P2-2 14/14 ✅ + P2-3 14/14 ✅ + P2-4a 16/16 ✅ + P2-4b 20/20 ✅ + P2-5 16/16 ✅ + P2-6 10/10 ✅ + P2-7 8/8 ✅ + P2-9 ✅ + P2-10 11/11 ✅ + P2-11 16/16 ✅ + P2-13 ✅ + P2-14 ✅ + P2-15 24/24 ✅ + P2-16 ✅ + **P2-17 ✅ (2026-06-30,session 实施)** |
-| 下一个任务 | 等用户决策:commit P2-17 → 或进入 P3 候选 |
-| 最后更新 | 2026-06-30 |
-| 最近 commit | 待提交 — P2-17 编辑器教程手册已完成，等待用户 commit |
+| 活跃增量 | **P2-18 traps-and-doors(2026-07-01 session 实施,全部 Phase 1-5 done;85 files / 1224 tests pass;typecheck 0 错误;待用户 commit)** |
+| 已完成 | P2-2 14/14 ✅ + P2-3 14/14 ✅ + P2-4a 16/16 ✅ + P2-4b 20/20 ✅ + P2-5 16/16 ✅ + P2-6 10/10 ✅ + P2-7 8/8 ✅ + P2-9 ✅ + P2-10 11/11 ✅ + P2-11 16/16 ✅ + P2-13 ✅ + P2-14 ✅ + P2-15 24/24 ✅ + P2-16 ✅ + P2-17 ✅ + **P2-18 ✅ (2026-07-01,session 实施)** |
+| 下一个任务 | 等用户决策:commit P2-18 → 或进入 P3 候选 |
+| 最后更新 | 2026-07-01 |
+| 最近 commit | 待提交 — P2-18 陷阱+门机关系统已完成，等待用户 commit |
 
 **约束**：
 - 一次只做一个任务（见下方「总任务列表」）
@@ -69,6 +69,7 @@
 | P2-15 | P2-13 review batch 2：24/24 LOW/MEDIUM finding 收口(FR-4 form React.memo · FR-8 right-click 3 case · FR-9 carveLShape 跳过 exit · FR-10 AlgorithmMazeProvider defensive helper + invariant pin · FR-14 rename 失败 dialog · FR-15 GameOverOverlay Record<VictoryType> · FR-20 renameLevel action · FR-21 victory fallback · FR-22 Dialog --panel→--bg-elevated · FR-23 dropdown outline · 14 个 from prior batch · = 24 FR 全部 done;spec/plan 在 `docs/increments/p2-15-review-fixes-batch-2/`,23 Task / 24 FR;FR-10 D-M-1 经核实为 premise void — generators 不生成 pickup,留 helper + pin 测试覆盖不变量) | P1 | P2-13 | Medium | `docs/increments/p2-15-review-fixes-batch-2/` | ✅ done (2026-06-17,session 实施) |
 | P2-16 | 羊皮纸地图(三态 `minimapMode` 替换 `hideMinimap` + M 键全屏 modal + 走过才显现 + 受伤 50% 生成水渍/火烧/撕裂损伤区 + 编辑器联级 `mapOpenBehavior` / `parchmentLifecycle` + `hideMinimap` 兼容迁移) | P1 | P2-11, P2-4a, P2-8 | Large | `docs/increments/p2-16-parchment-map/` | ✅ done (2026-06-30,session 实施) |
 | P2-17 | 编辑器教程手册(6 章分节阅读模式 + 左侧 TOC + 右侧内容 + Prev/Next 导航 + TopBar 📖 入口 + ESC/backdrop/click-outside 关闭 + 移动端 dropdown + `editor.manual.*` i18n 56 key) | P1 | P2-4b, P2-8 | Small–Medium | `docs/increments/p2-17-editor-tutorial-manual/` | ✅ done (2026-06-30,session 实施) |
+| P2-18 | 陷阱 + 门机关系统(fire/water 陷阱扣血/减速 + 红/蓝/绿/黄四色钥匙门 + 闭合门=walls + `maybeRecordDamage` forceType + 羊皮纸 burn/water 印记 + 编辑器 TrapForm/DoorForm + InventoryBar key swatch + HelpDrawer 条目 + E2E) | P1 | P2-4a, P2-4b, P2-8, P2-16 | Medium | `docs/increments/p2-18-traps-and-doors/` | ✅ done (2026-07-01,session 实施) |
 
 > **P2-1 已删除**：原计划"多关卡 JSON（中/大尺寸）"被 P2-3 算法生成取代。MVP 保留 `level-small.json` 作为"教学关"，`level-tiny.json` 留 E2E。
 > **P2-4 拆分**：原"敌人 + 编辑器"X-Large 拆成 P2-4a（敌人+survive mode，依赖 P2-3）和 P2-4b（编辑器，独立）。

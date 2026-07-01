@@ -7,7 +7,7 @@ import { Loop } from './Loop';
 import { resolveMove, type WallGrid } from './Collision';
 import { createPlayer, applyLook, updatePlayerCamera, type PlayerState } from '../entities/Player';
 import { Enemy, ENEMY_RADIUS } from '../entities/Enemy';
-import { findPickupAt, crossesExit } from '../game/Rules';
+import { findPickupAt, findTrapAt, crossesExit } from '../game/Rules';
 import { injectEnemySpawns } from '../maze/enemySpawner';
 import {
   createEmptyParchment,
@@ -21,6 +21,7 @@ import type {
   MazeData,
   Pickup,
   StartLevelOptions,
+  TrapKind,
   VictoryType,
   SurviveSeconds,
 } from '../maze/types';
@@ -43,11 +44,33 @@ import { enemyChaseMultiplier, normalizeSurviveSeconds, SURVIVE_SECONDS_DEFAULT 
 // that reads `_grid` from outside update() sees the warning name and
 // knows the value is per-frame-volatile.
 let __SCRATCH_currentMaze: MazeData | undefined;
+// P2-18: module-level mirror of closed-door cell keys ("x,z"). The
+// `_grid.get` closure ORs these into the wall bit (returning 1 for a
+// closed door at (x,z)), so movement collision treats them as walls.
+// Updated per-frame in update() alongside __SCRATCH_currentMaze; reset
+// on every startLevel(). The Game.closedDoorCells set is authoritative;
+// this scratch reference just gives the closure access without capturing
+// `this`.
+// F-2026-07-01-C-1: previously this stored door ids (e.g. "door-red-1")
+// but _grid.get checked has(`${x},${z}`) — the key spaces never matched,
+// so closed doors never blocked movement. Now both use coordinate strings.
+let __SCRATCH_closedDoorCells: ReadonlySet<string> = new Set();
 const _grid: WallGrid = {
   width: 0,
   depth: 0,
   cellSize: 0,
-  get: (x, z) => (__SCRATCH_currentMaze?.walls[z]?.[x] === 1 ? 1 : 0),
+  // P2-18: closed doors are treated as walls. `_grid.get` checks both
+  // the maze's wall grid AND the closed-door-cells set: if the cell is
+  // a wall OR the cell has a closed (unopened) door, movement is blocked
+  // (returns 1). Opened doors are removed from closedDoorCells, so the
+  // OR clause fails and the wall-grid value (0 for a walkable door cell)
+  // returns 0. This keeps WallGrid.get's return type as 0 | 1 without
+  // widening the union.
+  get: (x, z) => (
+    __SCRATCH_currentMaze?.walls[z]?.[x] === 1
+    || __SCRATCH_closedDoorCells.has(`${x},${z}`)
+      ? 1 : 0
+  ),
 };
 const _prevPos = { x: 0, z: 0 };
 
@@ -88,6 +111,16 @@ export interface GameBridge {
   // enemy. The store's 0.5s invulnerable window collapses the per-frame
   // burst into one logical hit. Wired to gameStore.damage in GameCanvas.
   onEnemyContact: (damage: number) => void;
+  // P2-18: fired by Game.update() when the player steps on a trap.
+  // fire trap: damage is the trap's damage (default 1).
+  // water trap: the numeric arg is the slow duration in seconds.
+  onTrapHit: (kind: TrapKind, n: number) => void;
+  // P2-18: returns the current speed multiplier (1.0 = normal, 0.5 = slowed).
+  // The engine reads this every frame to recalculate player.speed.
+  getPlayerSpeedMultiplier: () => number;
+  // F-2026-07-01-M-1: removed onDoorUnlocked from GameBridge — it was dead
+  // code. The actual unlock flow goes through onUseItem → lastUnlockedDoorId
+  // → game.openDoor(id) in GameCanvas.
   // P2-11: tutorial event fan-out. Fired by Game.update() with the
   // current mouse delta / just-pressed keys / pickup count / exit cross.
   // Wired to tutorialStore.dispatch in GameCanvas. Optional — production
@@ -193,6 +226,33 @@ export class Game {
     this.parchment = { ...this.parchment, isOpen: open };
     this.bridge.onParchmentStateChange?.(this.parchment);
   }
+  // P2-18: public method called by GameCanvas when the store's useItem
+  // finds a key+door match. Removes the door's cell from the closed-doors
+  // set and hides the door mesh so the player can walk through. The
+  // per-frame sync to __SCRATCH_closedDoorCells happens in update() so
+  // _grid.get sees the new state on the very next collision check.
+  // F-2026-07-01-C-1: now removes the coordinate key "x,z" from
+  // closedDoorCells instead of adding an id to openedDoors, so _grid.get
+  // correctly sees the door as passable.
+  openDoor(doorId: string): void {
+    const door = this.currentMaze?.doors.find(d => d.id === doorId);
+    if (door) this.closedDoorCells.delete(`${door.x},${door.z}`);
+    const mesh = this.sceneRefs?.doors.get(doorId);
+    if (mesh) mesh.visible = false;
+  }
+  // F-2026-07-01-H-1: expose closedDoorCells and player cell position
+  // so the bridge can pass them to onUseItem for adjacency checking.
+  getClosedDoorCells(): ReadonlySet<string> {
+    return this.closedDoorCells;
+  }
+  getPlayerCell(): { x: number; z: number } {
+    if (!this.player || !this.currentMaze) return { x: -1, z: -1 };
+    const cs = this.currentMaze.cellSize;
+    return {
+      x: Math.floor(this.player.position.x / cs),
+      z: Math.floor(this.player.position.z / cs),
+    };
+  }
   private currentMode: VictoryType = 'reach-exit';
   private currentSurviveSeconds: SurviveSeconds = SURVIVE_SECONDS_DEFAULT;
   private input?: InputManager;
@@ -216,6 +276,13 @@ export class Game {
   // gameStore.applyDamage so a single hit (not a per-frame contact
   // burst) is what triggers a damage region.
   private lastDamageAt = 0;
+  // P2-18: set of "x,z" coordinate keys for doors that are still closed.
+  // Reset on every startLevel(). The module-level __SCRATCH_closedDoorCells
+  // mirror is synced from this in update() so the _grid.get closure can
+  // read it this-free. F-2026-07-01-C-1: changed from openedDoors (door ids)
+  // to closedDoorCells (coordinate strings) so _grid.get's has() check
+  // matches the key space.
+  private closedDoorCells = new Set<string>();
   private bridge: GameBridge;
 
   constructor(bridge: GameBridge) {
@@ -301,7 +368,7 @@ export class Game {
     // scene). Stop first, dispose, rebuild, start.
     if (this.loop) this.loop.stop();
     if (this.sceneRefs) {
-      disposeScene(this.sceneRefs.scene, this.sceneRefs.walls, this.sceneRefs.pickups, this.sceneRefs.enemies);
+      disposeScene(this.sceneRefs.scene, this.sceneRefs.walls, this.sceneRefs.pickups, this.sceneRefs.enemies, this.sceneRefs.traps, this.sceneRefs.doors);
     }
     // P2-3: snapshot the mode so getCurrentMode() callers (HUD/UI) see
     // the level's active mode without having to reach into the store. The
@@ -382,6 +449,17 @@ export class Game {
     // once here so the UI clears its copy in the same tick.
     this.parchment = createEmptyParchment();
     this.lastDamageAt = 0;
+    // P2-18: reset door state on every level start. Populate
+    // closedDoorCells with all door coordinates from the new maze.
+    // Door unlock state is per-run (not persisted), so a refresh
+    // replays the same locked state. Also sync to the module-level
+    // scratch so _grid.get sees the reset before the first update()
+    // frame. F-2026-07-01-C-1: use closedDoorCells (coordinate keys)
+    // instead of openedDoors (door ids).
+    this.closedDoorCells = new Set(
+      injectedMaze.doors.map(d => `${d.x},${d.z}`),
+    );
+    __SCRATCH_closedDoorCells = this.closedDoorCells;
     this.bridge.onParchmentStateChange?.(this.parchment);
     this.loop = new Loop((dt) => this.update(dt));
     this.loop.start();
@@ -412,7 +490,7 @@ export class Game {
     this.loop?.stop();
     this.input?.dispose();
     if (this.sceneRefs) {
-      disposeScene(this.sceneRefs.scene, this.sceneRefs.walls, this.sceneRefs.pickups, this.sceneRefs.enemies);
+      disposeScene(this.sceneRefs.scene, this.sceneRefs.walls, this.sceneRefs.pickups, this.sceneRefs.enemies, this.sceneRefs.traps, this.sceneRefs.doors);
     }
     // P2-4a F1: drop the Enemy refs along with the scene. They hold no
     // GPU resources (Three.js capsule meshes live in sceneRefs.enemies
@@ -501,6 +579,13 @@ export class Game {
     const dx = (move.x * cosY + move.z * sinY) * this.player.speed * dt;
     const dz = (-move.x * sinY + move.z * cosY) * this.player.speed * dt;
     __SCRATCH_currentMaze = this.currentMaze;
+    // P2-18: sync closed door cells to module-level scratch so _grid.get
+    // closure sees the latest state this-free.
+    __SCRATCH_closedDoorCells = this.closedDoorCells;
+    // P2-18: recalculate player speed based on slow debuff.
+    // getPlayerSpeedMultiplier returns 1.0 (normal) or 0.5 (slowed).
+    const speedMult = this.bridge.getPlayerSpeedMultiplier();
+    this.player.speed = 3 * speedMult;
     _grid.width = this.currentMaze.size.width;
     _grid.depth = this.currentMaze.size.depth;
     _grid.cellSize = this.currentMaze.cellSize;
@@ -601,6 +686,45 @@ export class Game {
               this.parchment = nextParchment;
               this.bridge.onParchmentStateChange?.(this.parchment);
             }
+          }
+        }
+      }
+    }
+
+    // P2-18: trap detection. Check if the player's current cell has a trap.
+    // Fire traps deal damage; water traps apply a slow debuff. Both record
+    // a forced-type damage mark on the parchment (burn / water).
+    // F-2026-07-01-L-1: rate-limit trap bridge callbacks with a 0.5s guard
+    // (matching the invuln window) so we don't fire onTrapHit every frame
+    // while the player stands on the trap cell.
+    const trap = findTrapAt(this.player.position, this.currentMaze.traps, this.currentMaze.cellSize);
+    if (trap) {
+      const nowSec = performance.now() / 1000;
+      if (nowSec - this.lastDamageAt >= 0.5) {
+        this.lastDamageAt = nowSec;
+        if (trap.kind === 'fire') {
+          this.bridge.onTrapHit('fire', trap.damage ?? 1);
+        } else {
+          this.bridge.onTrapHit('water', trap.slowDurationSec ?? 1.5);
+        }
+        // P2-18: record damage on the parchment with a forced type so fire
+        // always leaves 'burn' marks and water always leaves 'water' marks.
+        if (this.currentMaze.rules.minimapMode === 'parchment') {
+          const cs = this.currentMaze.cellSize;
+          const cellX = Math.floor(this.player.position.x / cs);
+          const cellZ = Math.floor(this.player.position.z / cs);
+          const forceType = trap.kind === 'fire' ? 'burn' : 'water';
+          const nextParchment = maybeRecordDamage(
+            this.parchment,
+            cellX,
+            cellZ,
+            0,
+            Math.random,
+            forceType,
+          );
+          if (nextParchment !== this.parchment) {
+            this.parchment = nextParchment;
+            this.bridge.onParchmentStateChange?.(this.parchment);
           }
         }
       }

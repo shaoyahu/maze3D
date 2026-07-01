@@ -19,6 +19,8 @@ export function makeMaze(overrides: Partial<MazeData> = {}): MazeData {
     ],
     pickups: [],
     enemies: [],
+    traps: [],
+    doors: [],
     rules: { initialTime: 60, maxHealth: 3, victory: 'reach-exit', timeOnPickup: 10 },
     ...overrides,
   };

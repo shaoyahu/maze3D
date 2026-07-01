@@ -87,7 +87,20 @@ export function GameCanvas({ maze, options }: { maze: MazeData; options?: StartL
       getCurrentEnemyAggression: () => useSettingsStore.getState().enemyAggression,
       isActiveLevel: (levelId) => useGameStore.getState().currentLevelId === levelId,
       isPlaying: () => useGameStore.getState().screen === 'playing',
-      onUseItem: (slot) => useGameStore.getState().useItem(slot),
+      onUseItem: (slot) => {
+        // F-2026-07-01-C-1 + H-1: pass closedDoorCells and player cell
+        // position to useItem so Rules.onUseItem can check door adjacency.
+        const closedDoorCells = gameRef.current?.getClosedDoorCells();
+        const playerCell = gameRef.current?.getPlayerCell();
+        useGameStore.getState().useItem(slot, closedDoorCells, playerCell?.x, playerCell?.z);
+        // P2-18: after useItem, check if a door was unlocked and
+        // notify the engine so it can hide the mesh + update collision.
+        const doorId = useGameStore.getState().lastUnlockedDoorId;
+        if (doorId) {
+          gameRef.current?.openDoor(doorId);
+          useGameStore.setState({ lastUnlockedDoorId: null });
+        }
+      },
       // P2-4a F1: forward every per-frame enemy contact to the store's
       // damage action. The store owns the 0.5s invulnerability window
       // (see gameStore.damage), so calling this every frame the player
@@ -96,6 +109,21 @@ export function GameCanvas({ maze, options }: { maze: MazeData; options?: StartL
       // InvulnerableFlash UI still re-trigger their flash animation
       // without dropping health a second time.
       onEnemyContact: (n) => useGameStore.getState().damage(n, undefined, 'enemy'),
+      // P2-18: fire trap → apply damage; water trap → set slow debuff.
+      onTrapHit: (kind, n) => {
+        if (kind === 'fire') {
+          useGameStore.getState().damage(n, undefined, 'other');
+        } else {
+          // n = slow duration in seconds
+          const until = Date.now() / 1000 + n;
+          useGameStore.getState().setSlowUntil(until);
+        }
+      },
+      // P2-18: engine reads this every frame to compute player.speed.
+      getPlayerSpeedMultiplier: () => useGameStore.getState().getPlayerSpeedMultiplier(),
+      // F-2026-07-01-M-1: removed onDoorUnlocked bridge callback — it was dead
+      // code. The actual unlock flow goes through onUseItem → lastUnlockedDoorId
+      // → game.openDoor(id) above.
       // F-2026-06-30: P2-16 — engine → store push. The engine only
       // mutates its own `parchment` reference (via recordVisit /
       // maybeRecordDamage / setParchmentOpen) when the state actually

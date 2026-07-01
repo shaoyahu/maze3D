@@ -3,7 +3,7 @@ import { render, fireEvent, screen } from '@testing-library/react';
 import { EditorViewport } from '../../../src/ui/editor/EditorViewport';
 import { useEditorStore } from '../../../src/store/editorStore';
 import { useLevelStore } from '../../../src/store/levelStore';
-import type { EnemySpawn, Pickup } from '../../../src/maze/types';
+import type { EnemySpawn, Pickup, Trap, Door } from '../../../src/maze/types';
 
 function resetEditor(): void {
   localStorage.clear();
@@ -24,6 +24,8 @@ function resetEditor(): void {
       ],
       pickups: [],
       enemies: [],
+      traps: [],
+      doors: [],
       rules: { initialTime: 60, maxHealth: 3, victory: 'reach-exit', timeOnPickup: 10 },
     },
     tool: 'select',
@@ -412,5 +414,82 @@ describe('EditorViewport (P2-4b #11)', () => {
       expect(useEditorStore.getState().selection).toEqual({ kind: 'wall', x: 1, z: 1 });
       expect(useEditorStore.getState().tool).toBe('wall');
     });
+  });
+
+  // P2-18: trap + door tool tests
+  it('clicking a floor cell with the trap tool adds a trap to that cell', () => {
+    useEditorStore.setState({ tool: 'trap' });
+    render(<EditorViewport />);
+    fireEvent.click(screen.getByTestId('cell-2-1'));
+    const traps = useEditorStore.getState().level.traps;
+    expect(traps).toHaveLength(1);
+    expect(traps[0]).toMatchObject({ x: 2, z: 1, kind: 'fire', damage: 1 });
+    expect(traps[0]!.id).toBeTruthy();
+  });
+
+  it('trap tool on a wall cell is a no-op and sets lastErrorKey', () => {
+    useEditorStore.setState({ tool: 'trap' });
+    render(<EditorViewport />);
+    fireEvent.click(screen.getByTestId('cell-1-1'));
+    expect(useEditorStore.getState().level.traps).toHaveLength(0);
+    expect(useEditorStore.getState().lastErrorKey).toBe('editor.lastError.trapOnWall');
+  });
+
+  it('clicking a floor cell with the door tool adds a door to that cell', () => {
+    useEditorStore.setState({ tool: 'door' });
+    render(<EditorViewport />);
+    fireEvent.click(screen.getByTestId('cell-2-1'));
+    const doors = useEditorStore.getState().level.doors;
+    expect(doors).toHaveLength(1);
+    expect(doors[0]).toMatchObject({ x: 2, z: 1, keyColor: 'red' });
+    expect(doors[0]!.id).toBeTruthy();
+  });
+
+  it('door tool on a wall cell is a no-op and sets lastErrorKey', () => {
+    useEditorStore.setState({ tool: 'door' });
+    render(<EditorViewport />);
+    fireEvent.click(screen.getByTestId('cell-1-1'));
+    expect(useEditorStore.getState().level.doors).toHaveLength(0);
+    expect(useEditorStore.getState().lastErrorKey).toBe('editor.lastError.doorOnWall');
+  });
+
+  it('select tool on a cell with a trap selects the trap', () => {
+    const trap: Trap = { id: 'trap-1', x: 2, z: 1, kind: 'fire', damage: 1 };
+    useEditorStore.setState({
+      tool: 'select',
+      level: { ...useEditorStore.getState().level, traps: [trap] },
+    });
+    render(<EditorViewport />);
+    fireEvent.click(screen.getByTestId('cell-2-1'));
+    expect(useEditorStore.getState().selection).toEqual({ kind: 'trap', id: 'trap-1' });
+  });
+
+  it('select tool on a cell with a door selects the door', () => {
+    const door: Door = { id: 'door-1', x: 2, z: 1, keyColor: 'blue' };
+    useEditorStore.setState({
+      tool: 'select',
+      level: { ...useEditorStore.getState().level, doors: [door] },
+    });
+    render(<EditorViewport />);
+    fireEvent.click(screen.getByTestId('cell-2-1'));
+    expect(useEditorStore.getState().selection).toEqual({ kind: 'door', id: 'door-1' });
+  });
+
+  it('renders trap glyph for placed traps', () => {
+    const trap: Trap = { id: 'trap-1', x: 2, z: 1, kind: 'fire', damage: 1 };
+    useEditorStore.setState({
+      level: { ...useEditorStore.getState().level, traps: [trap] },
+    });
+    render(<EditorViewport />);
+    expect(screen.getByTestId('trap-trap-1')).toBeInTheDocument();
+  });
+
+  it('renders door glyph for placed doors', () => {
+    const door: Door = { id: 'door-1', x: 2, z: 1, keyColor: 'red' };
+    useEditorStore.setState({
+      level: { ...useEditorStore.getState().level, doors: [door] },
+    });
+    render(<EditorViewport />);
+    expect(screen.getByTestId('door-door-1')).toBeInTheDocument();
   });
 });

@@ -17,6 +17,8 @@ function makeCustom(id: string, name: string, w: number, d: number): MazeData {
     walls: Array.from({ length: d }, () => Array.from({ length: w }, () => 0)),
     pickups: [],
     enemies: [],
+    traps: [],
+    doors: [],
     rules: { initialTime: 60, maxHealth: 3, victory: 'reach-exit', timeOnPickup: 10 },
   };
 }

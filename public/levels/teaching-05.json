@@ -1,0 +1,29 @@
+{
+  "id": "teaching-05",
+  "name": "烈焰试炼",
+  "i18n": { "en": "Flame Trial" },
+  "size": { "width": 5, "depth": 1 },
+  "cellSize": 2,
+  "start": { "x": 0, "z": 0 },
+  "exit": { "x": 4, "z": 0 },
+  "walls": [
+    [0, 0, 0, 0, 0]
+  ],
+  "pickups": [],
+  "traps": [
+    { "id": "00000000-0000-0000-0000-000000000030", "x": 2, "z": 0, "kind": "fire", "damage": 1 }
+  ],
+  "doors": [],
+  "rules": {
+    "initialTime": 30,
+    "maxHealth": 3,
+    "victory": "reach-exit",
+    "timeOnPickup": 10
+  },
+  "enemies": [],
+  "tutorialSteps": [
+    { "id": "intro", "messageKey": "tutorial.teaching05.step1", "trigger": { "type": "timeout", "timeoutSec": 1.5 } },
+    { "id": "burned", "messageKey": "tutorial.teaching05.step2", "trigger": { "type": "timeout", "timeoutSec": 4 } },
+    { "id": "exit", "messageKey": "tutorial.teaching05.step3", "trigger": { "type": "reached-exit" } }
+  ]
+}

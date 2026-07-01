@@ -12,6 +12,8 @@ const maze: MazeData = {
   walls: [[1,1,1],[1,0,1],[1,1,1]],
   pickups: [], rules: { initialTime: 60, maxHealth: 3, victory: 'reach-exit', timeOnPickup: 15 },
   enemies: [],
+  traps: [],
+  doors: [],
 };
 
 describe('overlays', () => {

@@ -266,6 +266,9 @@ export const zh: Translations = {
   // properties-panel card label.
   'editor.toolbar.hint.pickup': '点击格子放置道具',
   'editor.toolbar.hint.enemy': '点击格子放置敌人 · 选中后在右侧编辑路径',
+  // P2-18: trap and door toolbar hints.
+  'editor.toolbar.hint.trap': '点击格子放置陷阱 · 选中后在右侧编辑类型和参数',
+  'editor.toolbar.hint.door': '点击格子放置门 · 选中后在右侧编辑钥匙颜色',
   'editor.toolbar.hint.pan': '右键拖动平移视图',
 
   'editor.toolbar.autoSaved': '已自动保存 {time}',
@@ -313,6 +316,9 @@ export const zh: Translations = {
   'editor.toolbar.tool.exit': '终点',
   'editor.toolbar.tool.pickup': '拾取',
   'editor.toolbar.tool.enemy': '敌人',
+  // P2-18: trap and door toolbar tools.
+  'editor.toolbar.tool.trap': '陷阱',
+  'editor.toolbar.tool.door': '门',
   'editor.toolbar.tool.pan': '平移',
   'editor.toolbar.undo': '撤销',
   'editor.toolbar.redo': '重做',
@@ -420,6 +426,22 @@ export const zh: Translations = {
   'editor.properties.field.coord': '坐标',
   'editor.properties.deleteWall': '删除墙体',
 
+  // P2-18: trap and door property panel keys.
+  'editor.properties.trapCard': '陷阱',
+  'editor.properties.trapKind.fire': '火焰',
+  'editor.properties.trapKind.water': '水洼',
+  'editor.properties.field.damage': '伤害',
+  'editor.properties.field.slowDuration': '减速时长',
+  'editor.properties.deleteTrap': '删除陷阱',
+  'editor.properties.doorCard': '门',
+  'editor.properties.keyColor.red': '红',
+  'editor.properties.keyColor.blue': '蓝',
+  'editor.properties.keyColor.green': '绿',
+  'editor.properties.keyColor.yellow': '黄',
+  'editor.properties.field.keyColor': '钥匙颜色',
+  'editor.properties.doorMissingKey': '⚠ 关卡中没有对应颜色的钥匙，玩家将无法打开此门',
+  'editor.properties.deleteDoor': '删除门',
+
   // P2-13.7: 教程 / HUD 卡片整体 i18n 化(原硬编码中文)。
   'editor.properties.tutorialCard': '教程 / HUD',
   'editor.properties.tutorialChip': 'tutorial',
@@ -449,6 +471,9 @@ export const zh: Translations = {
   // "道具" to match the new toolbar label.
   'editor.properties.selection.pickup': '道具',
   'editor.properties.selection.enemy': '敌人',
+  // P2-18: trap and door selection labels.
+  'editor.properties.selection.trap': '陷阱',
+  'editor.properties.selection.door': '门',
 
   'editor.properties.minusAria': '减小',
   'editor.properties.plusAria': '增大',
@@ -509,6 +534,13 @@ export const zh: Translations = {
   'editor.lastError.collideWithPickup': '该格子上已经有拾取物',
   'editor.lastError.collideWithEnemy': '该格子上已经有敌人（或巡逻路径节点）',
   'editor.lastError.pathNotAdjacent': '路径节点必须与上一个节点上下左右相邻（不能斜着放）',
+  // P2-18: trap and door placement error keys.
+  'editor.lastError.trapOnWall': '陷阱只能放在地面上（请先用「通道」工具凿出地面再放陷阱）',
+  'editor.lastError.doorOnWall': '门只能放在地面上（请先用「通道」工具凿出地面再放门）',
+  'editor.lastError.trapDuplicate': '该格子已有陷阱（每格只能放一个）',
+  'editor.lastError.doorDuplicate': '该格子已有门（每格只能放一个）',
+  'editor.lastError.collideWithTrap': '该格子上已有陷阱',
+  'editor.lastError.collideWithDoor': '该格子上已有门',
 
   // F-2026-06-17-E-M-7: 关卡检查 (validateDesign) 的全部问题文案。
   // 由 EditorStatusBar 渲染,跟随当前语言。`{id}` / `{value}` 是可选插值。
@@ -561,6 +593,11 @@ export const zh: Translations = {
   'editor.help.tool.enemyDesc': '放敌人；选中后右侧编辑巡逻路径',
   'editor.help.tool.pan': '平移',
   'editor.help.tool.panDesc': '按住左/右键拖动平移视图；滚轮缩放',
+  // P2-18: trap + door tool entries
+  'editor.help.tool.trap': '陷阱',
+  'editor.help.tool.trapDesc': '在地面格子放陷阱（火坑扣血 / 水洼减速）；右侧面板调整类型与数值',
+  'editor.help.tool.door': '门',
+  'editor.help.tool.doorDesc': '放颜色门（红/蓝/绿/黄），玩家需拾取同色钥匙才能开门通过',
 
   'editor.help.shortcut.esc': '退出当前工具 / 清空选择',
   'editor.help.shortcut.undo': '撤销',
@@ -578,6 +615,8 @@ export const zh: Translations = {
   'editor.help.checklist.pickups': '至少放 1-2 个道具，否则游玩没有收集乐趣',
   'editor.help.checklist.enemyPath': '每个敌人至少有 2 个巡逻点，否则敌人会卡住',
   'editor.help.checklist.rules': '胜利模式、初始时间、最大生命都设了合理值（默认即可）',
+  // P2-18: trap + door checklist items
+  'editor.help.checklist.trapsAndDoors': '门和对应颜色钥匙放在关卡内（否则玩家无法开门）；陷阱不要挡住唯一通路',
 
   // ============================================================
   // editor.manual.* — 教程手册（EditorTutorialManual 内容）
@@ -695,4 +734,20 @@ export const zh: Translations = {
   'tutorial.teaching04.step1': '这是最终试炼 — 必须收集全部物品才能在终点通关',
   'tutorial.teaching04.step2': '已收集全部 — 前往出口',
   'tutorial.teaching04.step3': '通关！',
+  // P2-18: 新教学关卡 — 陷阱 + 钥匙门
+  'tutorial.teaching05.step1': '前方是火焰陷阱 — 踩上去会扣血',
+  'tutorial.teaching05.step2': '看羊皮纸上的灼烧印记 — 受伤位置会留下痕迹',
+  'tutorial.teaching05.step3': '继续前往出口',
+  'tutorial.teaching06.step1': '前方是水洼 — 会让人减速',
+  'tutorial.teaching06.step2': '减速期间移动变慢 — 等待恢复',
+  'tutorial.teaching06.step3': '恢复后继续前进',
+  'tutorial.teaching07.step1': '拾取红钥匙 — 注意钥匙上的颜色',
+  'tutorial.teaching07.step2': '走到红门旁按数字键 1 使用同色钥匙开门',
+  'tutorial.teaching07.step3': '成功开门通关！',
+  'tutorial.teaching08.step1': '新特性 — 钥匙开门 + 火焰水洼陷阱',
+  'tutorial.teaching08.step2': '拾取第一把钥匙 — 绕开水洼与火焰',
+  'tutorial.teaching08.step3': '走到对应颜色的门旁 — 按数字键开门',
+  'tutorial.teaching08.step4': '拾取第二把钥匙 — 注意陷阱扣血',
+  'tutorial.teaching08.step5': '走到第二道门旁 — 再开一道门',
+  'tutorial.teaching08.step6': '恭喜 — 全部新特性通关！',
 };

@@ -8,8 +8,10 @@ import type {
   MazeData,
   MazeProvider,
   Pickup,
+  Trap,
+  Door,
 } from './types';
-import { isPickupType, isVictoryType, isMinimapMode, isMapOpenBehavior, isParchmentLifecycle } from './types';
+import { isPickupType, isVictoryType, isMinimapMode, isMapOpenBehavior, isParchmentLifecycle, isTrapKind, isKeyColor } from './types';
 
 // Derived from the player's collision radius — the player needs 2*radius of
 // clearance to fit inside a single cell. Importing PLAYER_RADIUS keeps the
@@ -187,7 +189,12 @@ export function validateMaze(raw: unknown, id: string): MazeData {
     // F-D-quality-D-15: build a typed Pickup literal instead of spreading
     // the raw Record. isPickupType above narrows pp.type to PickupType;
     // every other field has been validated by requireNumber.
-    normalizedPickups.push({ id: pickupId, x: px, z: pz, type: pp.type, value: pvalue });
+    // P2-18: parse optional keyColor for key pickups.
+    let pickupKeyColor: Pickup['keyColor'];
+    if (pp.type === 'key' && isKeyColor(pp.keyColor)) {
+      pickupKeyColor = pp.keyColor;
+    }
+    normalizedPickups.push({ id: pickupId, x: px, z: pz, type: pp.type, value: pvalue, keyColor: pickupKeyColor });
   }
 
   requireObject(m, 'rules', id);
@@ -225,6 +232,10 @@ export function validateMaze(raw: unknown, id: string): MazeData {
     throw new LevelLoadError(`Maze '${id}': missing 'enemies' field (use [] for none)`);
   }
   const enemies = parseEnemies(m.enemies, id, width, depth, walls);
+
+  // P2-18: traps and doors are optional fields. Missing or non-array → [].
+  const traps = parseTraps(m.traps, id, width, depth, walls, start as { x: number; z: number }, exit as { x: number; z: number });
+  const doors = parseDoors(m.doors, id, width, depth, walls, start as { x: number; z: number }, exit as { x: number; z: number });
 
   // F-2026-06-17-D-CRITICAL-1: P2-11 added 5 fields to MazeData
   // (i18n, tutorialSteps, hideMinimap, rules.enemyAggression,
@@ -335,6 +346,8 @@ export function validateMaze(raw: unknown, id: string): MazeData {
     pickups: normalizedPickups,
     rules,
     enemies,
+    traps,
+    doors,
     ...(i18n !== undefined ? { i18n } : {}),
     ...(tutorialSteps !== undefined ? { tutorialSteps } : {}),
     // F-2026-06-30: hideMinimap is no longer round-tripped into the
@@ -478,4 +491,105 @@ function requireInBounds(o: Record<string, unknown>, xKey: string, zKey: string,
   if (!Number.isInteger(x) || !Number.isInteger(z) || !(x >= 0 && x < w && z >= 0 && z < d)) {
     throw new LevelLoadError(`Maze '${ctx}': (${xKey}=${x}, ${zKey}=${z}) out of bounds or non-integer (width=${w}, depth=${d})`);
   }
+}
+
+// P2-18: parse traps from raw JSON. Returns [] when the field is missing
+// or not an array. Follows the parseEnemies pattern: in-bounds, on-walkable,
+// non-start/exit, dedupe by cell, auto-mint id.
+function parseTraps(
+  raw: unknown,
+  id: string,
+  width: number,
+  depth: number,
+  walls: CellType[][],
+  start: { x: number; z: number },
+  exit: { x: number; z: number },
+): Trap[] {
+  if (!Array.isArray(raw)) return [];
+  const out: Trap[] = [];
+  const seenCells = new Set<string>();
+  for (let i = 0; i < raw.length; i++) {
+    const t = raw[i];
+    if (typeof t !== 'object' || t === null) {
+      throw new LevelLoadError(`Maze '${id}': invalid trap at index ${i}`);
+    }
+    const tt = t as Record<string, unknown>;
+    const tx = requireNumber(tt, 'x', `${id}.traps[${i}]`);
+    const tz = requireNumber(tt, 'z', `${id}.traps[${i}]`);
+    requireInBounds(tt, 'x', 'z', `${id}.traps[${i}]`, width, depth);
+    if (walls[tz][tx] === 1) {
+      throw new LevelLoadError(`Maze '${id}': trap at (${tx}, ${tz}) is on a wall`);
+    }
+    if (tx === start.x && tz === start.z) {
+      throw new LevelLoadError(`Maze '${id}': trap is on the start cell`);
+    }
+    if (tx === exit.x && tz === exit.z) {
+      throw new LevelLoadError(`Maze '${id}': trap is on the exit cell`);
+    }
+    if (!isTrapKind(tt.kind)) {
+      throw new LevelLoadError(`Maze '${id}': invalid trap kind at index ${i}`);
+    }
+    const cellKey = `${tx},${tz}`;
+    if (seenCells.has(cellKey)) {
+      throw new LevelLoadError(`Maze '${id}': duplicate trap at (${tx}, ${tz})`);
+    }
+    seenCells.add(cellKey);
+    const trapId = typeof tt.id === 'string' && tt.id.length > 0 ? tt.id : generateId();
+    const trap: Trap = { id: trapId, x: tx, z: tz, kind: tt.kind };
+    if (typeof tt.damage === 'number' && Number.isFinite(tt.damage) && tt.damage > 0) {
+      trap.damage = tt.damage;
+    }
+    if (typeof tt.slowDurationSec === 'number' && Number.isFinite(tt.slowDurationSec) && tt.slowDurationSec > 0) {
+      trap.slowDurationSec = tt.slowDurationSec;
+    }
+    out.push(trap);
+  }
+  return out;
+}
+
+// P2-18: parse doors from raw JSON. Returns [] when the field is missing
+// or not an array. Each door must be on a walkable, non-start/exit cell
+// with a valid keyColor.
+function parseDoors(
+  raw: unknown,
+  id: string,
+  width: number,
+  depth: number,
+  walls: CellType[][],
+  start: { x: number; z: number },
+  exit: { x: number; z: number },
+): Door[] {
+  if (!Array.isArray(raw)) return [];
+  const out: Door[] = [];
+  const seenCells = new Set<string>();
+  for (let i = 0; i < raw.length; i++) {
+    const d = raw[i];
+    if (typeof d !== 'object' || d === null) {
+      throw new LevelLoadError(`Maze '${id}': invalid door at index ${i}`);
+    }
+    const dd = d as Record<string, unknown>;
+    const dx = requireNumber(dd, 'x', `${id}.doors[${i}]`);
+    const dz = requireNumber(dd, 'z', `${id}.doors[${i}]`);
+    requireInBounds(dd, 'x', 'z', `${id}.doors[${i}]`, width, depth);
+    if (walls[dz][dx] === 1) {
+      throw new LevelLoadError(`Maze '${id}': door at (${dx}, ${dz}) is on a wall`);
+    }
+    if (dx === start.x && dz === start.z) {
+      throw new LevelLoadError(`Maze '${id}': door is on the start cell`);
+    }
+    if (dx === exit.x && dz === exit.z) {
+      throw new LevelLoadError(`Maze '${id}': door is on the exit cell`);
+    }
+    if (!isKeyColor(dd.keyColor)) {
+      throw new LevelLoadError(`Maze '${id}': invalid door keyColor at index ${i}`);
+    }
+    const cellKey = `${dx},${dz}`;
+    if (seenCells.has(cellKey)) {
+      throw new LevelLoadError(`Maze '${id}': duplicate door at (${dx}, ${dz})`);
+    }
+    seenCells.add(cellKey);
+    const doorId = typeof dd.id === 'string' && dd.id.length > 0 ? dd.id : generateId();
+    out.push({ id: doorId, x: dx, z: dz, keyColor: dd.keyColor });
+  }
+  return out;
 }

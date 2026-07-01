@@ -54,7 +54,7 @@ const maze: MazeData = {
     [1,0,0,0,0],
   ],
   pickups: [], rules: { initialTime: 60, maxHealth: 3, victory: 'reach-exit', timeOnPickup: 15 },
-  enemies: [],
+  enemies: [], traps: [], doors: [],
 };
 
 vi.mock('../../src/maze/EditorMazeProvider', () => ({

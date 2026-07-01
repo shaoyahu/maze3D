@@ -21,6 +21,9 @@ const TOOL_HINT_KEYS: Record<EditorTool, string> = {
   exit:   'editor.toolbar.hint.exit',
   pickup: 'editor.toolbar.hint.pickup',
   enemy:  'editor.toolbar.hint.enemy',
+  // P2-18: trap and door tool hints.
+  trap:   'editor.toolbar.hint.trap',
+  door:   'editor.toolbar.hint.door',
   pan:    'editor.toolbar.hint.pan',
 };
 

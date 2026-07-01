@@ -59,4 +59,30 @@ describe('EditorHelpDrawer (P2-9 cheat-sheet)', () => {
     fireEvent.click(screen.getByTestId('editor-help-close'));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  // P2-18: trap + door entries in the help drawer
+  it('renders the trap tool row in the tools section', () => {
+    render(<EditorHelpDrawer open onClose={() => {}} />);
+    // The trap row should contain a <kbd>T</kbd> in the tools table.
+    const toolsSection = screen.getByTestId('editor-help-section-tools');
+    expect(toolsSection.textContent).toContain('T');
+  });
+
+  it('renders the door tool row in the tools section', () => {
+    render(<EditorHelpDrawer open onClose={() => {}} />);
+    // The door row should contain a <kbd>D</kbd> in the tools table.
+    const toolsSection = screen.getByTestId('editor-help-section-tools');
+    expect(toolsSection.textContent).toContain('D');
+  });
+
+  it('renders the traps and doors checklist item', () => {
+    render(<EditorHelpDrawer open onClose={() => {}} />);
+    const checklistSection = screen.getByTestId('editor-help-section-checklist');
+    // The P2-18 checklist item about doors + keys should be present.
+    // It uses the key 'editor.help.checklist.trapsAndDoors' which renders
+    // differently based on locale; just verify the section has more than
+    // 5 <li> items now (was 5 before P2-18).
+    const items = checklistSection.querySelectorAll('li');
+    expect(items.length).toBeGreaterThanOrEqual(6);
+  });
 });

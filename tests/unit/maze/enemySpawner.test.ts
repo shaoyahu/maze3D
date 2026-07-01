@@ -17,6 +17,8 @@ const openMaze: MazeData = {
   pickups: [],
   rules: { initialTime: 60, maxHealth: 3, victory: 'reach-exit', timeOnPickup: 15 },
   enemies: [],
+  traps: [],
+  doors: [],
 };
 
 describe('injectEnemySpawns', () => {

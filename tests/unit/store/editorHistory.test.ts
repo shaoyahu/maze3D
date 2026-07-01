@@ -28,6 +28,8 @@ function makeMaze(over: Partial<MazeData> = {}): MazeData {
     pickups: [],
     rules: { initialTime: 60, maxHealth: 3, victory: 'reach-exit', timeOnPickup: 5 },
     enemies: [],
+    traps: [],
+    doors: [],
     ...over,
   };
 }

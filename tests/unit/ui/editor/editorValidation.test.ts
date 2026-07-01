@@ -26,6 +26,8 @@ function makeLevel(over: Partial<MazeData> = {}): MazeData {
       timeOnPickup: 10,
     },
     enemies: [],
+    traps: [],
+    doors: [],
   };
   return { ...base, ...over };
 }

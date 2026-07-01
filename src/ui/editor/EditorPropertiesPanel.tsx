@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { useEditorStore } from '../../store/editorStore';
-import type { MazeData, PickupType, VictoryType, MinimapMode, MapOpenBehavior, ParchmentLifecycle } from '../../maze/types';
-import { isPickupType, isVictoryType, VICTORY_TYPE_VALUES, MINIMAP_MODE_VALUES, MAP_OPEN_BEHAVIOR_VALUES, PARCHMENT_LIFECYCLE_VALUES } from '../../maze/types';
+import type { MazeData, PickupType, VictoryType, MinimapMode, MapOpenBehavior, ParchmentLifecycle, TrapKind, KeyColor } from '../../maze/types';
+import { isPickupType, isVictoryType, isTrapKind, isKeyColor, VICTORY_TYPE_VALUES, MINIMAP_MODE_VALUES, MAP_OPEN_BEHAVIOR_VALUES, PARCHMENT_LIFECYCLE_VALUES, TRAP_KIND_VALUES, KEY_COLOR_VALUES } from '../../maze/types';
 import { Button } from '../components/Button';
 import { Dropdown, type DropdownOption } from '../components/Dropdown';
 import { useT } from '../../i18n';
@@ -43,7 +43,7 @@ function Card({
   defaultCollapsed = false,
   children,
 }: {
-  variant: 'meta' | 'rules' | 'pickup' | 'enemy' | 'wall';
+  variant: 'meta' | 'rules' | 'pickup' | 'enemy' | 'wall' | 'trap' | 'door';
   selected?: boolean;
   title: string;
   chip?: string;
@@ -926,6 +926,174 @@ function WallFormImpl({ x, z }: { x: number; z: number }): React.ReactElement {
 
 const WallForm = memo(WallFormImpl);
 
+// P2-18: Trap property form — kind dropdown + conditional damage/slowDuration steppers.
+function TrapFormImpl({ trapId }: { trapId: string }): React.ReactElement {
+  const t = useT();
+  const trap = useEditorStore((s) => s.level.traps.find((t) => t.id === trapId));
+  const updateTrap = useEditorStore((s) => s.updateTrap);
+  const deleteSelected = useEditorStore((s) => s.deleteSelected);
+
+  const [kind, setKind] = useState<TrapKind>(() => trap?.kind ?? 'fire');
+  const [damage, setDamage] = useState<number>(() => trap?.damage ?? 1);
+  const [slowDuration, setSlowDuration] = useState<number>(() => trap?.slowDurationSec ?? 1.5);
+
+  useEffect(() => {
+    if (trap) {
+      setKind(trap.kind);
+      setDamage(trap.damage ?? 1);
+      setSlowDuration(trap.slowDurationSec ?? 1.5);
+    }
+  }, [trap?.id, trap?.kind, trap?.damage, trap?.slowDurationSec]);
+
+  if (!trap) return <SelectionMissing kind="trap" />;
+
+  const kindOptions = TRAP_KIND_VALUES.map((k) => ({
+    value: k,
+    label: t(`editor.properties.trapKind.${k}`),
+    codename: k === 'fire' ? 'T-01' : 'T-02',
+    desc: `(${k})`,
+  }));
+
+  return (
+    <div data-testid="trap-form" className="editor-properties__form">
+      <BackToLevel />
+      <Card variant="trap" selected title={t('editor.properties.trapCard')} chip={trap.id.slice(0, 8)}>
+        <div className="editor-properties__field">
+          <span className="editor-properties__field-label">{t('editor.properties.field.type')}</span>
+          <Dropdown<TrapKind>
+            testId="trap-kind"
+            ariaLabel={t('editor.properties.field.type')}
+            value={kind}
+            options={kindOptions}
+            onChange={(k) => {
+              if (!isTrapKind(k)) return;
+              setKind(k);
+              updateTrap(trap.id, { kind: k });
+            }}
+            optionTestId={(opt) => `trap-kind-${opt.value}`}
+          />
+        </div>
+        <div className="editor-properties__field">
+          <span className="editor-properties__field-label">{t('editor.properties.field.coord')}</span>
+          <div className="editor-properties__readonly">
+            ({trap.x}, {trap.z})
+          </div>
+        </div>
+        {kind === 'fire' && (
+          <label className="editor-properties__field">
+            <span className="editor-properties__field-label">{t('editor.properties.field.damage')}</span>
+            <Stepper
+              value={damage}
+              onChange={(v) => {
+                setDamage(v);
+                updateTrap(trap.id, { damage: v });
+              }}
+              min={1}
+              max={10}
+              testId="trap-damage"
+              unit="♥"
+              t={t}
+            />
+          </label>
+        )}
+        {kind === 'water' && (
+          <label className="editor-properties__field">
+            <span className="editor-properties__field-label">{t('editor.properties.field.slowDuration')}</span>
+            <Stepper
+              value={slowDuration}
+              onChange={(v) => {
+                setSlowDuration(v);
+                updateTrap(trap.id, { slowDurationSec: v });
+              }}
+              min={0.5}
+              max={10}
+              step={0.5}
+              testId="trap-slow-duration"
+              unit={t('editor.properties.unit.second')}
+              t={t}
+            />
+          </label>
+        )}
+        <Button variant="danger" onClick={() => deleteSelected()} data-testid="delete-trap">
+          {t('editor.properties.deleteTrap')}
+        </Button>
+      </Card>
+    </div>
+  );
+}
+
+const TrapForm = memo(TrapFormImpl);
+
+// P2-18: Door property form — keyColor dropdown + readonly coord + missing-key warn chip.
+function DoorFormImpl({ doorId }: { doorId: string }): React.ReactElement {
+  const t = useT();
+  const door = useEditorStore((s) => s.level.doors.find((d) => d.id === doorId));
+  const level = useEditorStore((s) => s.level);
+  const updateDoor = useEditorStore((s) => s.updateDoor);
+  const deleteSelected = useEditorStore((s) => s.deleteSelected);
+
+  const [keyColor, setKeyColor] = useState<KeyColor>(() => door?.keyColor ?? 'red');
+
+  useEffect(() => {
+    if (door) {
+      setKeyColor(door.keyColor);
+    }
+  }, [door?.id, door?.keyColor]);
+
+  if (!door) return <SelectionMissing kind="door" />;
+
+  // Check if a matching-color key pickup exists on the level.
+  const hasMatchingKey = level.pickups.some(
+    (p) => p.type === 'key' && p.keyColor === door.keyColor,
+  );
+
+  const keyColorOptions = KEY_COLOR_VALUES.map((c) => ({
+    value: c,
+    label: t(`editor.properties.keyColor.${c}`),
+    codename: c.slice(0, 1).toUpperCase(),
+    desc: `(${c})`,
+  }));
+
+  return (
+    <div data-testid="door-form" className="editor-properties__form">
+      <BackToLevel />
+      <Card variant="door" selected title={t('editor.properties.doorCard')} chip={door.id.slice(0, 8)}>
+        <label className="editor-properties__field">
+          <span className="editor-properties__field-label">{t('editor.properties.field.keyColor')}</span>
+          <Dropdown<KeyColor>
+            testId="door-key-color"
+            ariaLabel={t('editor.properties.field.keyColor')}
+            value={keyColor}
+            options={keyColorOptions}
+            onChange={(c) => {
+              if (!isKeyColor(c)) return;
+              setKeyColor(c);
+              updateDoor(door.id, { keyColor: c });
+            }}
+            optionTestId={(opt) => `door-key-color-${opt.value}`}
+          />
+        </label>
+        <div className="editor-properties__field">
+          <span className="editor-properties__field-label">{t('editor.properties.field.coord')}</span>
+          <div className="editor-properties__readonly">
+            ({door.x}, {door.z})
+          </div>
+        </div>
+        {!hasMatchingKey && (
+          <div className="editor-properties__warn" data-testid="door-missing-key-warn">
+            {t('editor.properties.doorMissingKey')}
+          </div>
+        )}
+        <Button variant="danger" onClick={() => deleteSelected()} data-testid="delete-door">
+          {t('editor.properties.deleteDoor')}
+        </Button>
+      </Card>
+    </div>
+  );
+}
+
+const DoorForm = memo(DoorFormImpl);
+
 type RenderBodyArgs = {
   selection: ReturnType<typeof useEditorStore.getState>['selection'];
   level: MazeData;
@@ -945,6 +1113,13 @@ function renderBody({ selection, level }: RenderBodyArgs): React.ReactNode {
   }
   if (selection.kind === 'wall') {
     return <WallForm x={selection.x} z={selection.z} />;
+  }
+  // P2-18: trap and door property forms.
+  if (selection.kind === 'trap') {
+    return <TrapForm trapId={selection.id} />;
+  }
+  if (selection.kind === 'door') {
+    return <DoorForm doorId={selection.id} />;
   }
   // F-2026-06-16-M-5: exhaustiveness check. If a new EditorSelection
   // variant is added (e.g. start-cell selection) without a branch
@@ -967,14 +1142,19 @@ export function EditorPropertiesPanel(): React.ReactElement {
   );
 }
 
-function SelectionMissing({ kind }: { kind: 'pickup' | 'enemy' }): React.ReactElement {
+function SelectionMissing({ kind }: { kind: 'pickup' | 'enemy' | 'trap' | 'door' }): React.ReactElement {
   const t = useT();
+  const thingKey = kind === 'pickup'
+    ? 'editor.properties.selection.pickup'
+    : kind === 'enemy'
+      ? 'editor.properties.selection.enemy'
+      : kind === 'trap'
+        ? 'editor.properties.selection.trap'
+        : 'editor.properties.selection.door';
   return (
     <div className="editor-properties__empty">
       {t('editor.properties.selectionMissing', {
-        thing: kind === 'pickup'
-          ? t('editor.properties.selection.pickup')
-          : t('editor.properties.selection.enemy'),
+        thing: t(thingKey),
       })}
     </div>
   );

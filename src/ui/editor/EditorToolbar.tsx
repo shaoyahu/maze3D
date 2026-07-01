@@ -41,6 +41,9 @@ const TOOLS: readonly ToolEntry[] = [
   },
   { tool: 'pickup', labelKey: 'editor.toolbar.tool.pickup', shortcut: 'P', icon: '✦' },
   { tool: 'enemy',  labelKey: 'editor.toolbar.tool.enemy',  shortcut: 'M', icon: '◉' },
+  // P2-18: trap and door tools.
+  { tool: 'trap',   labelKey: 'editor.toolbar.tool.trap',   shortcut: 'T', icon: '🔥' },
+  { tool: 'door',   labelKey: 'editor.toolbar.tool.door',   shortcut: 'D', icon: '🚪' },
   { tool: 'pan',    labelKey: 'editor.toolbar.tool.pan',    shortcut: 'H', icon: '✥' },
 ];
 

@@ -15,6 +15,9 @@ const bridge: GameBridge = {
   isPlaying: () => true,
   onUseItem: () => {},
   onEnemyContact: () => {},
+  onTrapHit: () => {},
+  getPlayerSpeedMultiplier: () => 1,
+  // F-2026-07-01-M-1: onDoorUnlocked removed from GameBridge
 };
 
 describe('Game.startLevel P2-5 rebalance', () => {

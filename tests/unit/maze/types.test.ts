@@ -23,6 +23,11 @@ import {
   isMinimapMode,
   isMapOpenBehavior,
   isParchmentLifecycle,
+  // P2-18: trap + door type guards
+  isTrapKind,
+  isKeyColor,
+  TRAP_KIND_VALUES,
+  KEY_COLOR_VALUES,
   type EnemySpawn,
   type EnemyState,
   type EnemyAggression,
@@ -386,5 +391,44 @@ describe('isParchmentLifecycle (P2-16)', () => {
     expect(isParchmentLifecycle(undefined)).toBe(false);
     expect(isParchmentLifecycle(1)).toBe(false);
     expect(isParchmentLifecycle({})).toBe(false);
+  });
+});
+
+// P2-18: trap + door type guards
+describe('isTrapKind (P2-18)', () => {
+  it.each(TRAP_KIND_VALUES)('accepts the documented %s literal', (v) => {
+    expect(isTrapKind(v)).toBe(true);
+  });
+
+  it('rejects unknown strings', () => {
+    expect(isTrapKind('ice')).toBe(false);
+    expect(isTrapKind('Fire')).toBe(false);
+    expect(isTrapKind('')).toBe(false);
+  });
+
+  it('rejects non-string values', () => {
+    expect(isTrapKind(null)).toBe(false);
+    expect(isTrapKind(undefined)).toBe(false);
+    expect(isTrapKind(1)).toBe(false);
+    expect(isTrapKind({})).toBe(false);
+  });
+});
+
+describe('isKeyColor (P2-18)', () => {
+  it.each(KEY_COLOR_VALUES)('accepts the documented %s literal', (v) => {
+    expect(isKeyColor(v)).toBe(true);
+  });
+
+  it('rejects unknown strings', () => {
+    expect(isKeyColor('purple')).toBe(false);
+    expect(isKeyColor('Red')).toBe(false);
+    expect(isKeyColor('')).toBe(false);
+  });
+
+  it('rejects non-string values', () => {
+    expect(isKeyColor(null)).toBe(false);
+    expect(isKeyColor(undefined)).toBe(false);
+    expect(isKeyColor(1)).toBe(false);
+    expect(isKeyColor({})).toBe(false);
   });
 });

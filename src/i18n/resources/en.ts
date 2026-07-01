@@ -259,6 +259,9 @@ export const en: Translations = {
   'editor.toolbar.hint.exit': 'Click a cell to set the exit',
   'editor.toolbar.hint.pickup': 'Click a floor cell to place an item',
   'editor.toolbar.hint.enemy': 'Click a cell to place an enemy · edit its path on the right',
+  // P2-18: trap and door toolbar hints.
+  'editor.toolbar.hint.trap': 'Click a floor cell to place a trap · edit its type and params on the right',
+  'editor.toolbar.hint.door': 'Click a floor cell to place a door · edit its key color on the right',
   'editor.toolbar.hint.pan': 'Right-click drag to pan',
 
   'editor.toolbar.autoSaved': 'Auto-saved at {time}',
@@ -306,6 +309,9 @@ export const en: Translations = {
   'editor.toolbar.tool.exit': 'Exit',
   'editor.toolbar.tool.pickup': 'Item',
   'editor.toolbar.tool.enemy': 'Enemy',
+  // P2-18: trap and door toolbar tools.
+  'editor.toolbar.tool.trap': 'Trap',
+  'editor.toolbar.tool.door': 'Door',
   'editor.toolbar.tool.pan': 'Pan',
   'editor.toolbar.undo': 'Undo',
   'editor.toolbar.redo': 'Redo',
@@ -413,6 +419,22 @@ export const en: Translations = {
   'editor.properties.field.coord': 'Coords',
   'editor.properties.deleteWall': 'Delete wall',
 
+  // P2-18: trap and door property panel keys.
+  'editor.properties.trapCard': 'Trap',
+  'editor.properties.trapKind.fire': 'Fire',
+  'editor.properties.trapKind.water': 'Water',
+  'editor.properties.field.damage': 'Damage',
+  'editor.properties.field.slowDuration': 'Slow duration',
+  'editor.properties.deleteTrap': 'Delete trap',
+  'editor.properties.doorCard': 'Door',
+  'editor.properties.keyColor.red': 'Red',
+  'editor.properties.keyColor.blue': 'Blue',
+  'editor.properties.keyColor.green': 'Green',
+  'editor.properties.keyColor.yellow': 'Yellow',
+  'editor.properties.field.keyColor': 'Key color',
+  'editor.properties.doorMissingKey': '⚠ No matching-color key on this level — the player won\'t be able to open this door',
+  'editor.properties.deleteDoor': 'Delete door',
+
   // P2-13.7: tutorial / HUD card i18n (was hard-coded Chinese in P2-11).
   'editor.properties.tutorialCard': 'Tutorial / HUD',
   'editor.properties.tutorialChip': 'tutorial',
@@ -443,6 +465,9 @@ export const en: Translations = {
   // "item" to match the new toolbar label.
   'editor.properties.selection.pickup': 'item',
   'editor.properties.selection.enemy': 'enemy',
+  // P2-18: trap and door selection labels.
+  'editor.properties.selection.trap': 'trap',
+  'editor.properties.selection.door': 'door',
 
   'editor.properties.minusAria': 'Decrease',
   'editor.properties.plusAria': 'Increase',
@@ -502,6 +527,13 @@ export const en: Translations = {
   'editor.lastError.collideWithExit': 'That cell is already the exit',
   'editor.lastError.collideWithPickup': 'That cell already has a pickup',
   'editor.lastError.collideWithEnemy': 'That cell already has an enemy (or a patrol path node)',
+  // P2-18: trap and door placement error keys.
+  'editor.lastError.trapOnWall': 'Traps can only be placed on floor cells (use the Carve tool first)',
+  'editor.lastError.doorOnWall': 'Doors can only be placed on floor cells (use the Carve tool first)',
+  'editor.lastError.trapDuplicate': 'That cell already has a trap (one per cell)',
+  'editor.lastError.doorDuplicate': 'That cell already has a door (one per cell)',
+  'editor.lastError.collideWithTrap': 'That cell already has a trap',
+  'editor.lastError.collideWithDoor': 'That cell already has a door',
 
   // F-2026-06-17-E-M-7: design-rule issues rendered in the editor
   // warnings popup. Keys mirror the 8 ValidationIssue.messageKey values
@@ -555,6 +587,11 @@ export const en: Translations = {
   'editor.help.tool.enemyDesc': 'Place an enemy; click it again to edit its patrol path on the right',
   'editor.help.tool.pan': 'Pan',
   'editor.help.tool.panDesc': 'Hold left or right mouse button and drag to pan; scroll to zoom',
+  // P2-18: trap + door tool entries
+  'editor.help.tool.trap': 'Trap',
+  'editor.help.tool.trapDesc': 'Place a trap on a floor cell (fire = damage / water = slow); tweak type and value on the right',
+  'editor.help.tool.door': 'Door',
+  'editor.help.tool.doorDesc': 'Place a color-keyed door (red/blue/green/yellow); the player needs a matching-color key to open it',
 
   'editor.help.shortcut.esc': 'Exit current tool / clear selection',
   'editor.help.shortcut.undo': 'Undo',
@@ -572,6 +609,8 @@ export const en: Translations = {
   'editor.help.checklist.pickups': 'At least 1-2 pickups so there is something to collect.',
   'editor.help.checklist.enemyPath': 'Each enemy has at least 2 patrol waypoints, otherwise the enemy gets stuck.',
   'editor.help.checklist.rules': 'Victory mode, initial time, and max health are set to sensible values (defaults are fine).',
+  // P2-18: trap + door checklist item
+  'editor.help.checklist.trapsAndDoors': 'Each door has a matching-color key on the level (otherwise the player cannot open it); traps should not block the only path to the exit',
 
   // ============================================================
   // editor.manual.* — Tutorial manual (EditorTutorialManual copy)
@@ -674,4 +713,20 @@ export const en: Translations = {
   'tutorial.teaching04.step1': 'Final trial — collect every item before the exit counts',
   'tutorial.teaching04.step2': 'All collected — head to the exit',
   'tutorial.teaching04.step3': 'Cleared!',
+  // P2-18: new teaching levels — traps + key doors
+  'tutorial.teaching05.step1': 'A fire trap ahead — stepping on it deals damage',
+  'tutorial.teaching05.step2': 'Check the burn mark on the parchment — injury leaves a trace',
+  'tutorial.teaching05.step3': 'Continue to the exit',
+  'tutorial.teaching06.step1': 'A puddle ahead — slows you down',
+  'tutorial.teaching06.step2': 'You move slower while slowed — wait it out',
+  'tutorial.teaching06.step3': 'Keep going once it wears off',
+  'tutorial.teaching07.step1': 'Pick up the red key — note its color',
+  'tutorial.teaching07.step2': 'Stand next to the red door — press number 1 to unlock with a matching key',
+  'tutorial.teaching07.step3': 'Door unlocked — clear!',
+  'tutorial.teaching08.step1': 'New mechanics — colored keys, doors, fire and water traps',
+  'tutorial.teaching08.step2': 'Grab the first key — dodge the water and fire',
+  'tutorial.teaching08.step3': 'Reach the matching door — press the number key to unlock',
+  'tutorial.teaching08.step4': 'Grab the second key — watch for damage traps',
+  'tutorial.teaching08.step5': 'Reach the second door — unlock it the same way',
+  'tutorial.teaching08.step6': 'Cleared with every new mechanic!',
 };

@@ -1,0 +1,43 @@
+{
+  "id": "teaching-08",
+  "name": "双门试炼",
+  "i18n": { "en": "Two-Door Trial" },
+  "size": { "width": 5, "depth": 5 },
+  "cellSize": 2,
+  "start": { "x": 0, "z": 0 },
+  "exit": { "x": 4, "z": 4 },
+  "walls": [
+    [0, 0, 0, 0, 0],
+    [1, 1, 0, 1, 1],
+    [0, 0, 0, 0, 0],
+    [1, 1, 0, 1, 1],
+    [0, 0, 0, 0, 0]
+  ],
+  "pickups": [
+    { "id": "00000000-0000-0000-0000-000000000034", "x": 1, "z": 0, "type": "key", "value": 1, "keyColor": "red" },
+    { "id": "00000000-0000-0000-0000-000000000035", "x": 3, "z": 2, "type": "key", "value": 1, "keyColor": "blue" }
+  ],
+  "traps": [
+    { "id": "00000000-0000-0000-0000-000000000036", "x": 2, "z": 0, "kind": "water", "slowDurationSec": 2 },
+    { "id": "00000000-0000-0000-0000-000000000037", "x": 2, "z": 2, "kind": "fire", "damage": 1 }
+  ],
+  "doors": [
+    { "id": "00000000-0000-0000-0000-000000000038", "x": 2, "z": 1, "keyColor": "red" },
+    { "id": "00000000-0000-0000-0000-000000000039", "x": 2, "z": 3, "keyColor": "blue" }
+  ],
+  "rules": {
+    "initialTime": 60,
+    "maxHealth": 3,
+    "victory": "reach-exit",
+    "timeOnPickup": 10
+  },
+  "enemies": [],
+  "tutorialSteps": [
+    { "id": "intro", "messageKey": "tutorial.teaching08.step1", "trigger": { "type": "timeout", "timeoutSec": 2 } },
+    { "id": "pickup-red", "messageKey": "tutorial.teaching08.step2", "trigger": { "type": "pickup-collected", "count": 1 } },
+    { "id": "open-red", "messageKey": "tutorial.teaching08.step3", "trigger": { "type": "timeout", "timeoutSec": 30 } },
+    { "id": "pickup-blue", "messageKey": "tutorial.teaching08.step4", "trigger": { "type": "pickup-collected", "count": 2 } },
+    { "id": "open-blue", "messageKey": "tutorial.teaching08.step5", "trigger": { "type": "timeout", "timeoutSec": 30 } },
+    { "id": "exit", "messageKey": "tutorial.teaching08.step6", "trigger": { "type": "reached-exit" } }
+  ]
+}

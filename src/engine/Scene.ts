@@ -128,6 +128,12 @@ export interface SceneRefs {
   exit: THREE.Mesh;
   pickups: THREE.Mesh[];
   enemies: THREE.Mesh[];
+  // P2-18: trap meshes indexed by position key "x,z". Used by the engine
+  // for rendering only (collision is cell-based, not mesh-based).
+  traps: THREE.Mesh[];
+  // P2-18: door meshes keyed by door id. The engine calls
+  // doors.get(id) to hide the mesh on openDoor().
+  doors: Map<string, THREE.Mesh>;
   playerMarker: THREE.Mesh;
   setDarkMode: (enabled: boolean) => void;
 }
@@ -332,7 +338,64 @@ export function buildScene(maze: MazeData, darkMode =false): SceneRefs {
     enemies.push(mesh);
   }
 
-  return { scene, walls, exit, pickups, enemies, playerMarker, setDarkMode };
+  // P2-18: trap meshes. Fire traps are warm-orange flat planes with a
+  // subtle flicker; water traps are blue discs with a ripple look.
+  // F-2026-07-01-M-3: hoisted geometries outside the loop (like wallGeom,
+  // pickupGeom, etc.) so they are shared across all trap meshes instead
+  // of creating one geometry per trap.
+  const traps: THREE.Mesh[] = [];
+  const fireTrapMat = new THREE.MeshLambertMaterial({
+    color: 0xff6622,
+    emissive: 0x331100,
+    transparent: true,
+    opacity: 0.7,
+  });
+  const waterTrapMat = new THREE.MeshLambertMaterial({
+    color: 0x2288ff,
+    emissive: 0x001133,
+    transparent: true,
+    opacity: 0.6,
+  });
+  const fireTrapGeom = new THREE.PlaneGeometry(cs * 0.8, cs * 0.8);
+  const waterTrapGeom = new THREE.CircleGeometry(cs * 0.35, 24);
+  for (const t of maze.traps) {
+    const mat = t.kind === 'fire' ? fireTrapMat : waterTrapMat;
+    const geom = t.kind === 'fire' ? fireTrapGeom : waterTrapGeom;
+    const mesh = new THREE.Mesh(geom, mat);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.position.set((t.x + 0.5) * cs, 0.03, (t.z + 0.5) * cs);
+    mesh.userData = { trap: t };
+    scene.add(mesh);
+    traps.push(mesh);
+  }
+
+  // P2-18: door meshes. Closed doors are metal-gray boxes filling the
+  // cell (treated as walls by collision). When opened, mesh.visible is
+  // set to false. Each door gets its own material so we can tint by
+  // keyColor for visual clarity.
+  const doors = new Map<string, THREE.Mesh>();
+  const doorGeom = new THREE.BoxGeometry(cs, 2.4, cs);
+  // P2-18: key color → door tint mapping.
+  const DOOR_COLOR: Record<string, number> = {
+    red: 0x882222,
+    blue: 0x222288,
+    green: 0x228822,
+    yellow: 0x888822,
+  };
+  for (const d of maze.doors) {
+    const color = DOOR_COLOR[d.keyColor] ?? 0x555555;
+    const doorMat = new THREE.MeshLambertMaterial({
+      color,
+      emissive: color & 0x222222,
+    });
+    const mesh = new THREE.Mesh(doorGeom, doorMat);
+    mesh.position.set((d.x + 0.5) * cs, 1.2, (d.z + 0.5) * cs);
+    mesh.userData = { door: d };
+    scene.add(mesh);
+    doors.set(d.id, mesh);
+  }
+
+  return { scene, walls, exit, pickups, enemies, traps, doors, playerMarker, setDarkMode };
 }
 
 export function disposeScene(
@@ -340,6 +403,11 @@ export function disposeScene(
   walls: THREE.Mesh[],
   pickups: THREE.Mesh[],
   enemies: THREE.Mesh[] = [],
+  traps: THREE.Mesh[] = [],
+  // F-2026-07-01-M-2: added doors Map parameter so we can clear stale
+  // references after disposal. Without this, the Map still held references
+  // to disposed meshes after a level transition.
+  doors?: Map<string, THREE.Mesh>,
 ) {
   // F-2026-06-17-B-H-1: Set (strong refs), not WeakSet. Three.js
   // BufferGeometry / Material / Texture must be dispose()'d explicitly;
@@ -396,6 +464,10 @@ export function disposeScene(
   walls.length = 0;
   pickups.length = 0;
   enemies.length = 0;
+  traps.length = 0;
+  // F-2026-07-01-M-2: clear the doors Map so stale mesh references
+  // don't survive past a level transition.
+  doors?.clear();
   // F-2026-06-17-B-L-3: clear the module-level disposedTexs /
   // doubleDisposeWarned Sets so a fresh level build doesn't double-warn
   // for textures that were already disposed in a previous level's teardown.
