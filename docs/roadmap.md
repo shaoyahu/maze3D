@@ -10,11 +10,11 @@
 
 | 字段 | 值 |
 |---|---|
-| 活跃增量 | **P2-15 review-fixes-batch-2(24/24 FR done,2026-06-17 session 实施;FR-10 D-M-1 经核实为 premise-void finding — generators 不生成 pickup,留 defensive helper + invariant pin 测试;e2e fixme 保留待 dev server 跑过确认)** |
-| 已完成 | P2-2 14/14 ✅ + P2-3 14/14 ✅ + P2-4a 16/16 ✅ + P2-4b 20/20 ✅ + P2-5 16/16 ✅ + P2-6 10/10 ✅ + P2-7 8/8 ✅ + P2-9 ✅ + P2-10 11/11 ✅ + P2-11 16/16 ✅ + P2-13 ✅ + P2-14 ✅ + **P2-15 24/24 ✅ (2026-06-17,session 实施)** |
-| 下一个任务 | 等用户决策:手动 commit P2-15 剩余 10 FR 的工作(FR-4/8/9/10/14/15/20/21/22+23/theme.css)→ 或进入 P3 候选(e2e skip 根因修复 / Dropdown a11y 套件 / theme.css 拆分) |
-| 最后更新 | 2026-06-17 |
-| 最近 commit | 待提交 — P2-15 剩余 10 FR 工作已落地,等待用户 commit(见活跃锚点详情) |
+| 活跃增量 | **P2-17 editor-tutorial-manual(2026-06-30 session 实施,6/6 Task done;8 文件 +960/-5 行;全测试 85 files / 1128 tests pass;typecheck + build 0 错误;待用户 commit)** |
+| 已完成 | P2-2 14/14 ✅ + P2-3 14/14 ✅ + P2-4a 16/16 ✅ + P2-4b 20/20 ✅ + P2-5 16/16 ✅ + P2-6 10/10 ✅ + P2-7 8/8 ✅ + P2-9 ✅ + P2-10 11/11 ✅ + P2-11 16/16 ✅ + P2-13 ✅ + P2-14 ✅ + P2-15 24/24 ✅ + P2-16 ✅ + **P2-17 ✅ (2026-06-30,session 实施)** |
+| 下一个任务 | 等用户决策:commit P2-17 → 或进入 P3 候选 |
+| 最后更新 | 2026-06-30 |
+| 最近 commit | 待提交 — P2-17 编辑器教程手册已完成，等待用户 commit |
 
 **约束**：
 - 一次只做一个任务（见下方「总任务列表」）
@@ -67,6 +67,8 @@
 | P2-13 | 编辑器文件夹系统 + 左侧栏重构 + 胜利标签键修复（`levelStore` 文件夹 CRUD + `EditorLeftPanel` 替换 `EditorLeftDrawer` + 新 `Dropdown` 组件 + 教程卡 hero/rows/advanced 三段式 + `WinOverlay` victory 标签键修复 + theme.css 主题变量重排 = 27 文件 +5021/-2470 行） | P1 | P2-4b, P2-8 | Medium | `docs/increments/p2-13-editor-folders/` | ✅ done (2026-06-17, ad94abe) |
 | P2-14 | P2-13 review batch 1：12/33 finding 修复（H5 vitest 排除重排 + H4 Segmented useMemo 回归闭合 + H3 EditorLeftPanel 性能 + H1 reachability 边界守卫 + H2 Enemy constructor 守卫 + M3 shouldSurviveWin finite guard + M2 levelStore moveFolder cleanup + M12 Scene.dispose scene.clear + M13 collidesAt cellSize=0 守卫 + M14 Loop magic number + M15 GameCanvas subscribe guard + M2 _expandThickWall size 守卫 = 12 文件 +123/-44 行） | P1 | P2-13 | Small | `docs/increments/p2-14-review-fixes-batch-1/` *(目录占位;产物随 commit `e135e32` 走)* | ✅ done (2026-06-17, e135e32) |
 | P2-15 | P2-13 review batch 2：24/24 LOW/MEDIUM finding 收口(FR-4 form React.memo · FR-8 right-click 3 case · FR-9 carveLShape 跳过 exit · FR-10 AlgorithmMazeProvider defensive helper + invariant pin · FR-14 rename 失败 dialog · FR-15 GameOverOverlay Record<VictoryType> · FR-20 renameLevel action · FR-21 victory fallback · FR-22 Dialog --panel→--bg-elevated · FR-23 dropdown outline · 14 个 from prior batch · = 24 FR 全部 done;spec/plan 在 `docs/increments/p2-15-review-fixes-batch-2/`,23 Task / 24 FR;FR-10 D-M-1 经核实为 premise void — generators 不生成 pickup,留 helper + pin 测试覆盖不变量) | P1 | P2-13 | Medium | `docs/increments/p2-15-review-fixes-batch-2/` | ✅ done (2026-06-17,session 实施) |
+| P2-16 | 羊皮纸地图(三态 `minimapMode` 替换 `hideMinimap` + M 键全屏 modal + 走过才显现 + 受伤 50% 生成水渍/火烧/撕裂损伤区 + 编辑器联级 `mapOpenBehavior` / `parchmentLifecycle` + `hideMinimap` 兼容迁移) | P1 | P2-11, P2-4a, P2-8 | Large | `docs/increments/p2-16-parchment-map/` | ✅ done (2026-06-30,session 实施) |
+| P2-17 | 编辑器教程手册(6 章分节阅读模式 + 左侧 TOC + 右侧内容 + Prev/Next 导航 + TopBar 📖 入口 + ESC/backdrop/click-outside 关闭 + 移动端 dropdown + `editor.manual.*` i18n 56 key) | P1 | P2-4b, P2-8 | Small–Medium | `docs/increments/p2-17-editor-tutorial-manual/` | ✅ done (2026-06-30,session 实施) |
 
 > **P2-1 已删除**：原计划"多关卡 JSON（中/大尺寸）"被 P2-3 算法生成取代。MVP 保留 `level-small.json` 作为"教学关"，`level-tiny.json` 留 E2E。
 > **P2-4 拆分**：原"敌人 + 编辑器"X-Large 拆成 P2-4a（敌人+survive mode，依赖 P2-3）和 P2-4b（编辑器，独立）。

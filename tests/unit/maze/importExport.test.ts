@@ -87,6 +87,13 @@ describe('importExport', () => {
     // because the top-level keys would still be present (just with
     // `undefined` sub-fields). The pattern mirrors
     // tests/unit/maze/levels.test.ts:108-139.
+    //
+    // F-2026-06-30: P2-16 — `hideMinimap` is no longer round-tripped;
+    // the validator migrates it to `rules.minimapMode: 'hidden'`. The
+    // roundtrip assertion now checks that the migrated field survives
+    // exportLevel → parseImport. Without this update, the previous
+    // `hideMinimap` test would silently flip from "pass" to "expected
+    // undefined to be true" as soon as the migration landed.
     it.each([
       ['i18n', { i18n: { en: 'Sentinel Corridor' } }, (lvl: MazeData) => lvl.i18n],
       [
@@ -94,7 +101,11 @@ describe('importExport', () => {
         { tutorialSteps: [{ id: 's1', messageKey: 'tutorial.s1', trigger: { type: 'timeout', timeoutSec: 5 } }] },
         (lvl: MazeData) => lvl.tutorialSteps,
       ],
-      ['hideMinimap', { hideMinimap: true }, (lvl: MazeData) => lvl.hideMinimap],
+      [
+        'rules.minimapMode (P2-16)',
+        { rules: { ...makeValidLevel().rules as object, minimapMode: 'parchment' } as MazeData['rules'] },
+        (lvl: MazeData) => lvl.rules.minimapMode,
+      ],
       [
         'rules.enemyAggression',
         { rules: { ...makeValidLevel().rules as object, enemyAggression: 'medium' } as MazeData['rules'] },

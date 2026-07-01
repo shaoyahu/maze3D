@@ -34,6 +34,12 @@ function resolveLocale(locale: unknown): Locale {
   if ((LOCALES as readonly string[]).includes(locale as string)) {
     return locale as Locale;
   }
+  // L-5 (2026-07-01): console.warn is intentional here. A bad locale
+  // arrives from localStorage corruption or a future migration that
+  // hasn't been wired yet — silent fallback would mask the data
+  // problem; loud warn surfaces it in the dev console without
+  // breaking the production UI (rendering always falls back to
+  // DEFAULT_LOCALE). Don't suppress.
   // eslint-disable-next-line no-console
   console.warn(
     `[i18n] unsupported locale "${String(locale)}"; falling back to "${DEFAULT_LOCALE}"`,
@@ -43,6 +49,13 @@ function resolveLocale(locale: unknown): Locale {
 
 function interpolate(template: string, vars: TVars | undefined): string {
   if (!vars) return template;
+  // L-6 (2026-07-01): per-template `warned` flag (boolean, not a Set)
+  // is intentional. interpolate() is called once per `t(key, vars)`
+  // invocation and the `warned` closure dies with the function — a
+  // Set-based cache would survive across calls and across renders,
+  // turning a transient dev-time breadcrumb into a permanent
+  // suppression. Keeping it local matches the "log once per
+  // problematic template, then keep quiet within that render" intent.
   let warned = false;
   const out = template.replace(PLACEHOLDER_RE, (match, name: string) => {
     if (Object.prototype.hasOwnProperty.call(vars, name)) {
@@ -84,6 +97,13 @@ export function getT(locale: Locale): TFunction {
  */
 export function useT(): TFunction {
   const locale = useSettingsStore((s) => s.language);
+  // L-7 (2026-07-01): memoize `getT(locale)` so a component that
+  // re-renders for an unrelated reason (parent re-render, hook
+  // ordering change) keeps the SAME `t` reference unless `locale`
+  // actually flipped. Without useMemo every render builds a fresh
+  // closure + reads `resources[locale]` + looks up the key on every
+  // call site, which both wastes work and breaks referential
+  // equality in downstream memoized children.
   return useMemo(() => getT(locale), [locale]);
 }
 

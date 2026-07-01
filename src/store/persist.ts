@@ -35,6 +35,25 @@ export function isStorageAvailable(): boolean {
   }
 }
 
+// F-2026-06-30-M-9: prototype-pollution guard. JSON.parse happily
+// parses `{"__proto__": {"polluted": true}}`; V8 then exposes the
+// polluted proto chain on the result. We strip the dangerous keys
+// recursively before the validate callback runs, so the caller's
+// type guard sees a sanitized shape.
+const POLLUTING_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+function stripPollutingKeys(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stripPollutingKeys);
+  if (value !== null && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (POLLUTING_KEYS.has(k)) continue;
+      out[k] = stripPollutingKeys(v);
+    }
+    return out;
+  }
+  return value;
+}
+
 export function loadJSON<T>(
   key: string,
   fallback: T,
@@ -43,7 +62,36 @@ export function loadJSON<T>(
   try {
     const raw = localStorage.getItem(key);
     if (raw == null) return fallback;
-    const parsed: unknown = JSON.parse(raw);
+    // F-2026-06-30-M-9: strip __proto__ / constructor / prototype keys
+    // before any further validation.
+    let parsed: unknown = JSON.parse(raw);
+    parsed = stripPollutingKeys(parsed);
+    // F-2026-06-30-L-21: default shape check. When the caller didn't
+    // pass a validator, at least reject values whose top-level type
+    // doesn't match the fallback's top-level type (object vs primitive).
+    // A bare string or number can't round-trip as `T` (unless `T` is
+    // string / number / boolean / null) and previously slipped through
+    // the bare `as T` cast.
+    if (!validate) {
+      if (fallback === null) {
+        // T = unknown / null — accept anything (the caller's type guard
+        // runs after this layer, when supplied). Bare null is just one
+        // of many valid `unknown` values; rejecting non-null here would
+        // refuse every legitimate localStorage blob.
+      } else if (Array.isArray(fallback)) {
+        // T = array — accept only arrays.
+        if (!Array.isArray(parsed)) return fallback;
+      } else if (typeof fallback === 'object') {
+        // T = object — accept only non-null objects.
+        if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          return fallback;
+        }
+      } else {
+        // T = primitive (string / number / boolean). The cast would
+        // produce a runtime-bad value otherwise.
+        if (typeof parsed !== typeof fallback) return fallback;
+      }
+    }
     if (validate && !validate(parsed)) return fallback;
     return parsed as T;
   } catch {

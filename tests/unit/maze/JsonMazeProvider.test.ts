@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { JsonMazeProvider, validateMaze } from '../../../src/maze/JsonMazeProvider';
 import { LevelLoadError } from '../../../src/utils/errors';
 
@@ -340,6 +340,202 @@ describe('JsonMazeProvider', () => {
       expect(msg.length).toBeLessThan(10_000);
       expect(msg).toContain('…');
       expect(msg.length).toBeLessThan(500);
+    });
+  });
+
+  // F-2026-06-30: 'caught-by-enemy' is the P2-11 teaching-only victory
+  // path. The editor hides the option for non-tutorial levels; this
+  // structural guard is the backstop for hand-edited JSON, older
+  // exports, or imports from a future second source.
+  describe("'caught-by-enemy' requires tutorial steps", () => {
+    it('rejects a level with caught-by-enemy and no tutorialSteps field', async () => {
+      const level = makeValidLevel({
+        rules: {
+          initialTime: 30,
+          maxHealth: 3,
+          victory: 'caught-by-enemy',
+          timeOnPickup: 10,
+        },
+      });
+      const provider = new JsonMazeProvider({ 'level-test': level });
+
+      await expect(provider.load('level-test')).rejects.toThrow(LevelLoadError);
+      await expect(provider.load('level-test')).rejects.toThrow(/caught-by-enemy/);
+    });
+
+    it('rejects a level with caught-by-enemy and an empty tutorialSteps array', async () => {
+      const level = makeValidLevel({
+        rules: {
+          initialTime: 30,
+          maxHealth: 3,
+          victory: 'caught-by-enemy',
+          timeOnPickup: 10,
+        },
+        tutorialSteps: [],
+      });
+      const provider = new JsonMazeProvider({ 'level-test': level });
+
+      await expect(provider.load('level-test')).rejects.toThrow(LevelLoadError);
+      await expect(provider.load('level-test')).rejects.toThrow(/caught-by-enemy/);
+    });
+
+    it('accepts a level with caught-by-enemy and at least one tutorial step (teaching-03 shape)', async () => {
+      const level = makeValidLevel({
+        rules: {
+          initialTime: 30,
+          maxHealth: 3,
+          victory: 'caught-by-enemy',
+          timeOnPickup: 10,
+        },
+        tutorialSteps: [
+          {
+            id: 's1',
+            trigger: 'reached-exit',
+            message: { zh: '被敌人抓住即胜利', en: 'Caught = win' },
+          },
+        ],
+      });
+      const provider = new JsonMazeProvider({ 'level-test': level });
+
+      const data = await provider.load('level-test');
+      expect(data.rules.victory).toBe('caught-by-enemy');
+      expect(data.tutorialSteps).toHaveLength(1);
+    });
+  });
+
+  // F-2026-06-30: P2-16 — three new optional rules fields are parsed
+  // leniently: invalid values are silently dropped (matching the
+  // `requireAllPickups` style) and the level still loads. The defaults
+  // come from the engine at runtime, not from the validator.
+  describe('P2-16 — new optional rules fields', () => {
+    it('accepts a well-formed minimapMode / mapOpenBehavior / parchmentLifecycle', async () => {
+      const level = makeValidLevel({
+        rules: {
+          initialTime: 30,
+          maxHealth: 3,
+          victory: 'reach-exit',
+          timeOnPickup: 10,
+          minimapMode: 'parchment',
+          mapOpenBehavior: 'continue',
+          parchmentLifecycle: 'persist',
+        },
+      });
+      const provider = new JsonMazeProvider({ 'level-test': level });
+
+      const data = await provider.load('level-test');
+      expect(data.rules.minimapMode).toBe('parchment');
+      expect(data.rules.mapOpenBehavior).toBe('continue');
+      expect(data.rules.parchmentLifecycle).toBe('persist');
+    });
+
+    it('silently drops invalid string values and still loads the level', async () => {
+      const level = makeValidLevel({
+        rules: {
+          initialTime: 30,
+          maxHealth: 3,
+          victory: 'reach-exit',
+          timeOnPickup: 10,
+          minimapMode: 'parchments', // typo
+          mapOpenBehavior: 'play', // unknown
+          parchmentLifecycle: 'keep', // unknown
+        },
+      });
+      const provider = new JsonMazeProvider({ 'level-test': level });
+
+      const data = await provider.load('level-test');
+      // Fields must NOT appear on the parsed rules — neither the typo
+      // nor the unknown values should leak into the runtime MazeData.
+      expect(data.rules.minimapMode).toBeUndefined();
+      expect(data.rules.mapOpenBehavior).toBeUndefined();
+      expect(data.rules.parchmentLifecycle).toBeUndefined();
+    });
+
+    it('silently drops non-string garbage (numbers / null / objects)', async () => {
+      const level = makeValidLevel({
+        rules: {
+          initialTime: 30,
+          maxHealth: 3,
+          victory: 'reach-exit',
+          timeOnPickup: 10,
+          minimapMode: 1,
+          mapOpenBehavior: null,
+          parchmentLifecycle: { type: 'persist' },
+        },
+      });
+      const provider = new JsonMazeProvider({ 'level-test': level });
+
+      const data = await provider.load('level-test');
+      expect(data.rules.minimapMode).toBeUndefined();
+      expect(data.rules.mapOpenBehavior).toBeUndefined();
+      expect(data.rules.parchmentLifecycle).toBeUndefined();
+    });
+  });
+
+  // F-2026-06-30: P2-16 — back-compat migration for the P2-11
+  // `hideMinimap: boolean` field. Hand-crafted JSON written before
+  // P2-16 still uses the boolean; the validator must translate
+  // `true` → `rules.minimapMode: 'hidden'` and warn once, while
+  // `false` / absent is the default top-right minimap.
+  describe('P2-16 — hideMinimap back-compat migration', () => {
+    // Silence the migration's console.warn so the test output stays
+    // clean — the dedicated "emits a one-time console.warn" test below
+    // owns the assertion about the warning.
+    let warnSpy: ReturnType<typeof vi.spyOn>;
+    beforeEach(() => {
+      warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    });
+    afterEach(() => {
+      warnSpy.mockRestore();
+    });
+
+    it("migrates top-level hideMinimap: true to rules.minimapMode: 'hidden'", async () => {
+      const level = makeValidLevel({ hideMinimap: true });
+      const provider = new JsonMazeProvider({ 'level-test': level });
+
+      const data = await provider.load('level-test');
+      expect(data.rules.minimapMode).toBe('hidden');
+      // The deprecated boolean must NOT round-trip into the runtime
+      // MazeData — it would mislead downstream consumers that still
+      // check the old field.
+      expect((data as { hideMinimap?: boolean }).hideMinimap).toBeUndefined();
+    });
+
+    it('emits a one-time console.warn when migrating hideMinimap', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const level = makeValidLevel({ hideMinimap: true });
+      const provider = new JsonMazeProvider({ 'level-test': level });
+
+      await provider.load('level-test');
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy.mock.calls[0][0]).toMatch(/hideMinimap/);
+      warnSpy.mockRestore();
+    });
+
+    it('does NOT migrate hideMinimap: false (was a no-op before too)', async () => {
+      const level = makeValidLevel({ hideMinimap: false });
+      const provider = new JsonMazeProvider({ 'level-test': level });
+
+      const data = await provider.load('level-test');
+      // No warn, no migration, no field on the runtime MazeData.
+      expect(data.rules.minimapMode).toBeUndefined();
+    });
+
+    it('does NOT overwrite an explicit rules.minimapMode with the hideMinimap migration', async () => {
+      // Hand-edited JSON could have both fields — author intent wins.
+      const level = makeValidLevel({
+        hideMinimap: true,
+        rules: {
+          initialTime: 30,
+          maxHealth: 3,
+          victory: 'reach-exit',
+          timeOnPickup: 10,
+          minimapMode: 'parchment',
+        },
+      });
+      const provider = new JsonMazeProvider({ 'level-test': level });
+
+      const data = await provider.load('level-test');
+      expect(data.rules.minimapMode).toBe('parchment');
     });
   });
 });

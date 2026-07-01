@@ -20,6 +20,9 @@ import {
   isLevelSource,
   isSurviveSeconds,
   isEnemyAggression,
+  isMinimapMode,
+  isMapOpenBehavior,
+  isParchmentLifecycle,
   type EnemySpawn,
   type EnemyState,
   type EnemyAggression,
@@ -316,5 +319,72 @@ describe('isEnemyAggression (F-2026-06-17-D-L-3)', () => {
     expect(isEnemyAggression(1)).toBe(false);
     expect(isEnemyAggression({})).toBe(false);
     expect(isEnemyAggression(['easy'])).toBe(false);
+  });
+});
+
+// F-2026-06-30: P2-16 — three new type guards mirror the
+// isEnemyAggression / isVictoryType shape. Validates each guard
+// accepts every documented literal, rejects case-mismatches, and
+// rejects non-string garbage (null / undefined / numbers / objects).
+const MINIMAP_MODE_LITERALS = ['top-right', 'parchment', 'hidden'] as const;
+const MAP_OPEN_BEHAVIOR_LITERALS = ['pause', 'continue'] as const;
+const PARCHMENT_LIFECYCLE_LITERALS = ['reset-on-death', 'persist'] as const;
+
+describe('isMinimapMode (P2-16)', () => {
+  it.each(MINIMAP_MODE_LITERALS)('accepts the documented %s literal', (a) => {
+    expect(isMinimapMode(a)).toBe(true);
+  });
+
+  it('rejects unknown strings (case-sensitive, no auto-typo forgiveness)', () => {
+    expect(isMinimapMode('Top-Right')).toBe(false);
+    expect(isMinimapMode('PARCHMENT')).toBe(false);
+    expect(isMinimapMode('parchment ')).toBe(false);
+    expect(isMinimapMode('off')).toBe(false);
+  });
+
+  it('rejects non-string values', () => {
+    expect(isMinimapMode(null)).toBe(false);
+    expect(isMinimapMode(undefined)).toBe(false);
+    expect(isMinimapMode(1)).toBe(false);
+    expect(isMinimapMode({})).toBe(false);
+    expect(isMinimapMode(['parchment'])).toBe(false);
+  });
+});
+
+describe('isMapOpenBehavior (P2-16)', () => {
+  it.each(MAP_OPEN_BEHAVIOR_LITERALS)('accepts the documented %s literal', (a) => {
+    expect(isMapOpenBehavior(a)).toBe(true);
+  });
+
+  it('rejects unknown strings', () => {
+    expect(isMapOpenBehavior('Pause')).toBe(false);
+    expect(isMapOpenBehavior('play')).toBe(false);
+    expect(isMapOpenBehavior('')).toBe(false);
+  });
+
+  it('rejects non-string values', () => {
+    expect(isMapOpenBehavior(null)).toBe(false);
+    expect(isMapOpenBehavior(undefined)).toBe(false);
+    expect(isMapOpenBehavior(0)).toBe(false);
+    expect(isMapOpenBehavior({})).toBe(false);
+  });
+});
+
+describe('isParchmentLifecycle (P2-16)', () => {
+  it.each(PARCHMENT_LIFECYCLE_LITERALS)('accepts the documented %s literal', (a) => {
+    expect(isParchmentLifecycle(a)).toBe(true);
+  });
+
+  it('rejects unknown strings', () => {
+    expect(isParchmentLifecycle('Reset-On-Death')).toBe(false);
+    expect(isParchmentLifecycle('keep')).toBe(false);
+    expect(isParchmentLifecycle('')).toBe(false);
+  });
+
+  it('rejects non-string values', () => {
+    expect(isParchmentLifecycle(null)).toBe(false);
+    expect(isParchmentLifecycle(undefined)).toBe(false);
+    expect(isParchmentLifecycle(1)).toBe(false);
+    expect(isParchmentLifecycle({})).toBe(false);
   });
 });

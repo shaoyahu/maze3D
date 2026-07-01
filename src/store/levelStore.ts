@@ -16,6 +16,15 @@ const VALID_ALGORITHMS: readonly Algorithm[] = [
 const VALID_SIZES: readonly MazeSize[] = [15, 30, 50];
 const MAZE_SEED_RE = /^[0-9a-f]{16}$/;
 
+// F-2026-06-30-L-19: cap on the iteration count of the sanitizers.
+// Best/custom/folder maps come from localStorage, which is
+// user-controlled — a malicious extension or a hand-edited value
+// could stuff millions of keys. Bailing past a sane limit protects
+// init from hanging; the user loses the tail of their data and the
+// already-known drop list still surfaces the truncation via the
+// existing toast machinery (per-key drops fill the dropped array).
+const MAX_INIT_ENTRIES = 100_000;
+
 export interface BestRecord {
   levelId: string;
   timeUsed: number;
@@ -221,7 +230,17 @@ export function sanitizeBestRecordMap(raw: unknown): { map: Record<string, BestR
   if (typeof raw !== 'object' || raw === null) return { map: {}, dropped: [] };
   const out: Record<string, BestRecord> = {};
   const dropped: string[] = [];
+  // F-2026-06-30-L-19: cap iteration to defend against a hostile /
+  // runaway localStorage payload. Anything past the cap is dropped
+  // without per-key validation; the cap is large enough that no
+  // legitimate use case approaches it.
+  let n = 0;
   for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (n >= MAX_INIT_ENTRIES) {
+      dropped.push(k);
+      continue;
+    }
+    n += 1;
     if (isBestRecord(v)) out[k] = v;
     else {
       dropped.push(k);
@@ -245,7 +264,14 @@ export function sanitizeCustomLevelsMap(raw: unknown): { map: Record<string, Maz
   if (typeof raw !== 'object' || raw === null) return { map: {}, dropped: [] };
   const out: Record<string, MazeData> = {};
   const dropped: string[] = [];
+  // F-2026-06-30-L-19: see sanitizeBestRecordMap.
+  let n = 0;
   for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (n >= MAX_INIT_ENTRIES) {
+      dropped.push(k);
+      continue;
+    }
+    n += 1;
     try {
       out[k] = validateMaze(v, k);
     } catch (e) {
@@ -264,7 +290,14 @@ export function sanitizeFoldersMap(raw: unknown): { map: Record<string, Folder>;
   if (typeof raw !== 'object' || raw === null) return { map: {}, dropped: [] };
   const out: Record<string, Folder> = {};
   const dropped: string[] = [];
+  // F-2026-06-30-L-19: see sanitizeBestRecordMap.
+  let n = 0;
   for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (n >= MAX_INIT_ENTRIES) {
+      dropped.push(k);
+      continue;
+    }
+    n += 1;
     if (isFolder(v)) out[k] = v;
     else {
       dropped.push(k);
@@ -311,6 +344,10 @@ export const useLevelStore = create<LevelStore>((set, get) => {
   // which would force us to either re-parse localStorage twice or stash
   // dropped keys in a module-level mutable (the latter is the anti-pattern
   // this refactor replaces).
+  // F-2026-06-30-L-19: MAX_INIT_ENTRIES is now defined at module scope
+  // (see top of file) so the exported sanitizers (sanitizeBestRecordMap,
+  // sanitizeCustomLevelsMap, sanitizeFoldersMap) can share the same cap.
+
   const recordsInit = (() => {
     const raw = loadJSON<unknown>(STORAGE_KEY, null);
     if (raw === null) return { map: {} as Record<string, BestRecord>, dropped: [] as string[], migrationError: null as string | null };
@@ -362,52 +399,40 @@ export const useLevelStore = create<LevelStore>((set, get) => {
   // ensure 步骤即使空 map 也会建一个 DEFAULT_FOLDER_ID 进去,首次启动
   // 也能看到 "我的" 根目录;之后每次启动保证 default 存在(任何手
   // 工 localStorage 编辑都不会让 UI 陷入"无家可归"状态)。
-  const foldersInit = (() => {
+  //
+  // F-2026-06-30-L-20: hoist `sanitizeFoldersMap` into a single shared
+  // result so the folder init path and the dropped-list capture path
+  // don't each call it independently. Previously `foldersInit` ran the
+  // sanitizer (returning only `.map`) and `foldersDropped` ran it
+  // again (returning only `.dropped`); the same input was sanitized
+  // twice. Now we sanitize once into `sanitizedFolders` and let both
+  // sites read the matching field.
+  const sanitizedFolders: { map: Record<string, Folder>; dropped: string[] } = (() => {
     const raw = loadJSON<unknown>(FOLDERS_STORAGE_KEY, null);
-    let map: Record<string, Folder> = {};
-    if (raw !== null) {
-      const fromVersion = parseStorageKeyVersion(FOLDERS_STORAGE_KEY);
-      if (fromVersion === null) {
-        map = sanitizeFoldersMap(raw).map;
-      } else {
-        try {
-          const migrated = applyLevelMigrations(raw, fromVersion);
-          map = sanitizeFoldersMap(migrated).map;
-        } catch (e) {
-          console.warn(
-            `levelStore: migration failed for '${FOLDERS_STORAGE_KEY}':`,
-            e instanceof Error ? e.message : e,
-          );
-          map = {};
-        }
-      }
+    if (raw === null) return { map: {} as Record<string, Folder>, dropped: [] };
+    const fromVersion = parseStorageKeyVersion(FOLDERS_STORAGE_KEY);
+    if (fromVersion === null) return sanitizeFoldersMap(raw);
+    try {
+      return sanitizeFoldersMap(applyLevelMigrations(raw, fromVersion));
+    } catch (e) {
+      console.warn(
+        `levelStore: migration failed for '${FOLDERS_STORAGE_KEY}':`,
+        e instanceof Error ? e.message : e,
+      );
+      return { map: {} as Record<string, Folder>, dropped: [] };
     }
+  })();
+  const foldersInit = (() => {
     // 不论 map 来自哪,都强制 default 存在 — 失败容忍策略。
-    const ensured = ensureDefaultFolder(map);
+    const ensured = ensureDefaultFolder(sanitizedFolders.map);
     if (ensured.changed) {
       safeSetItem(FOLDERS_STORAGE_KEY, ensured.map);
     }
     return ensured.map;
   })();
-  // F-2026-06-17-L-1: capture folders dropped list (parallel to records/customs).
-  // sanitizeFoldersMap returns `{ map, dropped }`; route the dropped list
-  // through buildLoadSummary so the existing toast UI can surface
-  // corrupted-folder incidents without a parallel channel.
-  const foldersDropped: string[] = (() => {
-    // We re-run sanitizeFoldersMap over the current folders to get the
-    // dropped list — but we already called sanitizeFoldersMap above
-    // inside foldersInit. To avoid double-work, we re-sanitize the raw
-    // loaded value once more here (small cost; folders map is tiny).
-    const raw = loadJSON<unknown>(FOLDERS_STORAGE_KEY, null);
-    if (raw === null) return [];
-    const fromVersion = parseStorageKeyVersion(FOLDERS_STORAGE_KEY);
-    if (fromVersion === null) return sanitizeFoldersMap(raw).dropped;
-    try {
-      return sanitizeFoldersMap(applyLevelMigrations(raw, fromVersion)).dropped;
-    } catch {
-      return [];
-    }
-  })();
+  // F-2026-06-17-L-1: dropped list read from the same hoisted sanitize
+  // result (F-2026-06-30-L-20) so we don't re-sanitize.
+  const foldersDropped: string[] = sanitizedFolders.dropped;
   // F-2026-06-17-M-7: collapsed state lives in the store (persisted).
   // Stored as a flat `Record<folderId, boolean>` rather than a Map so
   // the JSON.stringify round-trip is lossless; default `{}` means

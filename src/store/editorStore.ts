@@ -22,7 +22,11 @@ import type {
   LevelRules,
   CellType,
   TutorialStep,
+  MinimapMode,
+  MapOpenBehavior,
+  ParchmentLifecycle,
 } from '../maze/types';
+import { isMinimapMode, isMapOpenBehavior, isParchmentLifecycle } from '../maze/types';
 import {
   pushHistory,
   undo as historyUndo,
@@ -204,6 +208,15 @@ interface EditorStoreState {
   updateRule: (patch: Partial<LevelRules>) => void;
   updateName: (name: string) => void;
   updateSize: (width: number, depth: number) => void;
+  // F-2026-06-30: P2-16 — three new patch actions for the parchment
+  // feature. Each delegates to `updateRule` (the generic
+  // `Partial<LevelRules>` patcher) so the dirty-marking + history
+  // behavior is identical to every other rule edit. The `is*` type
+  // guards from maze/types.ts reject invalid values at the boundary
+  // so a hand-edited JSON round-trip can't poison the store.
+  updateMinimapMode: (mode: MinimapMode) => void;
+  updateMapOpenBehavior: (behavior: MapOpenBehavior) => void;
+  updateParchmentLifecycle: (lifecycle: ParchmentLifecycle) => void;
 
   // enemy path edits (push history)
   moveEnemyNode: (enemyId: string, nodeIndex: number, x: number, z: number) => void;
@@ -406,8 +419,23 @@ function clamp(v: number, lo: number, hi: number): number {
 // `lastSavedHash` to decide if the in-memory level diverges from the
 // last persisted/loaded snapshot. The maze is small (cells = w*d, max
 // ~50*50) so the per-action cost is negligible.
+//
+// F-2026-06-30-M-6: memoize by level identity. The dirty oracle is
+// queried on EVERY data-mutating action (placeWall, updateName,
+// moveEnemyNode, undo, redo, …) and on the `dirty` selector for every
+// subscribed render. With a 50×50 maze (~2500 cells) each call
+// serializes the entire walls grid. Caching by level reference means
+// a level object is hashed at most once per identity; subsequent
+// comparisons during a single commit are O(1). Hash is replaced (not
+// mutated) when a new level identity is seen. The map is module-scoped
+// to survive across store instances during a session.
+const levelHashCache = new WeakMap<MazeData, string>();
 function levelHash(level: MazeData): string {
-  return JSON.stringify(level);
+  const cached = levelHashCache.get(level);
+  if (cached !== undefined) return cached;
+  const h = JSON.stringify(level);
+  levelHashCache.set(level, h);
+  return h;
 }
 
 // Internal helper: returns a new level slice with the level replaced and
@@ -603,9 +631,38 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
     // `setEnemyAggression(null)` clears the override (falls back to
     // settingsStore.enemyAggression); pass `'easy' | 'medium' | 'hard'`
     // to override.
+    // F-2026-06-30: P2-16 — `setHideMinimap` was a P2-11 action that
+    // wrote to the now-deprecated top-level `MazeData.hideMinimap`
+    // boolean. After the migration the boolean is no longer
+    // round-tripped, so the action would silently lose the value
+    // on save. Redirect it to `rules.minimapMode: 'hidden'` so the
+    // tutorial-card "Hide Minimap" toggle still works. The new
+    // three-state minimap-mode picker in the meta card covers the
+    // same intent (and more); a future P3 pass should retire this
+    // switch entirely.
     setHideMinimap: (v) => {
       const s = get();
-      set(commitLevel(s, { ...s.level, hideMinimap: v || undefined }));
+      set(
+        commitLevel(s, {
+          ...s.level,
+          // F-2026-06-30-M-7: previous fallback left minimapMode as
+          // `undefined` when the user toggled the hide-minimap switch
+          // off. The minimap mode is a typed `MinimapMode` union
+          // (top-right / bottom-left / hidden); an `undefined` value
+          // was rejected by the type guard at parseImport / save time
+          // and silently dropped. Fall back to 'top-right' (the
+          // project default) instead so the field always holds a
+          // valid value.
+          rules: {
+            ...s.level.rules,
+            minimapMode: v
+              ? 'hidden'
+              : s.level.rules.minimapMode === 'hidden'
+                ? 'top-right'
+                : s.level.rules.minimapMode,
+          },
+        }),
+      );
     },
     setEnemyAggression: (v) => {
       const s = get();
@@ -1038,6 +1095,23 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
       });
     },
 
+    // F-2026-06-30: P2-16 — three parchment patch actions. Each
+    // delegates to `updateRule` with a single field. The type guard
+    // rejects bad inputs at the boundary so the level can't reach an
+    // invalid combination (e.g. unknown minimapMode).
+    updateMinimapMode: (mode) => {
+      if (!isMinimapMode(mode)) return;
+      get().updateRule({ minimapMode: mode });
+    },
+    updateMapOpenBehavior: (behavior) => {
+      if (!isMapOpenBehavior(behavior)) return;
+      get().updateRule({ mapOpenBehavior: behavior });
+    },
+    updateParchmentLifecycle: (lifecycle) => {
+      if (!isParchmentLifecycle(lifecycle)) return;
+      get().updateRule({ parchmentLifecycle: lifecycle });
+    },
+
     updateName: (name) => {
       const { level } = get();
       const nextLevel: MazeData = { ...level, name };
@@ -1429,6 +1503,24 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
         // surfaces it via the same banner machinery.
         get().saveDraft();
       } catch (e) {
+        // F-2026-06-30-M-8: a malformed draft (e.g. a hand-edited
+        // localStorage entry that fails `validateMaze`, or a JSON
+        // parse error from a future schema write) is now actively
+        // evicted from localStorage instead of being left in place.
+        // Without this, the next `loadDraft` would re-warn on the
+        // same payload forever, and a successful `saveDraft` later
+        // (e.g. after the user starts editing) would overwrite a
+        // known-bad entry — but only if the user got that far. A
+        // single warn-and-keep policy also leaves an unauthenticated
+        // attacker-visible string in the user's storage; deleting
+        // it on detection limits the surface.
+        try {
+          localStorage.removeItem(DRAFT_STORAGE_KEY);
+        } catch (removeErr) {
+          // localStorage may be unavailable (private mode); the
+          // warning is best-effort in that case.
+          console.warn('editorStore.loadDraft: failed to remove malformed draft', removeErr);
+        }
         console.warn('editorStore.loadDraft: failed', e);
       }
     },

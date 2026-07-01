@@ -179,6 +179,66 @@ describe('EditorPropertiesPanel (P2-4b #12)', () => {
     expect(useEditorStore.getState().level.rules.victory).toBe('time-trial');
   });
 
+  // F-2026-06-30: 'caught-by-enemy' is teaching-only. The Segmented
+  // control must not show that option for a level without
+  // `tutorialSteps` — otherwise an author could pick "win on death"
+  // for a normal level and only find out at save time.
+  it("hides the 'caught-by-enemy' victory option when the level has no tutorial steps", () => {
+    render(<EditorPropertiesPanel />);
+    expect(screen.queryByTestId('meta-victory-caught-by-enemy')).toBeNull();
+  });
+
+  it("shows the 'caught-by-enemy' victory option for a level with tutorial steps", () => {
+    // teaching-03 is the 哨兵回廊 lesson; the option is legitimate there.
+    resetEditor(
+      makeMaze({
+        tutorialSteps: [
+          {
+            id: 's1',
+            messageKey: 'tutorial.steps.s1',
+            trigger: { type: 'reached-exit' },
+          },
+        ],
+      }),
+    );
+    render(<EditorPropertiesPanel />);
+    expect(screen.getByTestId('meta-victory-caught-by-enemy')).toBeInTheDocument();
+  });
+
+  it("falls back to 'reach-exit' when tutorial steps are removed while caught-by-enemy was selected", () => {
+    // Start as a teaching level with caught-by-enemy, then strip the
+    // tutorial steps. The local `victory` state must reset to a value
+    // that's still in the filtered options list, otherwise the
+    // Segmented renders with `aria-checked=false` everywhere.
+    resetEditor(
+      makeMaze({
+        rules: { initialTime: 60, maxHealth: 3, victory: 'caught-by-enemy', timeOnPickup: 10 },
+        tutorialSteps: [
+          {
+            id: 's1',
+            messageKey: 'tutorial.steps.s1',
+            trigger: { type: 'reached-exit' },
+          },
+        ],
+      }),
+    );
+    const { rerender } = render(<EditorPropertiesPanel />);
+    // Now strip the tutorial steps via the store (the editor's tutorial
+    // card UI calls this exact action).
+    act(() => {
+      useEditorStore.getState().setTutorialSteps(undefined);
+    });
+    // Re-render so the new level.tutorialSteps reaches LevelMetadataForm.
+    // The LevelMetadataForm effect that resets the local `victory` state
+    // to 'reach-exit' runs in the same tick — wrap in act() so React
+    // flushes the synchronous setVictory before the assertion.
+    rerender(<EditorPropertiesPanel />);
+    // The committed store value must NOT still be 'caught-by-enemy' —
+    // validateMaze would reject it on the next save.
+    act(() => vi.advanceTimersByTime(300));
+    expect(useEditorStore.getState().level.rules.victory).toBe('reach-exit');
+  });
+
   it('change of initialTime calls updateRule with the new value', () => {
     render(<EditorPropertiesPanel />);
     fireEvent.change(screen.getByTestId('meta-initial-time'), { target: { value: '90' } });
@@ -320,6 +380,16 @@ describe('EditorPropertiesPanel (P2-4b #12)', () => {
   // F-2026-06-16-H-3: NaN guard on the enemy path-node input. A blank or
   // letter keystroke produces NaN/0 from `Number(...)`; the guard drops
   // the keystroke so the store never holds a poisoned NaN coordinate.
+  //
+  // M-62: the original test only covered the 'abc' case. Edge cases
+  // that the same guard must also reject: empty string (cleared input)
+  // and pure whitespace. Note that hex / exponential-notation input is
+  // already rejected at the DOM layer because the input has
+  // `type="number"` — the browser strips the 'x' / overflows to
+  // Infinity, and valueAsNumber becomes either 0 (a valid finite
+  // number) or Infinity (rejected by the guard). The '0x10' case
+  // therefore correctly produces x=0 in the store; we don't pin it as
+  // a "rejected" case.
   it('enemy path node input rejects non-numeric input (no NaN in store)', () => {
     const enemy: EnemySpawn = {
       id: 'e1',
@@ -327,15 +397,25 @@ describe('EditorPropertiesPanel (P2-4b #12)', () => {
       z: 2,
       path: [{ x: 2, z: 2 }, { x: 3, z: 2 }],
     };
-    resetEditor(makeMaze({ enemies: [enemy] }));
-    useEditorStore.setState({ selection: { kind: 'enemy', id: 'e1' } });
-    render(<EditorPropertiesPanel />);
-    // Type a non-numeric value; the store must not pick up a NaN.
-    fireEvent.change(screen.getByTestId('enemy-path-x-1'), { target: { value: 'abc' } });
-    const pathAfter = useEditorStore.getState().level.enemies[0]!.path[1]!;
-    expect(Number.isFinite(pathAfter.x)).toBe(true);
-    // The store still holds the pre-edit value.
-    expect(pathAfter.x).toBe(3);
+    const cases: ReadonlyArray<{ value: string; label: string }> = [
+      { value: 'abc', label: 'letter keystroke' },
+      { value: '', label: 'empty string (cleared input)' },
+      { value: '   ', label: 'whitespace only' },
+    ];
+    for (const { value, label } of cases) {
+      // Fresh state per case so the assertion below isn't biased by a
+      // prior mutation that already moved the coordinate.
+      resetEditor(makeMaze({ enemies: [enemy] }));
+      useEditorStore.setState({ selection: { kind: 'enemy', id: 'e1' } });
+      const { unmount } = render(<EditorPropertiesPanel />);
+      fireEvent.change(screen.getByTestId('enemy-path-x-1'), { target: { value } });
+      const pathAfter = useEditorStore.getState().level.enemies[0]!.path[1]!;
+      // Finite, and the pre-edit value (3) is preserved — the guard
+      // dropped the keystroke before it could poison the store.
+      expect(Number.isFinite(pathAfter.x), `case "${label}" produced non-finite x`).toBe(true);
+      expect(pathAfter.x, `case "${label}" mutated the stored coordinate`).toBe(3);
+      unmount();
+    }
   });
 
   it('change of enemy dwell time debounces and calls updateEnemy', () => {

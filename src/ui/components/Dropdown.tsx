@@ -281,7 +281,21 @@ export function Dropdown<V extends string | number>(props: DropdownProps<V>): Re
         </span>
       </button>
 
-      {/* 隐藏的 <select>:承担 testId 锚点 + fireEvent.change 兼容路径。 */}
+      {/* F-2026-07-01 M-24: visually-hidden <select> serves as the
+           testId anchor + the `fireEvent.change(testId, { target: { value } })`
+           compatibility path. Both the trigger button and this hidden
+           select are kept so production users get the styled button
+           (with proper keyboard / aria-haspopup) while tests written
+           against the original <select>-based contract still work.
+
+           The two paths *can* theoretically race when a test fires
+           `change` on the hidden select at the same instant the trigger
+           is opened by a click — but the controlled `value={value}`
+           binding re-syncs the DOM on the next render, so a stale read
+           from either path is bounded to one frame. We deliberately
+           accept this race over the alternative (dropping the hidden
+           select and rewriting ~30 test cases) because the production
+           user-facing path is always the button. */}
       <select
         ref={hiddenSelectRef}
         className={HIDDEN_SELECT_CLASS}

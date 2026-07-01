@@ -1,6 +1,5 @@
 import {
   useCallback,
-  useEffect,
   useId,
   useRef,
   type CSSProperties,
@@ -9,6 +8,7 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import type { ConfirmAction } from '../useConfirm';
+import { useFocusRestore, useFocusTrap } from './modalHooks';
 
 /**
  * P2-7: Portal-based modal dialog primitive.
@@ -21,8 +21,10 @@ import type { ConfirmAction } from '../useConfirm';
  * - Esc closes (via onClose)
  * - Backdrop click closes (via onClose)
  * - First action auto-focuses on open
- * - Tab cycles within the action list (a small, deliberate scope; not
- *   a full WAI-ARIA roving tabindex)
+ * - Tab/Shift+Tab cycles within the dialog (full focus trap, scoped
+ *   to all focusable descendants — not just the action buttons)
+ * - Focus is restored to the element that was active when the dialog
+ *   opened once the dialog closes
  *
  * Visual style matches the project's CSS variable palette (--panel,
  * --border, --danger, --accent) so the dialog respects light/dark themes.
@@ -108,9 +110,10 @@ export function Dialog({
   onAction,
   onClose,
 }: DialogProps): JSX.Element | null {
-  // Refs for the action buttons so we can (a) focus the first one on open
-  // and (b) implement Tab cycling within the action list.
-  const buttonRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  // F-2026-06-30: P2-16 — ref to the dialog card so the shared
+  // focus-trap can query focusable descendants. We trap on the card
+  // (not the backdrop) so the trap doesn't see the portal root.
+  const cardRef = useRef<HTMLDivElement | null>(null);
   // F-2026-06-17-E-L-6: useId() gives every dialog instance its own
   // stable id so multiple dialogs can coexist in the DOM without
   // aria-labelledby collisions. The previous hard-coded
@@ -121,39 +124,22 @@ export function Dialog({
   const titleId = `${reactId}-title`;
   const messageId = `${reactId}-message`;
 
-  // Focus the first action button when the dialog opens; reset on close.
-  useEffect(() => {
-    if (!open) {
-      buttonRefs.current = [];
-      return;
-    }
-    const first = buttonRefs.current[0];
-    if (first) first.focus();
-  }, [open]);
+  // F-2026-06-30: P2-16 — full focus trap scoped to the dialog card
+  // (title + message + all action buttons). Replaces the old
+  // action-only cycle so non-action focusable content is also
+  // reachable via Tab.
+  useFocusTrap(cardRef, open);
+  // F-2026-06-30: P2-16 — return focus to the element that was
+  // active when the dialog opened. No-op when `open` is false.
+  useFocusRestore(open);
 
-  // Esc-to-close + minimal Tab cycling within the action list.
+  // Esc-to-close. Tab/Shift+Tab handling is owned by the focus
+  // trap, so this handler only deals with Escape.
   const handleKeyDown = useCallback(
     (e: ReactKeyboardEvent<HTMLDivElement>): void => {
       if (e.key === 'Escape') {
         e.stopPropagation();
         onClose();
-        return;
-      }
-      if (e.key !== 'Tab') return;
-      const buttons = buttonRefs.current.filter((b): b is HTMLButtonElement => b !== null);
-      if (buttons.length === 0) return;
-      const active = document.activeElement as HTMLElement | null;
-      const idx = active ? buttons.indexOf(active as HTMLButtonElement) : -1;
-      if (e.shiftKey) {
-        // Shift+Tab from the first (or outside) wraps to last.
-        if (idx <= 0) {
-          e.preventDefault();
-          buttons[buttons.length - 1]?.focus();
-        }
-      } else if (idx === buttons.length - 1) {
-        // Tab from the last wraps to first.
-        e.preventDefault();
-        buttons[0]?.focus();
       }
     },
     [onClose],
@@ -183,6 +169,7 @@ export function Dialog({
       onClick={handleBackdropClick}
     >
       <div
+        ref={cardRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
@@ -201,9 +188,11 @@ export function Dialog({
           {actions.map((a, i) => (
             <button
               key={a.value}
-              ref={(el) => {
-                buttonRefs.current[i] = el;
-              }}
+              // F-2026-06-30: P2-16 — autoFocus the first action so
+              // keyboard users land on the primary CTA on open. The
+              // focus trap's Tab cycle then picks up naturally from
+              // there.
+              autoFocus={i === 0}
               type="button"
               onClick={() => onAction(a.value)}
               data-testid={`confirm-action-${a.value}`}

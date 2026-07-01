@@ -155,4 +155,50 @@ describe('validateDesign', () => {
       'start',
     ]);
   });
+
+  // F-2026-06-30: 'caught-by-enemy' is teaching-only. A non-tutorial
+  // level that wins on death is a misconfigured level — flag it on the
+  // design-warnings status bar so the author sees the issue before
+  // JsonMazeProvider.validateMaze rejects the save.
+  it('warns when caught-by-enemy is selected without tutorial steps', () => {
+    const level = makeLevel({
+      rules: {
+        initialTime: 60,
+        maxHealth: 3,
+        victory: 'caught-by-enemy',
+        timeOnPickup: 10,
+      },
+    });
+
+    const issues = validateDesign(level);
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({
+      severity: 'warning',
+      messageKey: 'editor.validation.caughtByEnemyRequiresTutorial',
+      where: 'rules',
+    });
+  });
+
+  it('does NOT warn when caught-by-enemy is paired with tutorial steps', () => {
+    // The 哨兵回廊 teaching-03 lesson is the one legitimate use of
+    // caught-by-enemy; validateDesign must stay quiet in that case.
+    const level = makeLevel({
+      rules: {
+        initialTime: 60,
+        maxHealth: 3,
+        victory: 'caught-by-enemy',
+        timeOnPickup: 10,
+      },
+      tutorialSteps: [
+        {
+          id: 's1',
+          messageKey: 'tutorial.steps.s1',
+          trigger: { type: 'reached-exit' },
+        },
+      ],
+    });
+
+    expect(validateDesign(level)).toEqual([]);
+  });
 });

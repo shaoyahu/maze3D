@@ -13,6 +13,12 @@ describe('settingsStore.language (P2-8)', () => {
       darkMode: false,
       enemyAggression: 'medium',
       language: 'zh',
+      // M-67: P2-17 added this field. The language test file
+      // predates the field, so a sibling test that runs after
+      // `tutorialManualAutoOpen` was set to `false` elsewhere in the
+      // suite would inherit that `false` here. Pin the default so
+      // language-only tests are deterministic.
+      tutorialManualAutoOpen: true,
     });
   });
 

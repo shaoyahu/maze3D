@@ -8,8 +8,10 @@ import { validateTutorialSteps } from '../utils/tutorialValidator';
 import { Crosshair } from './components/Crosshair';
 import { TutorialBanner } from './components/TutorialBanner';
 import { Minimap } from './components/Minimap';
+import { ParchmentMap } from './components/ParchmentMap';
 import type { MazeData, StartLevelOptions } from '../maze/types';
 import { useT } from '../i18n';
+import { OPEN_MAP_KEY } from '../engine/InputManager';
 
 export function GameCanvas({ maze, options }: { maze: MazeData; options?: StartLevelOptions }) {
   const t = useT();
@@ -94,6 +96,13 @@ export function GameCanvas({ maze, options }: { maze: MazeData; options?: StartL
       // InvulnerableFlash UI still re-trigger their flash animation
       // without dropping health a second time.
       onEnemyContact: (n) => useGameStore.getState().damage(n, undefined, 'enemy'),
+      // F-2026-06-30: P2-16 — engine → store push. The engine only
+      // mutates its own `parchment` reference (via recordVisit /
+      // maybeRecordDamage / setParchmentOpen) when the state actually
+      // changes, so this bridge call is a no-op for a player standing
+      // still and a single setter for any tick that grew visited or
+      // damage.
+      onParchmentStateChange: (state) => useGameStore.getState().setParchment(state),
     };
     const game = new Game(bridge);
     game.init(ref.current);
@@ -197,6 +206,32 @@ export function GameCanvas({ maze, options }: { maze: MazeData; options?: StartL
     return () => { unsubStore(); unsubSettings(); };
   }, []);
 
+  // F-2026-06-30: P2-16 — M key toggles the parchment modal. Bound
+  // at the document level (not InputManager) because the modal
+  // doesn't depend on pointer lock — pressing M while reading a
+  // browser-focused overlay should still work. Only acts when the
+  // current level's minimapMode is 'parchment' AND the run is
+  // active; in any other state the M key is a no-op.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.code !== OPEN_MAP_KEY) return;
+      const s = useGameStore.getState();
+      if (s.screen !== 'playing') return;
+      if (maze.rules.minimapMode !== 'parchment') return;
+      e.preventDefault();
+      const next = !s.parchment.isOpen;
+      // F-2026-06-30: P2-16 — mirror the open flag into the engine
+      // so the engine's per-tick pause-while-open guard fires. The
+      // store-side `toggleParchment` keeps the React tree in sync
+      // via its own set(); the engine call is the authoritative
+      // mirror.
+      gameRef.current?.setParchmentOpen(next);
+      s.toggleParchment();
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [maze.rules.minimapMode]);
+
   return (
     <>
       {/* width/height: 100% forces the canvas's CSS box to match the parent.
@@ -228,6 +263,11 @@ export function GameCanvas({ maze, options }: { maze: MazeData; options?: StartL
       {screen === 'playing' && <Minimap maze={maze} gameRef={gameRef} />}
       {/* P2-11: tutorial banner — rendered only when this level has steps. The banner itself hides when currentStepId is null (tutorial finished), so we don't need a separate gate. */}
       {screen === 'playing' && maze.tutorialSteps && maze.tutorialSteps.length > 0 && <TutorialBanner />}
+      {/* F-2026-06-30: P2-16 — parchment modal. Always mounted so the M
+          key can open it pre-emptively; the component bails out at
+          the top when minimapMode !== 'parchment' or isOpen is
+          false. */}
+      {screen === 'playing' && <ParchmentMap maze={maze} />}
       {pointerLockError && (
         <div role="alert" style={{
           position: 'absolute', top: 16, left: '50%', transform: 'translateX(-50%)',

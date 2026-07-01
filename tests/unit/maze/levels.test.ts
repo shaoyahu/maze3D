@@ -123,7 +123,13 @@ describe('built-in level JSONs (D-20)', () => {
         expect(Array.isArray(data.tutorialSteps)).toBe(true);
       }
       if (typeof rawObj.hideMinimap === 'boolean') {
-        expect(data.hideMinimap).toBe(rawObj.hideMinimap);
+        // F-2026-06-30: P2-16 — `hideMinimap` was migrated to
+        // `rules.minimapMode`. After the migration, the boolean is
+        // no longer present on the runtime MazeData; what survives
+        // is the migrated `rules.minimapMode: 'hidden'` (or 'top-right'
+        // for `hideMinimap: false`).
+        expect(data.hideMinimap).toBeUndefined();
+        expect(data.rules.minimapMode).toBe(rawObj.hideMinimap ? 'hidden' : undefined);
       }
       if (
         rawRules.enemyAggression === 'easy' ||

@@ -19,6 +19,10 @@ import {
   onUseItem,
   shouldSurviveWin,
 } from '../game/Rules';
+import {
+  createEmptyParchment,
+  type ParchmentState,
+} from '../engine/ParchmentState';
 
 // P2-3 spec §5/FR-8: time-trial mode forces a 180s budget regardless of
 // the maze's own initialTime. reach-exit (and any future mode that doesn't
@@ -105,6 +109,34 @@ export interface GameState {
   // Null when the player hasn't won yet.
   lastWinKind: 'reach-exit' | 'caught-by-enemy' | null;
 
+  // F-2026-06-30: P2-16 — hand-held parchment map state. Mirrors the
+  // engine-side `Game.parchment` field; the engine pushes via
+  // `setParchment` on every reference change, and the UI subscribes
+  // through this store. Lives on the menu screen too (with an empty
+  // initial value) so the component tree doesn't have to special-case
+  // "no level loaded".
+  // F-2026-06-30-H-2: double-bookkept with engine; future refactor
+  // should pick a single source of truth (likely the engine, with the
+  // store as a derived snapshot or a thin subscription). The current
+  // shape — both sides hold a `ParchmentState` and the engine
+  // round-trips updates through the store via `setParchment` — is
+  // correct but redundant; consolidating will require unwinding the
+  // engine→store→UI push without breaking the M-key open/close path.
+  parchment: ParchmentState;
+  // F-2026-06-30: P2-16 — UI-driven open/close + reset. The M-key
+  // handler in GameCanvas calls these; they forward to the engine
+  // through the GameBridge so the engine's per-tick pause-while-open
+  // guard stays in sync with the UI's modal state.
+  openParchment: () => void;
+  closeParchment: () => void;
+  toggleParchment: () => void;
+  resetParchment: () => void;
+  // F-2026-06-30: P2-16 — engine → store push. GameBridge's
+  // onParchmentStateChange wires to this; the store replaces the
+  // whole reference (ParchmentState is immutable per recordVisit /
+  // maybeRecordDamage, so a fresh reference means a real change).
+  setParchment: (state: ParchmentState) => void;
+
   startLevel: (maze: MazeData, options?: StartLevelOptions) => void;
   pause: () => void;
   resume: () => void;
@@ -146,6 +178,41 @@ export const useGameStore = create<GameState>((set, get) => ({
   // accidentally trigger the caught-by-enemy branch on a stale value.
   lastHitBy: 'other',
   lastWinKind: null,
+
+  // F-2026-06-30: P2-16 — empty parchment at boot. Mirrors the
+  // engine-side `Game.parchment` default; the engine pushes the
+  // first real value at startLevel() time.
+  parchment: createEmptyParchment(),
+
+  // F-2026-06-30: P2-16 — UI-driven parchment actions. Each forwards
+  // to the engine via `setParchmentOpen` so the engine's per-tick
+  // pause-while-open guard stays in sync. The set() call here keeps
+  // the store's local copy in lockstep with the engine's authoritative
+  // state — without it, a toggle from the UI would leave the store
+  // out of date until the next recordVisit pushed a fresh reference.
+  setParchment: (state) => set({ parchment: state }),
+  openParchment: () =>
+    set((s) => (s.parchment.isOpen ? s : { parchment: { ...s.parchment, isOpen: true } })),
+  closeParchment: () =>
+    set((s) => (!s.parchment.isOpen ? s : { parchment: { ...s.parchment, isOpen: false } })),
+  toggleParchment: () =>
+    set((s) => ({ parchment: { ...s.parchment, isOpen: !s.parchment.isOpen } })),
+  // F-2026-06-30: P2-16 — reset ONLY visited + damage; the open
+  // flag persists so a player who left the modal open doesn't get
+  // it slammed shut on every level. Mirrors `resetMap` in
+  // engine/ParchmentState.ts.
+  resetParchment: () =>
+    set((s) =>
+      s.parchment.visitedCells.size === 0 && s.parchment.damageRegions.length === 0
+        ? s
+        : {
+            parchment: {
+              ...s.parchment,
+              visitedCells: new Set<string>(),
+              damageRegions: [],
+            },
+          },
+    ),
 
   startLevel: (maze, options) =>
     set((s) => {
@@ -207,6 +274,18 @@ export const useGameStore = create<GameState>((set, get) => ({
         // reach-exit level and produce a false caught-by-enemy signal.
         lastHitBy: 'other',
         lastWinKind: null,
+        // F-2026-06-30: P2-16 — clear the parchment at every level
+        // start so visited cells + damage regions from the previous
+        // level don't bleed into the new one. The engine pushes its
+        // own reset through `setParchment` immediately after this;
+        // the local copy here keeps the UI consistent before that
+        // round-trip lands. `isOpen` is preserved — players who left
+        // the modal open keep it open across level boundaries.
+        parchment: {
+          ...s.parchment,
+          visitedCells: new Set<string>(),
+          damageRegions: [],
+        },
       };
     }),
 
@@ -468,5 +547,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       progressiveEnemyCount: 0,
       lastSpawnAt: 0,
       lastPickupCountForSpawn: 0,
+      // F-2026-06-30: P2-16 — wipe the parchment on menu exit so a
+      // player who retries a level always starts with a fresh map.
+      // `parchmentLifecycle: 'persist'` would override this in a
+      // future death-increment; the engine hook isn't wired yet.
+      parchment: createEmptyParchment(),
     }),
 }));

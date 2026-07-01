@@ -261,21 +261,32 @@ describe('EditorViewport (P2-4b #11)', () => {
 
   it('wheel-up increases camera.zoom (clamped to ZOOM_MAX)', () => {
     render(<EditorViewport />);
-    // Many wheel-ups should cap at 5 — F-2026-06-18 widened the
-    // editor zoom range from [0.5, 3] to [0.25, 5].
-    for (let i = 0; i < 60; i += 1) {
+    // M-66: drop the 60-iteration loop in favour of a minimal pair
+    // that pins the actual ZOOM_STEP behaviour. From the default
+    // zoom=1, ZOOM_STEP=0.1, so 40 wheel-ups overshoot the cap and
+    // pin the upper clamp at 5. F-2026-06-18 widened the editor zoom
+    // range from [0.5, 3] to [0.25, 5]. Use toBeCloseTo (not toBe)
+    // because 40 × 0.1 = 5 in math but IEEE 754 lands on
+    // 4.999999999999999.
+    for (let i = 0; i < 40; i += 1) {
       fireEvent.wheel(screen.getByTestId('editor-viewport'), { deltaY: -100 });
     }
+    expect(useEditorStore.getState().camera.zoom).toBeCloseTo(5, 5);
+    // One more wheel-up should still clamp to 5.
+    fireEvent.wheel(screen.getByTestId('editor-viewport'), { deltaY: -100 });
     expect(useEditorStore.getState().camera.zoom).toBe(5);
   });
 
   it('wheel-down decreases camera.zoom (clamped to ZOOM_MIN)', () => {
     render(<EditorViewport />);
-    // 60 wheel-downs are enough to drop from 1 to the new floor of
-    // 0.25 (60 × 0.1 = 6, more than enough). F-2026-06-18.
-    for (let i = 0; i < 60; i += 1) {
+    // M-66: minimal pair that pins the lower clamp. F-2026-06-18
+    // floor is 0.25.
+    for (let i = 0; i < 10; i += 1) {
       fireEvent.wheel(screen.getByTestId('editor-viewport'), { deltaY: 100 });
     }
+    expect(useEditorStore.getState().camera.zoom).toBeCloseTo(0.25, 5);
+    // One more wheel-down should still clamp to 0.25.
+    fireEvent.wheel(screen.getByTestId('editor-viewport'), { deltaY: 100 });
     expect(useEditorStore.getState().camera.zoom).toBe(0.25);
   });
 

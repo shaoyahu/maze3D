@@ -102,8 +102,30 @@
      --bg-elevated directly. Kept here so existing non-editor CSS
      (Dialog etc.) still renders the same color in both light and
      dark modes. A future P3 cleanup pass should grep var(--panel)
-     and replace with var(--bg-elevated), then drop this entry. */
+     and replace with var(--bg-elevated), then drop this entry.
+
+     M-12 (2026-07-01): legacy --panel token is still referenced in
+     ~5 places (App.tsx x2, ControlHints.tsx, Timer.tsx,
+     InventoryBar.tsx, Button.tsx, plus 3 CSS selectors). Keep the
+     alias active. Do NOT remove until a dedicated migration pass
+     updates those callers. Migration comment preserved. */
   --panel: var(--bg-elevated);
+
+  /* F-2026-06-30: P2-16 — parchment map palette. Pinned in
+     theme.css so the modal's sepia tone stays consistent regardless
+     of the active light/dark theme. The modal is a self-contained
+     "page within a page" — it should look like aged paper even when
+     the rest of the UI is in night-mode. */
+  --parchment-border: #6a4a2a;
+
+  /* M-15 (2026-07-01): modal z-index ladder. Centralized so modal
+     layering stays consistent: help drawer (1200) < tutorial manual
+     (1300). --z-modal-mylevels reserved for the upcoming MyLevels
+     page so it stacks above the help drawer without conflicting with
+     the tutorial manual. */
+  --z-modal-help: 1200;
+  --z-modal-tutorial: 1300;
+  --z-modal-mylevels: 1200;
 }
 
 :root[data-theme="dark"] {
@@ -158,6 +180,13 @@
   --shadow-1: 0 1px 0 rgba(0, 0, 0, 0.25), 0 4px 12px rgba(0, 0, 0, 0.35);
   --shadow-2: 0 8px 32px rgba(0, 0, 0, 0.5);
   --panel: var(--bg-elevated);
+
+  /* F-2026-06-30: P2-16 — parchment map palette. Pinned in
+     theme.css so the modal's sepia tone stays consistent regardless
+     of the active light/dark theme. The modal is a self-contained
+     "page within a page" — it should look like aged paper even when
+     the rest of the UI is in night-mode. */
+  --parchment-border: #6a4a2a;
 }
 
 @keyframes inventory-flash {
@@ -367,7 +396,8 @@
 
 .editor-segmented {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
   background: var(--bg-inset);
   border: 1px solid var(--border);
   border-radius: var(--r-md);
@@ -1943,6 +1973,287 @@
   to { transform: translate(-50%, 0); opacity: 1; }
 }
 
+/* ----- P2-17: Editor Tutorial Manual (教程手册) -----
+   居中 modal，左侧 TOC + 右侧内容，z-index 1300（在 EditorHelpDrawer 1200 之上）。
+   结构: portal → backdrop → 居中面板(header + body(toc + content) + nav)。 */
+
+.editor-manual__backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: var(--z-modal-tutorial);
+  animation: editor-help-fade 140ms ease-out;
+}
+
+.editor-manual__panel {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(900px, calc(100vw - 48px));
+  height: 85vh;
+  background: var(--bg-elevated);
+  border-radius: 10px;
+  box-shadow: var(--shadow-2);
+  display: flex;
+  flex-direction: column;
+  animation: editor-manual-scale 160ms ease-out;
+}
+
+.editor-manual__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.editor-manual__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.editor-manual__auto-open-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-family: var(--font-body);
+  color: var(--fg-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.editor-manual__auto-open-checkbox {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.editor-manual__title {
+  font-size: 16px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  color: var(--fg);
+  margin: 0;
+}
+
+.editor-manual__close {
+  background: transparent;
+  border: none;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--fg-muted);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--r-sm);
+  transition: color 120ms ease-out, background 120ms ease-out;
+}
+.editor-manual__close:hover {
+  color: var(--fg);
+  background: var(--bg-inset);
+}
+
+.editor-manual__body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0; /* flex 子项 overflow 生效需要 */
+}
+
+.editor-manual__toc {
+  width: 200px;
+  flex-shrink: 0;
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+  padding: 8px 0;
+}
+
+.editor-manual__toc-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-family: var(--font-body);
+  color: var(--fg-muted);
+  cursor: pointer;
+  transition: background 120ms ease-out, color 120ms ease-out;
+}
+.editor-manual__toc-item:hover {
+  background: var(--bg-inset);
+  color: var(--fg);
+}
+.editor-manual__toc-item--active {
+  background: var(--bg-inset);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.editor-manual__content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 24px;
+}
+
+.editor-manual__chapter-title {
+  font-size: 15px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  color: var(--accent);
+  margin: 0 0 4px 0;
+}
+
+.editor-manual__chapter-intro {
+  font-size: 13px;
+  color: var(--fg-muted);
+  margin: 0 0 16px 0;
+  line-height: 1.5;
+}
+
+.editor-manual__section {
+  margin-bottom: 16px;
+}
+
+.editor-manual__section-title {
+  font-size: 13px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  color: var(--fg);
+  margin: 0 0 6px 0;
+}
+
+.editor-manual__step {
+  font-size: 13px;
+  color: var(--fg-muted);
+  margin: 0 0 6px 0;
+  line-height: 1.6;
+}
+
+.editor-manual__nav {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 20px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.editor-manual__nav-btn {
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 6px 16px;
+  font-size: 13px;
+  font-family: var(--font-body);
+  color: var(--fg);
+  cursor: pointer;
+  transition: background 120ms ease-out, border-color 120ms ease-out;
+}
+.editor-manual__nav-btn:hover {
+  background: var(--bg-elevated);
+  border-color: var(--accent);
+}
+
+/* M-18 (2026-07-01): keyboard focus ring for manual close + nav buttons.
+   Uses :focus-visible so mouse clicks don't show the ring but keyboard
+   navigation does. Mirrors the pattern used elsewhere in the editor. */
+.editor-manual__close:focus-visible,
+.editor-manual__nav-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.editor-manual__nav-btn--disabled {
+  opacity: 0.4;
+  pointer-events: none;
+  cursor: default;
+}
+
+@keyframes editor-manual-scale {
+  from { transform: translate(-50%, -50%) scale(0.97); opacity: 0; }
+  to { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+}
+
+/* Closing animation: panel shrinks toward the 📖 button position */
+.editor-manual__panel--closing {
+  animation: editor-manual-fly 300ms ease-in forwards;
+  pointer-events: none;
+}
+
+.editor-manual__backdrop--closing {
+  animation: editor-manual-backdrop-fade 300ms ease-in forwards;
+}
+
+@keyframes editor-manual-fly {
+  from {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+  to {
+    transform: translate(
+      calc(-50% + var(--manual-fly-x, 0px)),
+      calc(-50% + var(--manual-fly-y, 0px))
+    ) scale(0.1);
+    opacity: 0;
+  }
+}
+
+@keyframes editor-manual-backdrop-fade {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+/* Reduced motion: skip closing animation */
+@media (prefers-reduced-motion: reduce) {
+  .editor-manual__panel--closing {
+    animation: none;
+    opacity: 0;
+  }
+  .editor-manual__backdrop--closing {
+    animation: none;
+    opacity: 0;
+  }
+}
+
+/* Responsive: narrow screens collapse TOC into a dropdown */
+@media (max-width: 640px) {
+  .editor-manual__panel {
+    width: calc(100vw - 16px);
+    max-height: 90vh;
+  }
+  .editor-manual__toc {
+    display: none;
+  }
+  .editor-manual__toc-select {
+    display: block;
+    width: 100%;
+    padding: 8px 12px;
+    margin-bottom: 12px;
+    font-size: 13px;
+    font-family: var(--font-body);
+    background: var(--bg-inset);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--fg);
+  }
+}
+/* Default: hide the mobile dropdown on wider screens */
+.editor-manual__toc-select {
+  display: none;
+}
+
+[data-theme="dark"] .editor-manual__backdrop {
+  background: rgba(0, 0, 0, 0.65);
+}
+[data-theme="dark"] .editor-manual__panel {
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
 /* ----- P2-12: My-Levels drawer (editor 内的自定义关卡列表) -----
    结构与 editor-help 高度对齐:portal → backdrop → 顶部居中面板。
    列表用普通 ul/li,行内 = 名称/ID/大小 + 两个按钮(编辑/删除)。 */
@@ -2159,6 +2470,16 @@
   background: var(--accent);
   color: var(--bg);
   border-color: var(--accent);
+}
+
+/* F-2026-06-15-M-50: visible focus ring for keyboard navigation. The
+   default browser outline was being suppressed by the rounded button
+   border, so a keyboard user tabbing to the help toggle had no
+   indication of focus. :focus-visible scopes the ring to keyboard /
+   programmatic focus only — mouse clicks don't flash the ring. */
+.editor-help-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 /* ----- Properties panel shell ----- */
@@ -2443,6 +2764,21 @@
   opacity: 0.85;
   transform: translateX(2px);
   letter-spacing: 0.5px;
+}
+
+/* F-2026-07-01 M-23: Button text colour extracted out of inline JSX style
+   into CSS so dark-theme overrides can flow through CSS variables. The
+   .btn-color-* class names mirror the Button `variant` prop.
+   - .btn-color-primary / .btn-color-danger: white text on saturated
+     backgrounds for WCAG AA contrast in BOTH light + dark themes.
+   - .btn-color-secondary: var(--fg) text on the light --panel surface;
+     flips to near-white automatically under the dark theme override. */
+.btn-color-primary,
+.btn-color-danger {
+  color: #ffffff;
+}
+.btn-color-secondary {
+  color: var(--fg);
 }
 
 /* P2-6: survive-seconds 预设 chip. 沿用 .level-select-select 的色板
@@ -4594,4 +4930,41 @@
   letter-spacing: 0.08em;
   color: var(--fg-dim);
   text-transform: uppercase;
+}
+
+/* ============================================================
+   Reduced-motion overrides — suppress editor motion
+   ============================================================
+   M-13 (2026-07-01): editor-port-pulse, editor-tool-pop, and
+   editor-grid-pulse are decorative animations that distract for
+   users who have requested reduced motion. Suppress them so the
+   editor remains fully usable.
+
+   M-14 (2026-07-01): EditorHelpDrawer slide/fade animations
+   (editor-help-fade, editor-help-drop) also get suppressed.
+
+   M-22 (2026-07-01): editor-manual opening animations
+   (editor-manual-scale on .editor-manual__panel and
+   editor-help-fade on .editor-manual__backdrop) get the same
+   treatment. The closing-animation block at the top of this
+   manual section already handles --closing variants. */
+@media (prefers-reduced-motion: reduce) {
+  /* M-13: editor pulses + pops */
+  .editor-tool-pop,
+  .editor-grid-pulse,
+  .editor-port-pulse {
+    animation: none !important;
+  }
+
+  /* M-14: editor-help drawer slide/fade */
+  .editor-help__backdrop,
+  .editor-help__panel {
+    animation: none !important;
+  }
+
+  /* M-22: editor-manual opening animations */
+  .editor-manual__panel,
+  .editor-manual__backdrop {
+    animation: none !important;
+  }
 }

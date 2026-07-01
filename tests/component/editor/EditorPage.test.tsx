@@ -5,6 +5,7 @@ import {
 } from '../../../src/ui/editor/EditorPage';
 import { useEditorStore } from '../../../src/store/editorStore';
 import { useLevelStore } from '../../../src/store/levelStore';
+import { useSettingsStore } from '../../../src/store/settingsStore';
 import { ConfirmProvider } from '../../../src/ui/useConfirm';
 
 const DRAFT_KEY = 'maze3d.editorDraft.v1';
@@ -51,6 +52,17 @@ function renderPage(props: { onExit?: () => void } = {}): ReturnType<typeof rend
 describe('EditorPage (P2-7 ConfirmProvider)', () => {
   beforeEach(() => {
     resetEditor();
+    // M-60: reset the auto-open setting to the documented default so
+    // a test that runs after the H-25 block doesn't inherit the
+    // flipped `false` state from a sibling test.
+    useSettingsStore.setState({
+      pointerSensitivity: 0.002,
+      fov: 60,
+      darkMode: false,
+      enemyAggression: 'medium',
+      language: 'zh',
+      tutorialManualAutoOpen: true,
+    });
   });
 
   it('renders editor-page container with toolbar, viewport, properties panel, and status bar', () => {
@@ -321,4 +333,50 @@ describe('EditorPage (P2-7 ConfirmProvider)', () => {
   // deleted. The dialog text now flows through t() (P2-8 i18n); a
   // regression in the runtime wording is guarded by the i18n key
   // resource tests, not by string-pin tests on dead exports.
+
+  // H-25 / M-59: the auto-open tutorial manual logic was completely
+  // untested. Without these three cases, a regression that flipped the
+  // effect's `if (tutorialManualAutoOpen)` guard to a no-op (or a
+  // stale `autoOpenAttemptedRef` latch) would silently stop the
+  // manual from ever opening — and the user has no other surface
+  // that would surface the bug.
+  describe('tutorial manual auto-open (H-25 / M-59)', () => {
+    it('opens the manual on mount when tutorialManualAutoOpen is true and no draft is pending', async () => {
+      // Sanity: no draft, so the draft-recovery dialog won't fight us.
+      useSettingsStore.setState({ tutorialManualAutoOpen: true });
+      renderPage();
+      // The panel is rendered via a portal into document.body, so
+      // findByTestId polls until the mount-time useEffect schedules
+      // the open.
+      const panel = await screen.findByTestId('editor-manual-panel');
+      expect(panel).toBeInTheDocument();
+    });
+
+    it('does NOT auto-open the manual when tutorialManualAutoOpen is false', () => {
+      // Flip the preference off — the manual must stay closed.
+      useSettingsStore.setState({ tutorialManualAutoOpen: false });
+      renderPage();
+      // No draft in localStorage, no auto-open preference: nothing to
+      // render. waitFor so we give the mount effect a chance to run.
+      return waitFor(() => {
+        expect(screen.queryByTestId('editor-manual-panel')).toBeNull();
+        expect(screen.queryByTestId('confirm-dialog')).toBeNull();
+      });
+    });
+
+    it('re-opens the manual after the user closes it if the auto-open setting is still true', async () => {
+      // First render: manual opens.
+      useSettingsStore.setState({ tutorialManualAutoOpen: true });
+      const { unmount } = renderPage();
+      await screen.findByTestId('editor-manual-panel');
+      unmount();
+      // Second render: still auto-open → manual opens again. This
+      // pins that the `useEffect` re-fires per mount (not just once
+      // per session via a stale `attempted` ref).
+      renderPage();
+      await waitFor(() => {
+        expect(screen.getByTestId('editor-manual-panel')).toBeInTheDocument();
+      });
+    });
+  });
 });

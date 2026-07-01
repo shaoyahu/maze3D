@@ -39,7 +39,12 @@ export function Button({
   // is set.
   const resolvedStyle: 'lift' | 'glow' | 'fade' | undefined =
     hoverStyle ?? (hoverLift ? 'lift' : undefined);
-  const className = `btn btn-${variant}${
+  // F-2026-07-01 M-23: variant text colour moved out of inline style
+  // into the .btn-* classes in theme.css so dark-theme overrides can
+  // also flow through CSS variables. The `secondary` variant keeps the
+  // default `var(--fg)` text; `primary` and `danger` keep white because
+  // their saturated backgrounds need WCAG-AA contrast in both themes.
+  const className = `btn btn-${variant} btn-color-${variant}${
     resolvedStyle ? ` btn-hover-${resolvedStyle}` : ''
   }`;
   return (
@@ -59,13 +64,9 @@ export function Button({
         borderRadius: 8,
         border: '1px solid var(--border)',
         background: variant === 'primary' ? 'var(--accent)' : variant === 'danger' ? 'var(--danger)' : 'var(--panel)',
-        // F-2026-06-18-design: saturated backgrounds (`--accent` orange,
-        // `--danger` red) get white text so the contrast meets WCAG AA in
-        // both light and dark themes. The light `--panel` background
-        // keeps dark `var(--fg)` text. The old `#1a1a1a` on orange/red
-        // was legible but visually muddy against the dark scene scrim;
-        // white text pops cleanly against the saturated button body.
-        color: variant === 'secondary' ? 'var(--fg)' : '#ffffff',
+        // F-2026-07-01 M-23: hard-coded `#ffffff` moved to .btn-color-*
+        // classes (see className above) so dark-theme overrides flow
+        // through CSS variables instead of being baked into JSX style.
         opacity: disabled ? 0.5 : 1,
         ...(width !== undefined ? { width } : {}),
       }}

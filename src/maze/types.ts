@@ -107,6 +107,21 @@ export interface LevelRules {
   // P2-11: when true, the player must collect every pickup before
   // `crossesExit` reports success. Used by 最终试炼.
   requireAllPickups?: boolean;
+  // P2-16: which minimap style this level uses. Defaults to 'top-right'
+  // (the original auto-rendering minimap) when omitted. Set to
+  // 'parchment' to opt into the M-key hand-held map; the two
+  // `*Behavior` / `*Lifecycle` fields below only take effect then.
+  minimapMode?: MinimapMode;
+  // P2-16: when the parchment map is open, does the world keep ticking?
+  // Defaults to 'pause' when omitted. Ignored unless
+  // `minimapMode === 'parchment'`.
+  mapOpenBehavior?: MapOpenBehavior;
+  // P2-16: should the parchment's `visitedCells` + `damageRegions`
+  // survive a death / restart? Defaults to 'reset-on-death' when
+  // omitted. The death hook is API-level for now (the engine has no
+  // death flow yet); the behavior is fully active once a death-
+  // increment lands.
+  parchmentLifecycle?: ParchmentLifecycle;
 }
 
 export interface MazeData {
@@ -127,6 +142,11 @@ export interface MazeData {
   enemies: EnemySpawn[];
   // P2-11: when true, the runtime skips rendering the Minimap. Used by
   // 哨兵回廊 to hide the map during the chase.
+  //
+  // @deprecated since P2-16; kept for back-compat. `JsonMazeProvider`
+  // auto-migrates a top-level `hideMinimap: true` to
+  // `rules.minimapMode: 'hidden'` and warns once. New levels should
+  // set `rules.minimapMode` instead.
   hideMinimap?: boolean;
   // P2-11: ordered list of tutorial steps. When present, the
   // TutorialBanner component renders a step-by-step walkthrough driven
@@ -238,6 +258,27 @@ export interface SpawnSchedule {
 
 export type EnemyAggression = 'easy' | 'medium' | 'hard';
 
+// P2-16: replaces the old `MazeData.hideMinimap: boolean` toggle. Three
+// modes: the original auto-rendering top-right Minimap, the new
+// "hand-held parchment" (M-key fullscreen modal, blank until walked),
+// or completely hidden. A single field is used instead of two booleans
+// so the schema can't reach a mutually-inconsistent state.
+export type MinimapMode = 'top-right' | 'parchment' | 'hidden';
+
+// P2-16: only relevant when `minimapMode === 'parchment'`. Decides
+// whether the world keeps ticking while the player is reading the
+// parchment ('continue' = higher tension, player can take damage).
+// Engine-side validation enforces that this value is ignored unless
+// the parchment mode is active.
+export type MapOpenBehavior = 'pause' | 'continue';
+
+// P2-16: only relevant when `minimapMode === 'parchment'`. Decides
+// whether `visitedCells` + `damageRegions` survive a death / restart.
+// The current engine has no death flow, so this is wired up as an
+// API-level flag (parchment.reset() / parchment.persist()) and the
+// behavior will be fully active in a follow-up death-increment.
+export type ParchmentLifecycle = 'reset-on-death' | 'persist';
+
 // F-2026-06-17-D-L-3: runtime whitelist backing the type guard, mirroring
 // the PICKUP_TYPE_VALUES / VICTORY_TYPE_VALUES pattern. P2-11 added the
 // `enemyAggression` literal union but didn't ship a guard, so the
@@ -253,6 +294,39 @@ export const ENEMY_AGGRESSION_VALUES: readonly EnemyAggression[] = [
 export function isEnemyAggression(v: unknown): v is EnemyAggression {
   return (
     typeof v === 'string' && (ENEMY_AGGRESSION_VALUES as readonly string[]).includes(v)
+  );
+}
+
+// F-2026-06-30: P2-16 runtime whitelists + guards mirroring the
+// ENEMY_AGGRESSION_VALUES / isEnemyAggression pattern above. Each
+// new type gets a frozen readonly tuple (compile-time union check +
+// runtime `includes` lookup) and a typed `is*` predicate so the
+// validator and the editor can share a single source of truth.
+export const MINIMAP_MODE_VALUES: readonly MinimapMode[] = [
+  'top-right',
+  'parchment',
+  'hidden',
+];
+export const MAP_OPEN_BEHAVIOR_VALUES: readonly MapOpenBehavior[] = ['pause', 'continue'];
+export const PARCHMENT_LIFECYCLE_VALUES: readonly ParchmentLifecycle[] = [
+  'reset-on-death',
+  'persist',
+];
+
+export function isMinimapMode(v: unknown): v is MinimapMode {
+  return typeof v === 'string' && (MINIMAP_MODE_VALUES as readonly string[]).includes(v);
+}
+
+export function isMapOpenBehavior(v: unknown): v is MapOpenBehavior {
+  return (
+    typeof v === 'string' && (MAP_OPEN_BEHAVIOR_VALUES as readonly string[]).includes(v)
+  );
+}
+
+export function isParchmentLifecycle(v: unknown): v is ParchmentLifecycle {
+  return (
+    typeof v === 'string' &&
+    (PARCHMENT_LIFECYCLE_VALUES as readonly string[]).includes(v)
   );
 }
 

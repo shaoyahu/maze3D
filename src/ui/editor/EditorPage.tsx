@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useEditorStore } from '../../store/editorStore';
+import { useSettingsStore } from '../../store/settingsStore';
 import type { EditorTool } from '../../maze/types';
 import { EditorTopBar } from './EditorTopBar';
 import { EditorLeftPanel } from './EditorLeftPanel';
@@ -7,6 +8,7 @@ import { EditorToolbar } from './EditorToolbar';
 import { EditorViewport } from './EditorViewport';
 import { EditorPropertiesPanel } from './EditorPropertiesPanel';
 import { EditorStatusBar } from './EditorStatusBar';
+import { EditorTutorialManual } from './EditorTutorialManual';
 import { useConfirm } from '../useConfirm';
 import { useLevelStore } from '../../store/levelStore';
 import { useT } from '../../i18n';
@@ -59,6 +61,13 @@ export function EditorPage({ onExit }: EditorPageProps): React.ReactElement {
   const lastErrorKey = useEditorStore((s) => s.lastErrorKey);
   const clearLastError = useEditorStore((s) => s.clearLastError);
 
+  // P2-17: tutorial manual open state. Lives in EditorPage (not
+  // editorStore) because it's purely cosmetic UI state that must
+  // not affect dirty / history / save. EditorPage owns it because
+  // both EditorTopBar (the 📖 button) and EditorViewport (the ESC
+  // gate) need to know about it.
+  const [manualOpen, setManualOpen] = useState(false);
+
   // ---- Draft recovery on mount ----------------------------------------
   const [showDraftPrompt, setShowDraftPrompt] = useState(false);
   const draftPromptedRef = useRef(false);
@@ -70,6 +79,32 @@ export function EditorPage({ onExit }: EditorPageProps): React.ReactElement {
     draftPromptedRef.current = true;
     setShowDraftPrompt(true);
   }, [loadDraft]);
+
+  // P2-17 enhancement: auto-open tutorial manual on first editor visit.
+  // Waits for draft prompt to resolve before opening, so two modals
+  // never appear simultaneously. Persists via settingsStore so the
+  // user can opt out ("don't auto-open next time").
+  //
+  // F-2026-06-30-M-30 / M-31: the previous implementation used an
+  // `autoOpenAttemptedRef` latch that permanently disabled re-auto-open
+  // for the lifetime of the EditorPage mount. That was correct for
+  // "open at most once on first visit" but it also blocked re-opening
+  // if the user dismissed the manual and later toggled the
+  // `tutorialManualAutoOpen` setting back on (e.g. a fresh sign-in
+  // share-link). The cleaner pattern is to gate the effect on
+  // `manualOpen` itself: while the manual is open (or after it has
+  // been auto-opened and the user has not yet closed it), the effect
+  // is a no-op; once it closes, the effect re-runs and is again a
+  // candidate to open — but only if `showDraftPrompt` is done and
+  // the user still has the auto-open preference enabled.
+  const tutorialManualAutoOpen = useSettingsStore((s) => s.tutorialManualAutoOpen);
+  useEffect(() => {
+    if (manualOpen) return;
+    if (showDraftPrompt) return;
+    if (tutorialManualAutoOpen) {
+      setManualOpen(true);
+    }
+  }, [manualOpen, showDraftPrompt, tutorialManualAutoOpen]);
 
   useEffect(() => {
     if (!showDraftPrompt) return;
@@ -106,7 +141,15 @@ export function EditorPage({ onExit }: EditorPageProps): React.ReactElement {
   const toastTimerRef = useRef<number | null>(null);
   const lastShownIdRef = useRef<number>(0);
   useEffect(() => {
-    const message = lastErrorKey !== null ? t(lastErrorKey) : lastError;
+    // F-2026-06-30-H-15: when a `lastErrorKey` is set, prefer the
+    // translated string from i18n. If the translator returns the
+    // key verbatim (i.e. the key is missing from the active locale),
+    // fall back to the raw `lastError` message — which the editor
+    // store populates with a non-localized human-readable sentence.
+    // This way an unfinished translation never shows a raw i18n key
+    // in the toast; the user always gets a real sentence.
+    const translated = lastErrorKey !== null ? t(lastErrorKey) : null;
+    const message = translated !== null && translated !== lastErrorKey ? translated : lastError;
     if (message === null) return;
     // Bump the id even on identical messages so consecutive rejections
     // still restart the fade-out timer.
@@ -219,7 +262,43 @@ export function EditorPage({ onExit }: EditorPageProps): React.ReactElement {
 
   return (
     <div data-testid="editor-page" style={PAGE_STYLE}>
-      <EditorTopBar onExit={handleExit} onSaveAndExit={handleExit} />
+      {/* F-2026-06-30-M-33: skip link. The editor page is dense with
+          chrome (top bar, three side panels, status bar) and the
+          viewport is the primary working surface. A keyboard-only
+          user tabbing from the URL bar otherwise walks the whole
+          toolbar tree before reaching the canvas. The link is
+          visually hidden until focused, then jumps to the viewport
+          element. The id is set on EditorViewport's wrapper (see
+          data-testid="editor-viewport" + id="editor-viewport"). */}
+      <a
+        href="#editor-viewport"
+        style={{
+          position: 'absolute',
+          left: -9999,
+          top: 'auto',
+          width: 1,
+          height: 1,
+          overflow: 'hidden',
+        }}
+        onFocus={(e) => {
+          e.currentTarget.style.position = 'fixed';
+          e.currentTarget.style.left = '12px';
+          e.currentTarget.style.top = '12px';
+          e.currentTarget.style.width = 'auto';
+          e.currentTarget.style.height = 'auto';
+          e.currentTarget.style.zIndex = '9999';
+        }}
+        onBlur={(e) => {
+          e.currentTarget.style.position = 'absolute';
+          e.currentTarget.style.left = '-9999px';
+          e.currentTarget.style.top = 'auto';
+          e.currentTarget.style.width = '1px';
+          e.currentTarget.style.height = '1px';
+        }}
+      >
+        跳到主内容
+      </a>
+      <EditorTopBar onExit={handleExit} onSaveAndExit={handleExit} onTutorialManual={() => setManualOpen(true)} />
       {/* P2-13.8: 三栏 — 左 / 中(顶部 toolbar + viewport) / 右,三栏
           都在 outer row 平行,各自跨越整个高度。右栏(属性)跟左栏
           (文件树)一样"独立成栏" — 不再挤在 middle column 的 inner row
@@ -229,7 +308,7 @@ export function EditorPage({ onExit }: EditorPageProps): React.ReactElement {
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
           <EditorToolbar />
           <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-            <EditorViewport />
+            <EditorViewport anyOverlayOpen={manualOpen} />
           </div>
         </div>
         <EditorPropertiesPanel />
@@ -250,6 +329,9 @@ export function EditorPage({ onExit }: EditorPageProps): React.ReactElement {
           <div className="editor-toast__body">{toast.message}</div>
         </div>
       )}
+      {/* P2-17: Tutorial manual overlay. Rendered as a portal so it
+          sits above the entire editor layout. */}
+      <EditorTutorialManual open={manualOpen} onClose={() => setManualOpen(false)} />
     </div>
   );
 }

@@ -17,6 +17,12 @@ export interface Settings {
   // experience verbatim; English users toggle from /settings and the
   // change is persisted via the same `maze3d.settings.v1` channel.
   language: Locale;
+  // F-2026-06-30-M-N: opt-out for the auto-opened tutorial on first
+  // editor visit. Persisted via maze3d.settings.v1.
+  // P2-17: whether the tutorial manual auto-opens when the user enters
+  // the level editor. Defaults to true so new users see it on first
+  // visit; unchecking the "don't auto-open" checkbox sets it to false.
+  tutorialManualAutoOpen: boolean;
 }
 
 interface SettingsStore extends Settings {
@@ -29,15 +35,31 @@ const DEFAULTS: Settings = {
   darkMode: false,
   enemyAggression: 'medium',
   language: 'zh',
+  tutorialManualAutoOpen: true,
 };
 const STORAGE_KEY = 'maze3d.settings.v1';
 
 export function sanitizeSettings(raw: unknown): Settings | null {
   if (typeof raw !== 'object' || raw === null) return null;
   const s = raw as Record<string, unknown>;
-  if (typeof s.pointerSensitivity !== 'number' || !Number.isFinite(s.pointerSensitivity) || s.pointerSensitivity <= 0) return null;
-  if (typeof s.fov !== 'number' || !Number.isFinite(s.fov) || s.fov < 30 || s.fov > 120) return null;
-  if (typeof s.darkMode !== 'boolean') return null;
+  // F-2026-06-30-H-3 / M-11: lenient per-field fallback. A single
+  // corrupted field (e.g. FOV saved as NaN) used to wipe the entire
+  // settings record — including unrelated keys like
+  // `tutorialManualAutoOpen` — forcing the user to re-pick their
+  // preferences. Now each field falls back to its default independently,
+  // matching the lenient pattern used for `enemyAggression` / `language`
+  // / `tutorialManualAutoOpen` below. `set(k, v)` still rejects bad
+  // values via `isValidSetting` at write time, so this only softens
+  // *load* behavior.
+  const pointerSensitivity =
+    typeof s.pointerSensitivity === 'number' && Number.isFinite(s.pointerSensitivity) && s.pointerSensitivity > 0
+      ? s.pointerSensitivity
+      : DEFAULTS.pointerSensitivity;
+  const fov =
+    typeof s.fov === 'number' && Number.isFinite(s.fov) && s.fov >= 30 && s.fov <= 120
+      ? s.fov
+      : DEFAULTS.fov;
+  const darkMode = typeof s.darkMode === 'boolean' ? s.darkMode : DEFAULTS.darkMode;
   // Lenient on enemyAggression: a pre-P2-4a persisted record won't
   // have the field, so default to 'medium' instead of failing the
   // whole-settings validation. (Task9 will add a per-key arm here
@@ -52,12 +74,16 @@ export function sanitizeSettings(raw: unknown): Settings | null {
   // whole-settings validation. `set('language', unknown)` is still
   // rejected via `isValidSetting` at write time.
   const language: Locale = isLocale(s.language) ? s.language : 'zh';
+  // P2-17: lenient — pre-P2-17 persisted records won't have this field.
+  const tutorialManualAutoOpen: boolean =
+    typeof s.tutorialManualAutoOpen === 'boolean' ? s.tutorialManualAutoOpen : true;
   return {
-    pointerSensitivity: s.pointerSensitivity,
-    fov: s.fov,
-    darkMode: s.darkMode,
+    pointerSensitivity,
+    fov,
+    darkMode,
     enemyAggression: aggression,
     language,
+    tutorialManualAutoOpen,
   };
 }
 
@@ -68,6 +94,7 @@ function pickSettings(s: Settings): Settings {
     darkMode: s.darkMode,
     enemyAggression: s.enemyAggression,
     language: s.language,
+    tutorialManualAutoOpen: s.tutorialManualAutoOpen,
   };
 }
 
@@ -86,6 +113,9 @@ function isValidSetting(k: keyof Settings, v: unknown): v is Settings[keyof Sett
   }
   if (k === 'language') {
     return isLocale(v);
+  }
+  if (k === 'tutorialManualAutoOpen') {
+    return typeof v === 'boolean';
   }
   return false;
 }

@@ -15,6 +15,7 @@ describe('settingsStore', () => {
       fov: 60,
       darkMode: false,
       enemyAggression: 'medium',
+      tutorialManualAutoOpen: true,
       set: useSettingsStore.getState().set,
     });
   });
@@ -25,6 +26,7 @@ describe('settingsStore', () => {
     expect(s.fov).toBe(60);
     expect(s.darkMode).toBe(false);
     expect(s.enemyAggression).toBe('medium');
+    expect(s.tutorialManualAutoOpen).toBe(true);
   });
 
   it('set updates a field and persists to localStorage', () => {
@@ -114,15 +116,35 @@ describe('settingsStore', () => {
         darkMode: true,
         enemyAggression: 'medium',
         language: 'zh', // P2-8 lenient default for pre-P2-8 records
+        tutorialManualAutoOpen: true, // P2-17 lenient default for pre-P2-17 records
       });
     });
 
-    it('returns null when core fields are missing or invalid', () => {
-      expect(sanitizeSettings({ set: null })).toBeNull();
-      expect(sanitizeSettings({ pointerSensitivity: 0, darkMode: true })).toBeNull();
-      expect(sanitizeSettings({ pointerSensitivity: -1, darkMode: true })).toBeNull();
-      expect(sanitizeSettings({ pointerSensitivity: 0.002, fov: 20, darkMode: true })).toBeNull();
-      expect(sanitizeSettings({ pointerSensitivity: 0.002, fov: 200, darkMode: true })).toBeNull();
+    it('returns null when the input is not a usable object', () => {
+      // F-2026-06-30-H-3: sanitizeSettings is now lenient per-field —
+      // a corrupted `pointerSensitivity` or `fov` falls back to the
+      // default instead of wiping the entire settings record. The
+      // only input that still returns null is a non-object (or null).
+      expect(sanitizeSettings(null)).toBeNull();
+      expect(sanitizeSettings({ set: null })).not.toBeNull();
+    });
+
+    it('falls back to per-field defaults when pointerSensitivity/fov/darkMode are invalid (H-3 lenient)', () => {
+      // Single-field corruption no longer wipes the whole record —
+      // bad fields use their default, good fields are preserved.
+      expect(
+        sanitizeSettings({ pointerSensitivity: 0, fov: 75, darkMode: true })!.pointerSensitivity,
+      ).toBe(0.002);
+      // pointerSensitivity is invalid here, but fov is valid, so fov is preserved.
+      expect(
+        sanitizeSettings({ pointerSensitivity: -1, fov: 75, darkMode: true })!.fov,
+      ).toBe(75);
+      expect(
+        sanitizeSettings({ pointerSensitivity: 0.002, fov: 20, darkMode: true })!.fov,
+      ).toBe(60);
+      expect(
+        sanitizeSettings({ pointerSensitivity: 0.002, fov: 200, darkMode: true })!.fov,
+      ).toBe(60);
     });
 
     it('returns the sanitized settings when all core fields are valid', () => {
@@ -132,7 +154,83 @@ describe('settingsStore', () => {
         darkMode: false,
         enemyAggression: 'medium',
         language: 'zh',
+        tutorialManualAutoOpen: true,
       });
     });
+
+    // P2-17: tutorialManualAutoOpen lenient sanitize
+    it('defaults tutorialManualAutoOpen to true when the field is missing', () => {
+      expect(sanitizeSettings({ pointerSensitivity: 0.003, fov: 75, darkMode: false })!.tutorialManualAutoOpen).toBe(true);
+    });
+
+    it('preserves tutorialManualAutoOpen=false when explicitly set', () => {
+      expect(sanitizeSettings({ pointerSensitivity: 0.003, fov: 75, darkMode: false, tutorialManualAutoOpen: false })!.tutorialManualAutoOpen).toBe(false);
+    });
+
+    it('defaults tutorialManualAutoOpen to true when the value is non-boolean', () => {
+      expect(sanitizeSettings({ pointerSensitivity: 0.003, fov: 75, darkMode: false, tutorialManualAutoOpen: 'yes' })!.tutorialManualAutoOpen).toBe(true);
+    });
+
+    // M-68: the original sanitize block had three loose cases for
+    // tutorialManualAutoOpen (missing / false / non-boolean) but never
+    // the combined "missing plus null in another field" case. A
+    // record from an early P2-17 build would have a sparse shape
+    // and exercise the lenient fallback paths simultaneously.
+    it('M-68: tutorialManualAutoOpen combined missing + null fields falls back to defaults', () => {
+      const result = sanitizeSettings({
+        pointerSensitivity: null,
+        fov: 75,
+        darkMode: false,
+        // tutorialManualAutoOpen: missing on purpose
+      });
+      expect(result).not.toBeNull();
+      expect(result!.tutorialManualAutoOpen).toBe(true);
+      expect(result!.pointerSensitivity).toBe(0.002); // default for null
+      expect(result!.fov).toBe(75); // valid fov preserved
+    });
+  });
+
+  // P2-17: tutorialManualAutoOpen set/persist/reject
+  it('set updates tutorialManualAutoOpen and persists to localStorage', () => {
+    useSettingsStore.getState().set('tutorialManualAutoOpen', false);
+    expect(useSettingsStore.getState().tutorialManualAutoOpen).toBe(false);
+    flushPendingWrites();
+    const raw = localStorage.getItem('maze3d.settings.v1');
+    expect(raw).toBeTruthy();
+    const parsed = JSON.parse(raw!);
+    expect(parsed.tutorialManualAutoOpen).toBe(false);
+  });
+
+  it('set rejects a non-boolean value for tutorialManualAutoOpen', () => {
+    useSettingsStore.getState().set('tutorialManualAutoOpen', true);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      useSettingsStore.getState().set('tutorialManualAutoOpen', 'no' as never);
+      expect(useSettingsStore.getState().tutorialManualAutoOpen).toBe(true);
+      expect(warnSpy).toHaveBeenCalled();
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  // M-69: the prior test only verified the in-memory mutation. The
+  // round-trip path (set → flush → localStorage → reload simulation)
+  // was the one actually exercised by the production pagehide
+  // listener, so pin it here. We simulate "reload" by re-running
+  // sanitizeSettings on the persisted blob — that's the same code
+  // path the store init uses to read from localStorage.
+  it('M-69: tutorialManualAutoOpen round-trips through localStorage + sanitizeSettings', () => {
+    useSettingsStore.getState().set('tutorialManualAutoOpen', false);
+    flushPendingWrites();
+    const raw = localStorage.getItem('maze3d.settings.v1');
+    expect(raw).toBeTruthy();
+    // Simulate a reload by re-parsing the raw blob through the same
+    // sanitizer the store init uses. If the round-trip is lossy, the
+    // parsed value would flip back to true and the assertion below
+    // would catch it.
+    const parsed = JSON.parse(raw!);
+    const rehydrated = sanitizeSettings(parsed);
+    expect(rehydrated).not.toBeNull();
+    expect(rehydrated!.tutorialManualAutoOpen).toBe(false);
   });
 });

@@ -138,6 +138,7 @@ npx playwright test --grep "specific title"
 - 右侧属性面板：当前选中对象的属性（敌人路径节点等）
 - 状态栏：保存 / 导出 JSON / 导入 JSON / 撤销 / 重做 / 脏数据提示
 - 帮助抽屉：快捷键速查表
+- 教程手册：6 章分节阅读模式，引导用户学习编辑器各项功能（TopBar 📖 按钮打开）
 
 `EnemySpawn` 描述敌人出生坐标 + 路径节点（`path: {x,z}[]`，≥ 2 节点），
 编辑器输出 JSON 与手写关卡共用同一 `MazeData` schema。
@@ -265,6 +266,7 @@ src/
 │       ├── EditorStatusBar.tsx   #     状态栏（保存 / 导入 / 撤销 / 脏数据）
 │       ├── EditorViewport.tsx    #     中部视口
 │       ├── EditorHelpDrawer.tsx  #     帮助抽屉（快捷键速查）
+│       ├── EditorTutorialManual.tsx #  教程手册（6 章分节阅读）
 │       └── editorValidation.ts   #     关卡校验
 ├── i18n/                         #   自研轻量 i18n（零依赖）
 │   ├── types.ts                  #     类型定义
@@ -332,6 +334,7 @@ Phase 2 增量按序推进，已完成：
 | P2-13 | 编辑器文件夹系统 + 左侧栏重构 | ✅ 已完成 |
 | P2-14 | 代码评审 batch 1 修复 | ✅ 已完成（12/33） |
 | P2-15 | 代码评审 batch 2 修复 | ✅ 已完成（24/24） |
+| P2-16 | 羊皮纸地图（三态 `minimapMode` + M 键全屏 modal + 走过才显现 + 50% 概率生成水渍/火烧/撕裂损伤） | ✅ 已完成 |
 
 候选池（待用户决策）：音频管线、移动端 / 触摸支持、额外 pickup 子类型。
 

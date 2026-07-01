@@ -8,6 +8,11 @@ export default defineConfig({
     environment: 'happy-dom',
     setupFiles: ['./tests/setup.ts'],
     include: ['tests/unit/**/*.test.ts', 'tests/unit/**/*.test.tsx', 'tests/component/**/*.test.tsx'],
+    // LOW: keep the coverage.exclude in lockstep with the test include
+    // list above. If a test path is added (e.g. tests/e2e/**/*.test.ts
+    // mocked into the unit bucket) the coverage gate should follow
+    // automatically — both lists are the same set of "we know about
+    // these files" declarations.
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],

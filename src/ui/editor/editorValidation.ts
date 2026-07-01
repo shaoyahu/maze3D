@@ -24,9 +24,23 @@ export interface ValidationIssue {
 // numerical order (1, 2, 3, 4, 5), each appearing at most once.
 export function validateDesign(level: MazeData): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
-  const { walls, start, exit, enemies, rules } = level;
+  const { walls, start, exit, enemies, rules, tutorialSteps } = level;
   const startOnWall = walls[start.z]?.[start.x] === 1;
   const exitOnWall = walls[exit.z]?.[exit.x] === 1;
+
+  // F-2026-06-30: 'caught-by-enemy' is teaching-only. The Segmented
+  // control already hides the option for non-tutorial levels, but if
+  // someone imports a legacy level (or hand-edits JSON) that still has
+  // it set, the status bar should flag it before save rejects it.
+  // `tutorialSteps` is the only legal signal of "this is a teaching
+  // level" — anything with zero steps can't justify a win-on-death.
+  if (rules.victory === 'caught-by-enemy' && (tutorialSteps?.length ?? 0) === 0) {
+    issues.push({
+      severity: 'warning',
+      messageKey: 'editor.validation.caughtByEnemyRequiresTutorial',
+      where: 'rules',
+    });
+  }
 
   // Rule 1: exit reachable from start via open cells. Short-circuit the
   // BFS when either endpoint is on a wall — isReachable would just return

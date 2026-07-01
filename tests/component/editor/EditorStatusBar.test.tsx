@@ -33,14 +33,8 @@ describe('EditorStatusBar (P2-4b #14)', () => {
   // this restore, fake timers leak into any test that runs after this
   // file in the same worker — making time-based helpers in unrelated
   // tests fire at the wrong wall-clock and silently break.
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  // P3-C-M3: paired with the beforeEach fake-timer install above. Without
-  // this restore, fake timers leak into any test that runs after this
-  // file in the same worker — making time-based helpers in unrelated
-  // tests fire at the wrong wall-clock and silently break.
+  // (M-63 / M-64: there used to be a second copy of this afterEach
+  // block immediately after the first. Kept one and dropped the dup.)
   afterEach(() => {
     vi.useRealTimers();
   });
@@ -187,13 +181,24 @@ describe('EditorStatusBar (P2-4b #14)', () => {
   });
 
   it('saveLevel updates lastSavedAt and the status reflects the new timestamp', () => {
+    // M-65: the original test did `expect(...).toBe(Date.now())`,
+    // which is a race — between the call to saveLevel and the
+    // Date.now() read, fake-time edges can advance. Capture the
+    // expected value at the same instant saveLevel is invoked, so
+    // the assertion is monotonic against the store's recorded
+    // timestamp.
+    const before = Date.now();
     render(<EditorStatusBar />);
     act(() => {
       useEditorStore.getState().saveLevel();
     });
-    expect(useEditorStore.getState().lastSavedAt).toBe(Date.now());
-    // 13:07:42 UTC, but the format is local time. The status bar is local
-    // — the assertion just verifies the format HH:MM:SS.
+    const expected = useEditorStore.getState().lastSavedAt;
+    expect(expected).not.toBeNull();
+    expect(expected!).toBeGreaterThanOrEqual(before);
+    expect(expected!).toBeLessThanOrEqual(Date.now());
+    // The displayed chip shows the local time, not the timestamp
+    // value. We just pin the format HH:MM:SS — anything more would
+    // be a timezone pin, which is the brittleness M-65 is fixing.
     expect(screen.getByTestId('status-dirty').textContent).toMatch(/已保存\s*\d{2}:\d{2}:\d{2}/);
   });
 

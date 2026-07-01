@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, act } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { EditorPropertiesPanel } from '../../../src/ui/editor/EditorPropertiesPanel';
 import { useEditorStore } from '../../../src/store/editorStore';
 import { resetEditor } from '../../_helpers/editorMocks';
@@ -16,11 +16,15 @@ describe('EditorPropertiesPanel useDebouncedCommit (F-2026-06-17-F-L-1)', () => 
     vi.useRealTimers();
   });
 
-  it('rapid typing only commits the last value', () => {
+  // M-61: the original 'rapid typing' test didn't actually drive the
+  // input through fireEvent.change — it just called updateName three
+  // times in a row, which is the same as a single update from the
+  // debouncer's point of view (the debouncer is hooked to the form
+  // input, not the store). Rename and refocus this case as a store-
+  // level ordering pin, then add a separate case that drives the
+  // real input element so the debouncer is actually exercised.
+  it('store-level: rapid updateName calls land in the order they were issued', () => {
     const onCommit = vi.fn();
-    // Render the EditorPropertiesPanel; useDebouncedCommit is internal
-    // so we exercise it via the production hook caller path
-    // (LevelMetadataForm wires updateName through the debounce).
     render(<EditorPropertiesPanel />);
     const { updateName } = useEditorStore.getState();
     act(() => {
@@ -28,24 +32,44 @@ describe('EditorPropertiesPanel useDebouncedCommit (F-2026-06-17-F-L-1)', () => 
       updateName('ab');
       updateName('abc');
     });
-    // The store mirrors the latest updateName synchronously.
+    // The store mirrors the latest updateName synchronously — the
+    // debouncer's only job is to schedule the commit later, not to
+    // reorder the in-memory mutations. This is the property the
+    // test is actually pinning.
     expect(useEditorStore.getState().level.name).toBe('abc');
-    // Advance just under the debounce window — no premature commit.
-    act(() => {
-      vi.advanceTimersByTime(200);
-    });
-    // Past the 300ms debounce window — commit would fire here. With the
-    // ref pattern the timer was reset by the rapid updates (only the
-    // latest timer is live), so it fires exactly once. If the original
-    // useEffect-deps bug regressed, multiple timers would have queued
-    // and the commit would race.
-    act(() => {
-      vi.advanceTimersByTime(200);
-    });
-    // Sanity: the wired commit fn was never called directly by this
-    // test (it's internal to LevelMetadataForm). We just verify the
-    // panel doesn't throw and the store is in the expected state.
+    // The onCommit spy is internal to LevelMetadataForm and isn't
+    // invoked by direct updateName calls — it would only be called
+    // through the form's onChange path (see the input-driven case
+    // below). Leaving the assertion here as a regression pin.
     expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it('input-driven: rapid typing through the real input commits only the last value after the debounce', () => {
+    // M-61: drive the *real* <input> so useDebouncedCommit (which is
+    // bound to the form's onChange) is actually exercised. If the
+    // debouncer is dropped or bypassed, multiple commits would land
+    // and the assertion would catch the regression.
+    render(<EditorPropertiesPanel />);
+    const input = screen.getByTestId('meta-name') as HTMLInputElement;
+    act(() => {
+      fireEvent.change(input, { target: { value: 'a' } });
+      fireEvent.change(input, { target: { value: 'ab' } });
+      fireEvent.change(input, { target: { value: 'abc' } });
+    });
+    // Before the 300ms debounce elapses, the store still holds the
+    // pre-edit value ("Test" from the default fixture).
+    expect(useEditorStore.getState().level.name).toBe('Test');
+    // Advance just shy of the debounce window — still not committed.
+    act(() => {
+      vi.advanceTimersByTime(299);
+    });
+    expect(useEditorStore.getState().level.name).toBe('Test');
+    // Past the debounce window — exactly one commit lands, with the
+    // latest value.
+    act(() => {
+      vi.advanceTimersByTime(2);
+    });
+    expect(useEditorStore.getState().level.name).toBe('abc');
   });
 
   it('unmount does not fire a stale commit', () => {

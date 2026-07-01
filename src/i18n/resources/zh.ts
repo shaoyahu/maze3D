@@ -208,6 +208,14 @@ export const zh: Translations = {
   'levels.victory.survive': '存活模式',
   'levels.victory.caughtByEnemy': '被抓即胜',
 
+  // F-2026-06-30: P2-16 — hand-held parchment modal copy. The
+  // 'title' / 'hint' pair is also rendered by HUD as the M-key
+  // tooltip, so the wording has to read well in both contexts
+  // (full modal title and a one-line bottom-right badge).
+  'overlays.parchment.title': '羊皮纸地图',
+  'overlays.parchment.hint': '按 M 或 ESC 关闭',
+  'overlays.parchment.empty': '尚未探索',
+
   'levels.panel.generator': '生成器',
   'levels.panel.brief': '任务简报',
   'levels.panel.seedInput': '种子输入',
@@ -373,6 +381,22 @@ export const zh: Translations = {
   'editor.properties.field.timeOnPickup': '拾取 +时间',
   'editor.properties.field.victory': '胜利条件',
 
+  // F-2026-06-30: P2-16 — three new editor fields + the 3/2/2
+  // option-label groups. The three-state picker (topRight /
+  // parchment / hidden) replaces the legacy `hideMinimap: boolean`
+  // switch; the two linked Segmented controls below it only show
+  // up when the mode is 'parchment'.
+  'editor.properties.field.minimapMode': '地图模式',
+  'editor.properties.minimapMode.topRight': '右上角小地图',
+  'editor.properties.minimapMode.parchment': '羊皮纸地图',
+  'editor.properties.minimapMode.hidden': '完全隐藏',
+  'editor.properties.field.mapOpenBehavior': '打开地图时',
+  'editor.properties.mapOpenBehavior.pause': '暂停游戏',
+  'editor.properties.mapOpenBehavior.continue': '继续接受伤害',
+  'editor.properties.field.parchmentLifecycle': '死亡 / 重玩时',
+  'editor.properties.parchmentLifecycle.resetOnDeath': '清空羊皮纸',
+  'editor.properties.parchmentLifecycle.persist': '保留走过的痕迹',
+
   'editor.properties.panelTitle': '关卡属性',
 
   // F-P2-9: properties-panel card relabeled from "拾取物" → "道具"
@@ -495,6 +519,7 @@ export const zh: Translations = {
   'editor.validation.rules.initialTime': '初始时间必须大于 0(当前 {value})',
   'editor.validation.rules.maxHealth': '最大生命必须大于 0(当前 {value})',
   'editor.validation.rules.timeOnPickup': '拾取 +时间必须大于 0(当前 {value})',
+  'editor.validation.caughtByEnemyRequiresTutorial': '「被抓即胜」仅供教学关卡使用,请先在教学设置里添加至少一个步骤',
 
   // P2-12: 编辑器内"我的关卡"管理 drawer 的展示文案。drawer 替代
   // 原 /levels 页面的删除入口;编辑/删除两个操作都从这里发起。
@@ -555,6 +580,91 @@ export const zh: Translations = {
   'editor.help.checklist.rules': '胜利模式、初始时间、最大生命都设了合理值（默认即可）',
 
   // ============================================================
+  // editor.manual.* — 教程手册（EditorTutorialManual 内容）
+  // ============================================================
+  'editor.manual.title': '教程手册',
+  'editor.manual.closeAria': '关闭教程手册',
+  'editor.manual.dontAutoOpen': '不再自动打开',
+  'editor.manual.dontAutoOpenAria': '不再自动打开教程手册',
+  'editor.manual.nav.prev': '← 上一章',
+  // L-9 (2026-07-01): the `←` / `→` arrows above are hardcoded
+  // glyphs (not {var} placeholders) because they're typographic
+  // decoration, not localizable content. zh-CN renders left-to-right
+  // arrows in both chapters; an RTL locale would need its own
+  // mirrored copy, which is a future i18n pass — not a placeholder
+  // issue. Kept literal so a translator doesn't accidentally
+  // 'translate' them into spelled-out "previous".
+  'editor.manual.nav.next': '下一章 →',
+
+  // Ch1 入门
+  'editor.manual.ch1.title': '入门',
+  'editor.manual.ch1.intro': '欢迎来到关卡编辑器！本章带你快速上手创建第一个关卡。',
+  'editor.manual.ch1.s1.title': '🎯 创建关卡',
+  'editor.manual.ch1.s1.body': '点击顶部工具栏的「新建」按钮，即可获得一张 15×15 的全墙画布。\n新画布默认起点在左上角、终点在右下角，你可以随时移动它们。',
+  'editor.manual.ch1.s2.title': '🖱️ 画布导航',
+  'editor.manual.ch1.s2.body': '滚轮缩放：以鼠标位置为中心放大或缩小画布。\n右键拖动：平移视图，查看画布的不同区域。\n左侧工具栏选好工具后，在画布上点击格子即可操作。',
+  'editor.manual.ch1.s3.title': '💾 保存与退出',
+  'editor.manual.ch1.s3.body': '「保存」将关卡存入浏览器的「我的关卡」列表。\n「保存并退出」保存后返回主菜单。\n「导出」下载 .maze3d.json 文件，可以分享给其他玩家。\n未保存的修改会显示 ● 标记提醒。',
+
+  // Ch2 工具详解
+  'editor.manual.ch2.title': '工具详解',
+  'editor.manual.ch2.intro': '左侧工具栏提供了 8 种工具，每种都有对应的快捷键。本节逐一介绍。',
+  'editor.manual.ch2.s1.title': '👆 选择工具 (V)',
+  'editor.manual.ch2.s1.body': '默认工具。点击画布上的对象（墙体、道具、敌人）可选中它，右侧属性面板会显示对应属性。\n点击空白处取消选择。选中敌人后可在右侧编辑巡逻路径。',
+  'editor.manual.ch2.s2.title': '🧱 墙体与通道 (W / B)',
+  'editor.manual.ch2.s2.body': '「墙体」工具 (W)：点击地面格子将其变为墙。\n「通道」工具 (B)：点击墙格子将其凿为路。起点和终点不能被擦除。\n提示：用通道工具从全墙画布中凿出迷宫路径，是最常用的工作方式。',
+  'editor.manual.ch2.s3.title': '🏁 起点与终点 (S / E)',
+  'editor.manual.ch2.s3.body': '「起点」工具 (S)：点击任意格子放置玩家起点，该格子自动变为通道。\n「终点」工具 (E)：点击任意格子放置出口，该格子同样自动变为通道。\n每张地图只能有一个起点和一个终点，新放置会移动旧位置。',
+  'editor.manual.ch2.s4.title': '🎒 道具 (P)',
+  'editor.manual.ch2.s4.body': '在地面格子上点击放置道具。选中道具后，右侧面板可调整类型和数值：\n⏳ 时间 — 增加倒计时秒数\n❤️ 生命 — 恢复生命值\n🔑 钥匙 — 解锁门的必需品\n每个道具会自动分配唯一 ID。',
+  'editor.manual.ch2.s5.title': '⚔️ 敌人与平移 (M / H)',
+  'editor.manual.ch2.s5.body': '「敌人」工具 (M)：点击地面格子放置敌人。选中后右侧可编辑巡逻路径。\n「平移」工具 (H)：按住鼠标拖动平移视图。你也可以随时用右键拖动平移，不必切到此工具。\n敌人需要至少 2 个巡逻点才能正常移动。',
+
+  // Ch3 属性面板
+  'editor.manual.ch3.title': '属性面板',
+  'editor.manual.ch3.intro': '右侧属性面板根据当前选择显示对应的配置项，未选中对象时显示关卡元数据。',
+  'editor.manual.ch3.s1.title': '📋 关卡元数据',
+  'editor.manual.ch3.s1.body': '未选中任何对象时，面板显示关卡级设置：\n名称 — 显示在关卡列表中的标题\n宽度 / 深度 — 画布尺寸（修改会重建画布，注意可能丢失边缘内容）',
+  'editor.manual.ch3.s2.title': '🏆 胜利规则',
+  'editor.manual.ch3.s2.body': '胜利模式 — 决定玩家如何获胜：\n· 到达出口 — 走到终点即胜利\n· 限时挑战 — 在倒计时结束前到达终点\n· 生存模式 — 在敌人的追击下存活指定时间\n初始时间 — 限时/生存模式的倒计时秒数\n最大生命 — 玩家可承受的受伤次数\n需要全部道具 — 勾选后必须收集所有道具才能通关',
+  'editor.manual.ch3.s3.title': '🔧 道具与敌人属性',
+  'editor.manual.ch3.s3.body': '选中道具时可编辑：类型、数值（时间秒数 / 生命恢复量）。\n选中敌人时可编辑：巡逻路径（点击「添加路径点」后依次点击画布上的格子）。\n选中起点/终点时显示其坐标，可直接在面板中调整位置。',
+
+  // Ch4 设计技巧
+  'editor.manual.ch4.title': '设计技巧',
+  'editor.manual.ch4.intro': '好的关卡设计需要兼顾可玩性、挑战性和公平性。以下是一些实用建议。',
+  'editor.manual.ch4.s1.title': '🔀 路径设计',
+  'editor.manual.ch4.s1.body': '主路径应当清晰可达，从起点到终点至少一条明显路线。\n分支路径可以藏道具或死胡同，增加探索乐趣。\n避免过长的无分支走廊——连续 5 格以上的直路会让玩家失去方向感。',
+  'editor.manual.ch4.s2.title': '⚖️ 难度平衡',
+  'editor.manual.ch4.s2.body': '小关卡（15×15）适合 1-3 个敌人，大关卡（30×30+）可以 5-10 个。\n道具数量与关卡规模匹配：一般每 20 格通道放 1 个道具。\n生存模式的敌人数量建议从 3 开始，渐进生成开启时体验更佳。',
+  'editor.manual.ch4.s3.title': '⚠️ 常见错误',
+  'editor.manual.ch4.s3.body': '起点与终点不连通 — 最常见的问题，状态栏会显示 ⚠ 警告。\n敌人没有巡逻路径 — 敌人会原地不动，体验很差。\n外墙有缺口 — 玩家可能走出地图边界。\n道具放在墙上 — 道具只有在通道上才能被拾取。',
+  'editor.manual.ch4.s4.title': '✅ 验收自检',
+  'editor.manual.ch4.s4.body': '保存前检查以下几点：\n1. 起点到终点有通路（状态栏无 ⚠ 警告）\n2. 每个敌人至少 2 个巡逻点\n3. 外围墙体闭合\n4. 胜利模式和参数设置合理\n5. 关卡名称有辨识度',
+
+  // Ch5 测试与发布
+  'editor.manual.ch5.title': '测试与发布',
+  'editor.manual.ch5.intro': '设计完成后，验证、导出和分享你的关卡。',
+  'editor.manual.ch5.s1.title': '🔍 验证关卡',
+  'editor.manual.ch5.s1.body': '状态栏会实时显示验证警告：\n⚠ 起点与终点不连通\n⚠ 缺少起点或终点\n⚠ 敌人缺少巡逻路径\n这些是建议性警告，不会阻止你保存。但强烈建议修复后再发布。',
+  'editor.manual.ch5.s2.title': '📤 导出与导入',
+  'editor.manual.ch5.s2.body': '「导出」— 将关卡下载为 .maze3d.json 文件，包含完整关卡数据。\n「导入」— 选择一个 .maze3d.json 文件加载到编辑器。导入会覆盖当前未保存的修改。\n导出文件可以发送给其他玩家，他们通过「导入」即可加载你的关卡。',
+  'editor.manual.ch5.s3.title': '🌐 分享关卡',
+  'editor.manual.ch5.s3.body': '方式一：导出 .maze3d.json 文件，发送给其他玩家导入。\n方式二：保存到「我的关卡」后，在关卡选择页面选择该关卡进入游戏，浏览器地址栏的 URL 就是关卡的直达链接。\n分享 URL 时，对方打开即可直接进入同一关卡配置。',
+
+  // Ch6 高级功能
+  'editor.manual.ch6.title': '高级功能',
+  'editor.manual.ch6.intro': '掌握基础后，探索这些高级功能来打造更丰富的关卡体验。',
+  'editor.manual.ch6.s1.title': '🔴 敌人巡逻路径',
+  'editor.manual.ch6.s1.body': '选中敌人后，右侧面板显示巡逻路径编辑器：\n点击「添加路径点」按钮，然后在画布上依次点击格子来定义巡逻路线。\n敌人会按路径点顺序循环移动，最后一个路径点之后回到第一个。\n路径点必须是通道格子，否则敌人无法到达。',
+  'editor.manual.ch6.s2.title': '💀 存活模式设置',
+  'editor.manual.ch6.s2.body': '胜利模式选择「生存」后，可配置以下参数：\n存活秒数 — 玩家需要坚持的时间（30/60/90/120 秒，或自定义）\n敌人数量 — 初始生成的敌人数量（0-10）\n渐进生成 — 勾选后每隔一段时间自动增加敌人\n这些设置让生存关卡可以有不同的紧张程度。',
+  'editor.manual.ch6.s3.title': '🗺️ 羊皮纸地图设置',
+  'editor.manual.ch6.s3.body': '「地图模式」属性决定玩家在游戏中看到的地图形式：\n· 右上角小地图 — 默认模式，始终显示完整地图\n· 羊皮纸地图 — 按 M 键打开全屏地图，只有走过的区域才可见，受伤会留下损伤\n· 完全隐藏 — 不显示任何地图\n选择羊皮纸模式后，可额外设置：打开地图时是否暂停游戏、死亡时是否保留地图。',
+  'editor.manual.ch6.s4.title': '📁 文件夹管理',
+  'editor.manual.ch6.s4.body': '左侧面板底部的「我的关卡」列表支持文件夹组织：\n点击文件夹名称可展开/折叠。\n将关卡拖到文件夹上即可移动。\n右键文件夹可重命名或删除。\n文件夹帮助你按主题或难度归类关卡，方便管理大量自制关卡。',
+
+  // ============================================================
   // common.* — 跨组件通用按钮 / 操作
   // ============================================================
   'common.cancel': '取消',
@@ -563,6 +673,14 @@ export const zh: Translations = {
   'common.save': '保存',
   'common.delete': '删除',
   'common.moreSuffix': ' 等 {count} 项',
+  // L-10 (2026-07-01): the {count} placeholder IS shared with en.ts
+  // (see en.common.moreSuffix '(+{count} more)') so the keysParity
+  // test passes — but the *wording* intentionally diverges between
+  // locales: zh-CN naturally drops the suffix inside the trailing
+  // list ("[A, B] 等 3 项"), while en wraps it in a parenthetical
+  // prefix ("[A, B] (+3 more)") so it reads naturally as an aside.
+  // Both call sites pass only `{ count }` — verified by the consumer
+  // in App.tsx.
 
   // ============================================================
   // tutorial.teaching0N.stepM — 教学步骤 HUD 横幅文案

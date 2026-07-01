@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useEditorStore } from '../../store/editorStore';
-import type { EnemySpawn, Pickup, PickupType } from '../../maze/types';
+import type { EditorTool, EnemySpawn, MazeData, Pickup, PickupType } from '../../maze/types';
+import type { EditorSelection } from '../../store/editorStore';
 import { EditorHelpDrawer } from './EditorHelpDrawer';
 import { useT } from '../../i18n';
 
@@ -56,7 +57,14 @@ function minimapCellStyle(x: number, z: number, width: number, depth: number): R
   };
 }
 
-export function EditorViewport(): React.ReactElement {
+export interface EditorViewportProps {
+  /** P2-17: whether any overlay (tutorial manual) is open, so the
+      viewport's ESC handler should not also fire. Mirrors the
+      `helpOpen` gate pattern (F-2026-06-16-L-2). */
+  anyOverlayOpen?: boolean;
+}
+
+export function EditorViewport({ anyOverlayOpen = false }: EditorViewportProps): React.ReactElement {
   const t = useT();
   const level = useEditorStore((s) => s.level);
   const tool = useEditorStore((s) => s.tool);
@@ -97,10 +105,27 @@ export function EditorViewport(): React.ReactElement {
       if (e.key !== 'Escape') return;
       // Skip when focus is in an editable field — Escape there typically
       // means "abandon the current input value", not "exit tool mode".
+      // F-2026-06-15-M-44: expanded the skip selector to also match
+      // any element with a `contenteditable` attribute (covers inline
+      // rich-text editors that don't bubble up via isContentEditable),
+      // ARIA textbox roles (some custom widgets declare role="textbox"
+      // instead of using <input>), and the opt-out
+      // `data-no-escape-reset` hook for panels that want to handle
+      // Escape themselves.
       const t = e.target;
       if (t instanceof HTMLElement) {
         const tag = t.tagName;
-        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t.isContentEditable) return;
+        if (
+          tag === 'INPUT' ||
+          tag === 'TEXTAREA' ||
+          tag === 'SELECT' ||
+          t.isContentEditable ||
+          t.hasAttribute('contenteditable') ||
+          t.getAttribute('role') === 'textbox' ||
+          t.hasAttribute('data-no-escape-reset')
+        ) {
+          return;
+        }
       }
       // F-2026-06-16-L-2: when the help drawer is open, ESC is owned by
       // the drawer (closes it). Letting the viewport's listener also
@@ -108,13 +133,14 @@ export function EditorViewport(): React.ReactElement {
       // "two actions for one keystroke" UX. e.stopPropagation() inside
       // EditorHelpDrawer's own listener can't block a sibling listener
       // on the same target, so the gating has to live here.
-      if (helpOpen) return;
+      // P2-17: same gate for the tutorial manual (anyOverlayOpen).
+      if (helpOpen || anyOverlayOpen) return;
       clearSelection();
       setTool('select');
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [clearSelection, setTool, helpOpen]);
+  }, [clearSelection, setTool, helpOpen, anyOverlayOpen]);
 
   // hoverCell lives in a child <HoverReadout> rather than here so each
   // mousemove only re-renders the small readout, not the entire grid.
@@ -138,19 +164,28 @@ export function EditorViewport(): React.ReactElement {
   const { pickupByCell, enemyByCell } = useMemo(() => buildLookups(level), [level]);
   const panStateRef = useRef<{ x: number; y: number } | null>(null);
 
-  const isCellSelected = (x: number, z: number): boolean => {
-    if (selection === null) return false;
-    if (selection.kind === 'wall') return selection.x === x && selection.z === z;
-    if (selection.kind === 'pickup') {
-      const p = pickupByCell.get(cellKey(x, z));
-      return p ? p.id === selection.id : false;
-    }
-    if (selection.kind === 'enemy') {
-      const e = enemyByCell.get(cellKey(x, z));
-      return e ? e.id === selection.id : false;
-    }
-    return false;
-  };
+  // F-2026-06-15-M-45: was an inline arrow rebuilt on every render, which
+  // also meant downstream memoization of the per-cell render tree
+  // (see M-51 GridCell) would never stick — every parent render handed
+  // a fresh function reference to children. Wrapping in useCallback
+  // with [selection, pickupByCell, enemyByCell] deps keeps the identity
+  // stable as long as the selection / lookup maps don't change.
+  const isCellSelected = useCallback(
+    (x: number, z: number): boolean => {
+      if (selection === null) return false;
+      if (selection.kind === 'wall') return selection.x === x && selection.z === z;
+      if (selection.kind === 'pickup') {
+        const p = pickupByCell.get(cellKey(x, z));
+        return p ? p.id === selection.id : false;
+      }
+      if (selection.kind === 'enemy') {
+        const e = enemyByCell.get(cellKey(x, z));
+        return e ? e.id === selection.id : false;
+      }
+      return false;
+    },
+    [selection, pickupByCell, enemyByCell],
+  );
 
   const handleCellClick = (x: number, z: number): void => {
     if (tool === 'pan') return;
@@ -210,11 +245,30 @@ export function EditorViewport(): React.ReactElement {
         ZOOM_MIN,
         Math.min(ZOOM_MAX, cameraZoomRef.current + direction * ZOOM_STEP),
       );
-      if (next !== cameraZoomRef.current) setCamera({ zoom: next });
+      if (next !== cameraZoomRef.current) {
+        // F-2026-06-15-M-46: write the ref synchronously so a follow-up
+        // wheel event in the same tick (rapid trackpad / mouse-wheel
+        // bursts) sees the latest zoom instead of the stale value. The
+        // store update is async, so without this the next event would
+        // still be computed against the old `cameraZoomRef.current`,
+        // losing increments that crossed the ZOOM_STEP boundary.
+        cameraZoomRef.current = next;
+        setCamera({ zoom: next });
+      }
     };
     el.addEventListener('wheel', handler, { passive: false });
     return () => el.removeEventListener('wheel', handler);
   }, [setCamera]);
+
+  // F-2026-06-15-M-47/M-49: keep a ref-synced copy of `camera` so the
+  // pan handler (registered on every render) reads the latest value
+  // instead of the render-time closure capture. Without this, a
+  // mid-drag setCamera would only land in the next render — and the
+  // mousemove handler that fired in between would still read the
+  // stale `camera` from the closure, producing a stuttery pan with
+  // small jumps every time React committed the new camera state.
+  const cameraRef = useRef(camera);
+  cameraRef.current = camera;
 
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>): void => {
     // Pan works with either button when the pan tool is selected (left
@@ -226,15 +280,29 @@ export function EditorViewport(): React.ReactElement {
       return;
     }
     panStateRef.current = { x: e.clientX, y: e.clientY };
-    setCamera({ ...camera });
+    setCamera({ ...cameraRef.current });
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>): void => {
     const start = panStateRef.current;
     if (start !== null) {
+      // F-2026-06-15-M-49: read camera from ref so consecutive
+      // mousemove events during a single drag all see the same
+      // baseline (otherwise every event re-bases against the
+      // just-committed camera and the cursor "races" the grid).
+      const cam = cameraRef.current;
       const dx = e.clientX - start.x;
       const dy = e.clientY - start.y;
-      setCamera({ x: camera.x + dx / camera.zoom, y: camera.y + dy / camera.zoom });
+      // F-2026-06-15-M-48: setCamera here triggers a full EditorViewport
+      // re-render — every cell, pickup, enemy, and SVG path node
+      // re-evaluates with the new transform. The grid is 50×50 max
+      // (2500 cells) and most cells have no per-instance state, so the
+      // reconciliation cost is small enough to be imperceptible at
+      // 60 fps. Trade-off accepted: avoid a parallel ref-driven
+      // imperative DOM update path until profiling shows the
+      // current approach is a real bottleneck. The M-51 GridCell memo
+      // helps too: static cells bail out of re-render entirely.
+      setCamera({ x: cam.x + dx / cam.zoom, y: cam.y + dy / cam.zoom });
       panStateRef.current = { x: e.clientX, y: e.clientY };
       handleFirstPan();
       return;
@@ -323,10 +391,11 @@ export function EditorViewport(): React.ReactElement {
     if (!hasPanned) setHasPanned(true);
   };
 
+  // F-2026-06-15-M-52: gridWidth / gridHeight / transform moved into
+  // <GridBody> so the camera/transform subscription lives with the
+  // grid surface it transforms. EditorViewport still needs `width` /
+  // `depth` for the minimap and the empty-state hint.
   const { width, depth } = level.size;
-  const gridWidth = width * CELL_SIZE;
-  const gridHeight = depth * CELL_SIZE;
-  const transform = `translate(calc(-50% + ${camera.x}px), calc(-50% + ${camera.y}px)) scale(${camera.zoom})`;
 
   const isEmpty =
     level.walls.every((row) => row.every((c) => c === 0)) &&
@@ -377,178 +446,13 @@ export function EditorViewport(): React.ReactElement {
           userSelect: 'none',
         }}
       >
-        <div
-          data-testid="editor-grid"
-          style={{
-            position: 'absolute',
-            top: '50%',
-            left: '50%',
-            width: gridWidth,
-            height: gridHeight,
-            transform,
-            transformOrigin: 'center center',
-            display: 'grid',
-            gridTemplateColumns: `repeat(${width}, ${CELL_SIZE}px)`,
-            gridTemplateRows: `repeat(${depth}, ${CELL_SIZE}px)`,
-          }}
-        >
-          {Array.from({ length: depth }, (_, z) =>
-            Array.from({ length: width }, (_, x) => {
-              const isWall = level.walls[z]?.[x] === 1;
-              const isStart = level.start.x === x && level.start.z === z;
-              const isExit = level.exit.x === x && level.exit.z === z;
-              const selected = isCellSelected(x, z);
-              return (
-                <div
-                  key={cellKey(x, z)}
-                  data-x={x}
-                  data-z={z}
-                  data-testid={`cell-${x}-${z}`}
-                  data-wall={isWall ? 1 : 0}
-                  data-start={isStart ? 1 : 0}
-                  data-exit={isExit ? 1 : 0}
-                  onClick={() => handleCellClick(x, z)}
-                  style={{
-                    position: 'relative',
-                    width: CELL_SIZE,
-                    height: CELL_SIZE,
-                    background: isWall ? WALL_COLOR : FLOOR_COLOR,
-                    borderRadius: 2,
-                    outline: selected ? '2px solid var(--accent)' : 'none',
-                    outlineOffset: '-2px',
-                    cursor: tool === 'pan' ? 'inherit' : 'pointer',
-                    zIndex: 1,
-                    boxShadow: isWall ? 'inset 0 1px 0 rgba(255,255,255,0.06)' : 'none',
-                  }}
-                >
-                  {isStart && <StartMarker x={x} z={z} />}
-                  {isExit && <ExitMarker x={x} z={z} />}
-                </div>
-              );
-            }),
-          )}
-
-          {level.pickups.map((p) => {
-            const selected = selection?.kind === 'pickup' && selection.id === p.id;
-            return (
-              <div
-                key={p.id}
-                data-testid={`pickup-${p.id}`}
-                data-pickup-type={p.type}
-                style={{
-                  position: 'absolute',
-                  left: p.x * CELL_SIZE,
-                  top: p.z * CELL_SIZE,
-                  width: CELL_SIZE,
-                  height: CELL_SIZE,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: PICKUP_CSS_COLOR[p.type],
-                  fontSize: 12,
-                  fontWeight: 700,
-                  fontFamily: 'var(--font-display)',
-                  pointerEvents: 'none',
-                  outline: selected ? '2px solid var(--accent)' : 'none',
-                  outlineOffset: '-2px',
-                  zIndex: 2,
-                  textShadow: '0 1px 0 rgba(0,0,0,0.4)',
-                }}
-              >
-                {p.type === 'time' ? '⏱' : p.type === 'health' ? '♥' : '⚷'}
-              </div>
-            );
-          })}
-
-          <svg
-            data-testid="enemy-paths"
-            width={gridWidth}
-            height={gridHeight}
-            style={{
-              position: 'absolute',
-              inset: 0,
-              pointerEvents: 'none',
-              zIndex: 2,
-            }}
-          >
-            <defs>
-              <marker
-                id="enemy-arrow"
-                viewBox="0 0 10 10"
-                refX="6"
-                refY="5"
-                markerWidth="4"
-                markerHeight="4"
-                orient="auto-start-reverse"
-              >
-                <path d="M0,0 L10,5 L0,10 Z" fill={ENEMY_COLOR} />
-              </marker>
-            </defs>
-            {level.enemies.map((e) => (
-              <polyline
-                key={`path-${e.id}`}
-                data-testid={`path-${e.id}`}
-                points={pathPointsAttr(e.path)}
-                fill="none"
-                stroke={ENEMY_COLOR}
-                strokeWidth={1.5}
-                strokeDasharray="3 2"
-                markerEnd="url(#enemy-arrow)"
-              />
-            ))}
-            {level.enemies.flatMap((e) =>
-              e.path.map((n, i) => (
-                <circle
-                  key={`node-${e.id}-${i}`}
-                  data-testid={`path-node-${e.id}-${i}`}
-                  cx={n.x * CELL_SIZE + CELL_SIZE / 2}
-                  cy={n.z * CELL_SIZE + CELL_SIZE / 2}
-                  r={3}
-                  fill={ENEMY_COLOR}
-                  stroke="#0c0d12"
-                  strokeWidth={1}
-                />
-              )),
-            )}
-          </svg>
-
-          {level.enemies.map((e) => {
-            const selected = selection?.kind === 'enemy' && selection.id === e.id;
-            return (
-              <div
-                key={e.id}
-                data-testid={`enemy-${e.id}`}
-                style={{
-                  position: 'absolute',
-                  left: e.x * CELL_SIZE,
-                  top: e.z * CELL_SIZE,
-                  width: CELL_SIZE,
-                  height: CELL_SIZE,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  pointerEvents: 'none',
-                  outline: selected ? '2px solid var(--accent)' : 'none',
-                  outlineOffset: '-2px',
-                  zIndex: 3,
-                }}
-              >
-                <span
-                  aria-hidden
-                  style={{
-                    display: 'inline-block',
-                    width: 14,
-                    height: 14,
-                    borderRadius: '50%',
-                    background: ENEMY_COLOR,
-                    border: '2px solid #0c0d12',
-                    boxShadow: '0 0 0 1px ' + ENEMY_COLOR,
-                  }}
-                />
-              </div>
-            );
-          })}
-        </div>
+        <GridBody
+        level={level}
+        selection={selection}
+        tool={tool}
+        isCellSelected={isCellSelected}
+        onCellClick={handleCellClick}
+      />
       </div>
 
       {isEmpty && (
@@ -641,10 +545,279 @@ export function EditorViewport(): React.ReactElement {
   );
 }
 
-// HoverReadout: a tiny child that subscribes to `tick` and reads
-// `hoverRef.current` on each render. The parent grid stays free of
-// hover state, so each mousemove only re-renders this readout, not the
-// full 50×50 grid.
+// GridCell: one tile of the editor grid. Memoized so a 50×50 grid
+// (2500 cells) only re-renders the cells whose props actually
+// changed when the parent commits a new selection / tool state.
+// F-2026-06-15-M-51/M-53: extracted from the inline JSX in
+// EditorViewport and given role/aria-label for screen readers.
+interface GridCellProps {
+  x: number;
+  z: number;
+  isWall: boolean;
+  isStart: boolean;
+  isExit: boolean;
+  selected: boolean;
+  tool: EditorTool;
+  onCellClick: (x: number, z: number) => void;
+}
+const GridCell = memo(function GridCell({
+  x,
+  z,
+  isWall,
+  isStart,
+  isExit,
+  selected,
+  tool,
+  onCellClick,
+}: GridCellProps): React.ReactElement {
+  // F-2026-06-15-M-53: human-readable label for assistive tech.
+  // Walls are usually the interesting thing; the start/exit markers
+  // are the navigational anchor points; floor cells get a generic
+  // "open" label.
+  let label: string;
+  if (isStart) label = `Start cell ${x},${z}`;
+  else if (isExit) label = `Exit cell ${x},${z}`;
+  else if (isWall) label = `Wall cell ${x},${z}`;
+  else label = `Open cell ${x},${z}`;
+  if (selected) label = `${label} (selected)`;
+  return (
+    <div
+      data-x={x}
+      data-z={z}
+      data-testid={`cell-${x}-${z}`}
+      data-wall={isWall ? 1 : 0}
+      data-start={isStart ? 1 : 0}
+      data-exit={isExit ? 1 : 0}
+      role="gridcell"
+      aria-label={label}
+      aria-selected={selected}
+      onClick={() => onCellClick(x, z)}
+      style={{
+        position: 'relative',
+        width: CELL_SIZE,
+        height: CELL_SIZE,
+        background: isWall ? WALL_COLOR : FLOOR_COLOR,
+        borderRadius: 2,
+        outline: selected ? '2px solid var(--accent)' : 'none',
+        outlineOffset: '-2px',
+        cursor: tool === 'pan' ? 'inherit' : 'pointer',
+        zIndex: 1,
+        boxShadow: isWall ? 'inset 0 1px 0 rgba(255,255,255,0.06)' : 'none',
+      }}
+    >
+      {isStart && <StartMarker x={x} z={z} />}
+      {isExit && <ExitMarker x={x} z={z} />}
+    </div>
+  );
+});
+
+// GridBody: the entire grid surface (cells + pickups + enemy paths +
+// enemy markers) as a single memoized component. F-2026-06-15-M-52:
+// before the extraction, every editor store update re-rendered the
+// full 50×50 cell matrix and re-evaluated the pickup / enemy maps
+// inline — a single selection toggle re-evaluated 2500 isWall /
+// isStart / isExit checks. Wrapping the body in React.memo with
+// shallow-equal prop comparison means a non-grid store update
+// (e.g. dirty flag toggle, hoverCellTick increment) skips the entire
+// grid; a grid update still re-runs the inner loops, but the parent
+// EditorViewport commit and DOM reconciliation stays the same. The
+// companion GridCell memo (M-51) handles the per-cell bail-out.
+interface GridBodyProps {
+  level: MazeData;
+  selection: EditorSelection | null;
+  tool: EditorTool;
+  isCellSelected: (x: number, z: number) => boolean;
+  onCellClick: (x: number, z: number) => void;
+}
+const GridBody = memo(function GridBody({
+  level,
+  selection,
+  tool,
+  isCellSelected,
+  onCellClick,
+}: GridBodyProps): React.ReactElement {
+  const { width, depth } = level.size;
+  const gridWidth = width * CELL_SIZE;
+  const gridHeight = depth * CELL_SIZE;
+  const camera = useEditorStore((s) => s.camera);
+  const transform = `translate(calc(-50% + ${camera.x}px), calc(-50% + ${camera.y}px)) scale(${camera.zoom})`;
+
+  return (
+    <div
+      data-testid="editor-grid"
+      style={{
+        position: 'absolute',
+        top: '50%',
+        left: '50%',
+        width: gridWidth,
+        height: gridHeight,
+        transform,
+        transformOrigin: 'center center',
+        display: 'grid',
+        gridTemplateColumns: `repeat(${width}, ${CELL_SIZE}px)`,
+        gridTemplateRows: `repeat(${depth}, ${CELL_SIZE}px)`,
+      }}
+    >
+      {Array.from({ length: depth }, (_, z) =>
+        Array.from({ length: width }, (_, x) => {
+          const isWall = level.walls[z]?.[x] === 1;
+          const isStart = level.start.x === x && level.start.z === z;
+          const isExit = level.exit.x === x && level.exit.z === z;
+          const selected = isCellSelected(x, z);
+          return (
+            // F-2026-06-15-M-51/M-53: extracted the per-cell render
+            // into a memoized <GridCell> so a 50×50 grid (2500
+            // cells) doesn't re-reconcile every cell on every
+            // store update. React.memo's default shallow compare
+            // short-circuits cells whose props (wall/start/exit/
+            // selected/onClick identity) are unchanged. Combined
+            // with M-52 (memoizing the body wrapper), a single
+            // selection toggle now only re-renders the one cell
+            // that flipped + the GridCell wrapper itself.
+            //
+            // The same change adds role/aria-label so screen
+            // readers see "Cell 7,3 — wall" / "Cell 0,0 — start
+            // marker" instead of a wall of unlabelled divs. The
+            // role is "gridcell" to match the implicit grid role
+            // on the parent <div data-testid="editor-grid">.
+            <GridCell
+              key={cellKey(x, z)}
+              x={x}
+              z={z}
+              isWall={isWall}
+              isStart={isStart}
+              isExit={isExit}
+              selected={selected}
+              tool={tool}
+              onCellClick={onCellClick}
+            />
+          );
+        }),
+      )}
+
+      {level.pickups.map((p) => {
+        const selected = selection?.kind === 'pickup' && selection.id === p.id;
+        return (
+          <div
+            key={p.id}
+            data-testid={`pickup-${p.id}`}
+            data-pickup-type={p.type}
+            style={{
+              position: 'absolute',
+              left: p.x * CELL_SIZE,
+              top: p.z * CELL_SIZE,
+              width: CELL_SIZE,
+              height: CELL_SIZE,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: PICKUP_CSS_COLOR[p.type],
+              fontSize: 12,
+              fontWeight: 700,
+              fontFamily: 'var(--font-display)',
+              pointerEvents: 'none',
+              outline: selected ? '2px solid var(--accent)' : 'none',
+              outlineOffset: '-2px',
+              zIndex: 2,
+              textShadow: '0 1px 0 rgba(0,0,0,0.4)',
+            }}
+          >
+            {p.type === 'time' ? '⏱' : p.type === 'health' ? '♥' : '⚷'}
+          </div>
+        );
+      })}
+
+      <svg
+        data-testid="enemy-paths"
+        width={gridWidth}
+        height={gridHeight}
+        style={{
+          position: 'absolute',
+          inset: 0,
+          pointerEvents: 'none',
+          zIndex: 2,
+        }}
+      >
+        <defs>
+          <marker
+            id="enemy-arrow"
+            viewBox="0 0 10 10"
+            refX="6"
+            refY="5"
+            markerWidth="4"
+            markerHeight="4"
+            orient="auto-start-reverse"
+          >
+            <path d="M0,0 L10,5 L0,10 Z" fill={ENEMY_COLOR} />
+          </marker>
+        </defs>
+        {level.enemies.map((e) => (
+          <polyline
+            key={`path-${e.id}`}
+            data-testid={`path-${e.id}`}
+            points={pathPointsAttr(e.path)}
+            fill="none"
+            stroke={ENEMY_COLOR}
+            strokeWidth={1.5}
+            strokeDasharray="3 2"
+            markerEnd="url(#enemy-arrow)"
+          />
+        ))}
+        {level.enemies.flatMap((e) =>
+          e.path.map((n, i) => (
+            <circle
+              key={`node-${e.id}-${i}`}
+              data-testid={`path-node-${e.id}-${i}`}
+              cx={n.x * CELL_SIZE + CELL_SIZE / 2}
+              cy={n.z * CELL_SIZE + CELL_SIZE / 2}
+              r={3}
+              fill={ENEMY_COLOR}
+              stroke="#0c0d12"
+              strokeWidth={1}
+            />
+          )),
+        )}
+      </svg>
+
+      {level.enemies.map((e) => {
+        const selected = selection?.kind === 'enemy' && selection.id === e.id;
+        return (
+          <div
+            key={e.id}
+            data-testid={`enemy-${e.id}`}
+            style={{
+              position: 'absolute',
+              left: e.x * CELL_SIZE,
+              top: e.z * CELL_SIZE,
+              width: CELL_SIZE,
+              height: CELL_SIZE,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              pointerEvents: 'none',
+              outline: selected ? '2px solid var(--accent)' : 'none',
+              outlineOffset: '-2px',
+              zIndex: 3,
+            }}
+          >
+            <span
+              aria-hidden
+              style={{
+                display: 'inline-block',
+                width: 14,
+                height: 14,
+                borderRadius: '50%',
+                background: ENEMY_COLOR,
+                border: '2px solid #0c0d12',
+                boxShadow: '0 0 0 1px ' + ENEMY_COLOR,
+              }}
+            />
+          </div>
+        );
+      })}
+    </div>
+  );
+});
 function HoverReadout({
   hoverRef,
   tick,

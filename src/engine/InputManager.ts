@@ -3,6 +3,19 @@ import type { InventorySlot } from '../maze/types';
 export interface Move { x: number; z: number; }
 export interface MouseDelta { x: number; y: number; }
 
+// F-2026-06-30: P2-16 — logical action name + the key code bound to
+// it. Exported as a single constant so the GameCanvas useEffect and
+// any future settings-overlay re-binding key see the same value. The
+// M key was chosen because (a) it's the conventional first-person
+// "map" key, (b) it doesn't conflict with WASD / arrow movement /
+// pause (P) / inventory digits, and (c) it's a single key press so
+// holding it doesn't fire continuously.
+export const OPEN_MAP_KEY = 'KeyM';
+// F-2026-06-30: P2-16 — same idea for the "close" gesture, which
+// reuses M. The modal also accepts Escape; the close logic lives in
+// the React component so InputManager stays a pure key-tracker.
+export const CLOSE_MAP_KEY = 'Escape';
+
 export class InputManager {
   private keys = new Set<string>();
   private mouse = { x: 0, y: 0 };
@@ -122,7 +135,21 @@ export class InputManager {
     // P toggled pause off, the next P in the input box toggled it back
     // on, etc. Now we still allow KeyP to fall through so the user can
     // always un-pause, but everything else is dropped.
-    if (this.paused && e.code !== 'KeyP') return;
+    //
+    // L-4 (2026-07-01): restructured to early-return for non-KeyP
+    // keys when paused, instead of the previous `if (this.paused &&
+    // e.code !== 'KeyP') return;` mid-function guard. The two
+    // approaches are functionally equivalent, but the early-return
+    // makes the pause-state control flow obvious at the top of the
+    // handler: a paused player gets ONLY the un-pause toggle, period;
+    // all subsequent branches below run with `this.paused === false`
+    // implicitly guaranteed. The previous fall-through shape
+    // accidentally invited contributors to add code below the guard
+    // that re-ran for paused-state input.
+    if (this.paused) {
+      if (e.code === 'KeyP' && !e.repeat) this.togglePauseListener?.();
+      return;
+    }
     this.keys.add(e.code);
     if (e.code === 'KeyP' && !e.repeat) this.togglePauseListener?.();
     if (e.code === 'Digit1' && !e.repeat) this.useItemListener?.(0);

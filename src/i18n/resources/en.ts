@@ -130,6 +130,16 @@ export const en: Translations = {
   'settings.locale.label': 'Language',
   'settings.locale.desc': 'UI language; takes effect immediately',
   'settings.locale.aria': 'Language',
+  // L-8 (2026-07-01): the locale picker labels are endonyms (the
+  // language's own name for itself) — "中文" stays in Chinese script
+  // even when the active UI locale is English, and "English" stays
+  // in Latin script even when active is zh-CN. This matches every
+  // major OS / browser language picker (Windows, macOS, Chrome) and
+  // is the universally-recognized convention. Translating them
+  // ("Chinese" / "英语") would actively hurt recognition. The
+  // decision applies in BOTH resource files; if a future locale
+  // (e.g. ja) is added, its entry should also be its own endonym
+  // ("日本語") regardless of which locale is rendering the picker.
   'settings.locale.zh': '中文',
   'settings.locale.en': 'English',
 
@@ -193,6 +203,14 @@ export const en: Translations = {
   'levels.victory.timeTrial': 'Time Trial',
   'levels.victory.survive': 'Survive',
   'levels.victory.caughtByEnemy': 'Caught by Enemy',
+
+  // F-2026-06-30: P2-16 — hand-held parchment modal copy. The
+  // 'title' / 'hint' pair is also rendered by HUD as the M-key
+  // tooltip, so the wording has to read well in both contexts
+  // (full modal title and a one-line bottom-right badge).
+  'overlays.parchment.title': 'Parchment Map',
+  'overlays.parchment.hint': 'Press M or ESC to close',
+  'overlays.parchment.empty': 'Unexplored',
 
   'levels.panel.generator': 'Generator',
   'levels.panel.brief': 'Mission Briefing',
@@ -356,6 +374,22 @@ export const en: Translations = {
   'editor.properties.field.timeOnPickup': 'Pickup +Time',
   'editor.properties.field.victory': 'Victory Condition',
 
+  // F-2026-06-30: P2-16 — three new editor fields + the 3/2/2
+  // option-label groups. The three-state picker (topRight /
+  // parchment / hidden) replaces the legacy `hideMinimap: boolean`
+  // switch; the two linked Segmented controls below it only show
+  // up when the mode is 'parchment'.
+  'editor.properties.field.minimapMode': 'Map Mode',
+  'editor.properties.minimapMode.topRight': 'Top-Right Minimap',
+  'editor.properties.minimapMode.parchment': 'Parchment Map',
+  'editor.properties.minimapMode.hidden': 'Completely Hidden',
+  'editor.properties.field.mapOpenBehavior': 'When Map Is Open',
+  'editor.properties.mapOpenBehavior.pause': 'Pause Game',
+  'editor.properties.mapOpenBehavior.continue': 'Keep Taking Damage',
+  'editor.properties.field.parchmentLifecycle': 'On Death / Restart',
+  'editor.properties.parchmentLifecycle.resetOnDeath': 'Reset Parchment',
+  'editor.properties.parchmentLifecycle.persist': 'Keep Footsteps',
+
   'editor.properties.panelTitle': 'Level Properties',
 
   // F-P2-9: properties-panel card relabeled from "Pickup" → "Item" for
@@ -480,6 +514,7 @@ export const en: Translations = {
   'editor.validation.rules.initialTime': 'initialTime must be > 0 (got {value})',
   'editor.validation.rules.maxHealth': 'maxHealth must be > 0 (got {value})',
   'editor.validation.rules.timeOnPickup': 'timeOnPickup must be > 0 (got {value})',
+  'editor.validation.caughtByEnemyRequiresTutorial': "'Caught by Enemy' victory is reserved for tutorial levels — add at least one tutorial step first",
 
   // P2-12: mirror of zh.ts — My-Levels drawer copy.
   'editor.mylevels.title': 'My Levels · edit or delete',
@@ -537,6 +572,84 @@ export const en: Translations = {
   'editor.help.checklist.pickups': 'At least 1-2 pickups so there is something to collect.',
   'editor.help.checklist.enemyPath': 'Each enemy has at least 2 patrol waypoints, otherwise the enemy gets stuck.',
   'editor.help.checklist.rules': 'Victory mode, initial time, and max health are set to sensible values (defaults are fine).',
+
+  // ============================================================
+  // editor.manual.* — Tutorial manual (EditorTutorialManual copy)
+  // ============================================================
+  'editor.manual.title': 'Tutorial Manual',
+  'editor.manual.closeAria': 'Close tutorial manual',
+  'editor.manual.dontAutoOpen': "Don't auto-open next time",
+  'editor.manual.dontAutoOpenAria': "Don't auto-open the tutorial manual next time",
+  'editor.manual.nav.prev': '← Previous',
+  'editor.manual.nav.next': 'Next →',
+
+  // Ch1 Getting Started
+  'editor.manual.ch1.title': 'Getting Started',
+  'editor.manual.ch1.intro': 'Welcome to the level editor! This chapter walks you through creating your first level.',
+  'editor.manual.ch1.s1.title': '🎯 Create a Level',
+  'editor.manual.ch1.s1.body': 'Click the "New" button in the top bar to get a fresh 15×15 all-wall canvas.\nThe default start is at the top-left and the exit at the bottom-right — you can move them anytime.',
+  'editor.manual.ch1.s2.title': '🖱️ Canvas Navigation',
+  'editor.manual.ch1.s2.body': 'Scroll wheel: zoom in/out centered on the cursor.\nRight-click drag: pan the viewport to see different parts of the canvas.\nSelect a tool from the left rail, then click cells on the canvas to operate.',
+  'editor.manual.ch1.s3.title': '💾 Save & Exit',
+  'editor.manual.ch1.s3.body': '"Save" stores the level in your browser\'s "My Levels" list.\n"Save & Exit" saves and returns to the main menu.\n"Export" downloads a .maze3d.json file you can share with other players.\nUnsaved changes show a ● indicator.',
+
+  // Ch2 Tool Guide
+  'editor.manual.ch2.title': 'Tool Guide',
+  'editor.manual.ch2.intro': 'The left rail offers 8 tools, each with a keyboard shortcut. This section covers them one by one.',
+  'editor.manual.ch2.s1.title': '👆 Select Tool (V)',
+  'editor.manual.ch2.s1.body': 'The default tool. Click any object on the canvas (wall, item, enemy) to select it — the right panel shows its properties.\nClick empty space to deselect. Select an enemy to edit its patrol path on the right.',
+  'editor.manual.ch2.s2.title': '🧱 Wall & Erase (W / B)',
+  'editor.manual.ch2.s2.body': '"Wall" tool (W): click a floor cell to turn it into a wall.\n"Erase" tool (B): click a wall cell to carve it back to floor. Start and exit cannot be erased.\nTip: the most common workflow is to start with an all-wall canvas and carve corridors with the Erase tool.',
+  'editor.manual.ch2.s3.title': '🏁 Start & Exit (S / E)',
+  'editor.manual.ch2.s3.body': '"Start" tool (S): click any cell to place the player start — the cell auto-carves to floor.\n"Exit" tool (E): click any cell to place the exit — also auto-carves.\nEach map has exactly one start and one exit; placing a new one moves the old one.',
+  'editor.manual.ch2.s4.title': '🎒 Items (P)',
+  'editor.manual.ch2.s4.body': 'Click a floor cell to drop an item. Select it to adjust type and value in the right panel:\n⏳ Time — adds seconds to the countdown\n❤️ Health — restores health points\n🔑 Key — required to unlock doors\nEach item gets a unique ID automatically.',
+  'editor.manual.ch2.s5.title': '⚔️ Enemy & Pan (M / H)',
+  'editor.manual.ch2.s5.body': '"Enemy" tool (M): click a floor cell to spawn an enemy. Select it to edit patrol waypoints on the right.\n"Pan" tool (H): hold and drag to pan the viewport. You can also right-click drag at any time without switching tools.\nEnemies need at least 2 patrol waypoints to move properly.',
+
+  // Ch3 Properties Panel
+  'editor.manual.ch3.title': 'Properties Panel',
+  'editor.manual.ch3.intro': 'The right panel shows configuration for the current selection, or level metadata when nothing is selected.',
+  'editor.manual.ch3.s1.title': '📋 Level Metadata',
+  'editor.manual.ch3.s1.body': 'When nothing is selected, the panel shows level-level settings:\nName — the title shown in the level list\nWidth / Depth — canvas dimensions (changing this rebuilds the canvas; edge content may be lost)',
+  'editor.manual.ch3.s2.title': '🏆 Victory Rules',
+  'editor.manual.ch3.s2.body': 'Victory mode — determines how the player wins:\n· Reach Exit — walk to the exit to win\n· Time Trial — reach the exit before the countdown ends\n· Survive — stay alive for a set duration while enemies chase you\nInitial Time — countdown seconds for time-trial / survive modes\nMax Health — how many hits the player can take\nRequire All Pickups — if checked, the player must collect every item before the exit counts',
+  'editor.manual.ch3.s3.title': '🔧 Item & Enemy Properties',
+  'editor.manual.ch3.s3.body': 'Select an item to edit: type, value (time seconds / health restore amount).\nSelect an enemy to edit: patrol path (click "Add Waypoint" then click cells on the canvas).\nSelect start/exit to see coordinates and adjust position from the panel.',
+
+  // Ch4 Design Tips
+  'editor.manual.ch4.title': 'Design Tips',
+  'editor.manual.ch4.intro': 'Good level design balances playability, challenge, and fairness. Here are some practical tips.',
+  'editor.manual.ch4.s1.title': '🔀 Path Design',
+  'editor.manual.ch4.s1.body': 'The main path should be clearly reachable — at least one obvious route from start to exit.\nBranch paths can hide items or dead ends for exploration.\nAvoid long featureless corridors — 5+ cells in a straight line disorients the player.',
+  'editor.manual.ch4.s2.title': '⚖️ Difficulty Balance',
+  'editor.manual.ch4.s2.body': 'Small levels (15×15) suit 1-3 enemies; large levels (30×30+) can handle 5-10.\nItem count should match level size: roughly 1 item per 20 floor cells.\nFor survive mode, start with 3 enemies and enable progressive spawning for a better experience.',
+  'editor.manual.ch4.s3.title': '⚠️ Common Mistakes',
+  'editor.manual.ch4.s3.body': 'Start and exit not connected — the most common issue; the status bar shows a ⚠ warning.\nEnemy with no patrol path — the enemy stays in place, which feels broken.\nGaps in the outer wall — the player may walk off the map.\nItem placed on a wall cell — items can only be picked up on floor cells.',
+  'editor.manual.ch4.s4.title': '✅ Pre-Save Checklist',
+  'editor.manual.ch4.s4.body': 'Before saving, verify:\n1. Start and exit are connected (no ⚠ in the status bar)\n2. Every enemy has at least 2 patrol waypoints\n3. The outer wall perimeter is closed\n4. Victory mode and parameters are set sensibly\n5. The level name is descriptive',
+
+  // Ch5 Testing & Publishing
+  'editor.manual.ch5.title': 'Testing & Publishing',
+  'editor.manual.ch5.intro': 'After designing your level, validate, export, and share it.',
+  'editor.manual.ch5.s1.title': '🔍 Validation',
+  'editor.manual.ch5.s1.body': 'The status bar shows real-time validation warnings:\n⚠ Start and exit not connected\n⚠ Missing start or exit\n⚠ Enemy missing patrol path\nThese are advisory — they won\'t block saving — but fixing them before publishing is strongly recommended.',
+  'editor.manual.ch5.s2.title': '📤 Export & Import',
+  'editor.manual.ch5.s2.body': '"Export" — downloads the level as a .maze3d.json file with full level data.\n"Import" — loads a .maze3d.json file into the editor. Import overwrites unsaved changes.\nExported files can be sent to other players who can import them directly.',
+  'editor.manual.ch5.s3.title': '🌐 Sharing Levels',
+  'editor.manual.ch5.s3.body': 'Option 1: Export a .maze3d.json file and send it to other players to import.\nOption 2: Save to "My Levels", enter the game via Level Select, and copy the URL from the browser address bar.\nThe URL is a direct link — anyone opening it gets the exact same level configuration.',
+
+  // Ch6 Advanced Features
+  'editor.manual.ch6.title': 'Advanced Features',
+  'editor.manual.ch6.intro': 'Once you\'re comfortable with the basics, explore these features for richer level experiences.',
+  'editor.manual.ch6.s1.title': '🔴 Enemy Patrol Paths',
+  'editor.manual.ch6.s1.body': 'Select an enemy to see the patrol path editor in the right panel:\nClick "Add Waypoint", then click cells on the canvas to define the patrol route.\nThe enemy cycles through waypoints in order, returning from the last to the first.\nWaypoints must be on floor cells — the enemy cannot reach wall cells.',
+  'editor.manual.ch6.s2.title': '💀 Survive Mode Settings',
+  'editor.manual.ch6.s2.body': 'Set victory mode to "Survive" to configure:\nSurvive seconds — how long the player must stay alive (30/60/90/120 or custom)\nEnemy count — initial enemies spawned (0-10)\nProgressive spawning — automatically adds enemies over time\nThese settings let you tune the tension of survive levels.',
+  'editor.manual.ch6.s3.title': '🗺️ Parchment Map Settings',
+  'editor.manual.ch6.s3.body': 'The "Map Mode" property controls what the player sees in-game:\n· Top-Right Minimap — default; always shows the full map\n· Parchment Map — press M to open a full-screen map; only visited areas are visible, and damage leaves marks\n· Completely Hidden — no map at all\nWhen Parchment is selected, you can also set: whether the game pauses while the map is open, and whether the map resets on death.',
+  'editor.manual.ch6.s4.title': '📁 Folder Management',
+  'editor.manual.ch6.s4.body': 'The "My Levels" list at the bottom of the left panel supports folders:\nClick a folder name to expand/collapse it.\nDrag a level onto a folder to move it.\nRight-click a folder to rename or delete it.\nFolders help you organize levels by theme or difficulty.',
 
   // ============================================================
   // common.*

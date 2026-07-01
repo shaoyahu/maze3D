@@ -9,7 +9,7 @@ import type {
   MazeProvider,
   Pickup,
 } from './types';
-import { isPickupType, isVictoryType } from './types';
+import { isPickupType, isVictoryType, isMinimapMode, isMapOpenBehavior, isParchmentLifecycle } from './types';
 
 // Derived from the player's collision radius — the player needs 2*radius of
 // clearance to fit inside a single cell. Importing PLAYER_RADIUS keeps the
@@ -248,7 +248,6 @@ export function validateMaze(raw: unknown, id: string): MazeData {
   if (Array.isArray(m.tutorialSteps)) {
     tutorialSteps = m.tutorialSteps as NonNullable<MazeData['tutorialSteps']>;
   }
-  const hideMinimap = typeof m.hideMinimap === 'boolean' ? m.hideMinimap : undefined;
   // P2-13: optional folderId for the editor's left-panel file tree.
   // Free-form string (validated only as "looks like an id"); the
   // editor's level store resolves the reference at render time, so a
@@ -262,6 +261,58 @@ export function validateMaze(raw: unknown, id: string): MazeData {
   }
   if (r.requireAllPickups === true) {
     rules.requireAllPickups = true;
+  }
+
+  // F-2026-06-30: P2-16 — three new optional rules fields. Each is
+  // silently dropped on invalid value (matches the lenient
+  // `requireAllPickups` style: the validator never throws for a
+  // bad-shape optional field, because the worst case is "uses the
+  // default"). Each guard is the matching `is*` predicate from
+  // maze/types.ts so the union stays single-source-of-truth.
+  if (isMinimapMode(r.minimapMode)) {
+    rules.minimapMode = r.minimapMode;
+  }
+  if (isMapOpenBehavior(r.mapOpenBehavior)) {
+    rules.mapOpenBehavior = r.mapOpenBehavior;
+  }
+  if (isParchmentLifecycle(r.parchmentLifecycle)) {
+    rules.parchmentLifecycle = r.parchmentLifecycle;
+  }
+
+  // F-2026-06-30: P2-16 — back-compat migration. The old
+  // `MazeData.hideMinimap: boolean` field (P2-11) is replaced by
+  // `rules.minimapMode: MinimapMode`. Hand-crafted JSON written before
+  // P2-16 still has the boolean; instead of crashing we translate
+  // `hideMinimap: true` to `rules.minimapMode: 'hidden'` (the only
+  // behavior that boolean ever encoded) and warn once. Authors who
+  // set `hideMinimap: false` or leave it absent end up with the
+  // default minimap (top-right), which is the same behavior as before
+  // the migration.
+  if (m.hideMinimap === true) {
+    if (!rules.minimapMode) {
+      rules.minimapMode = 'hidden';
+      // eslint-disable-next-line no-console -- F-2026-06-30: intentional one-time warning at load
+      console.warn(
+        `[maze3D] Maze '${id}': deprecated top-level 'hideMinimap: true' — ` +
+          `migrated to rules.minimapMode: 'hidden'. Update the JSON for P2-16+.`,
+      );
+    }
+    // Even when `rules.minimapMode` was already explicit, we still
+    // need to suppress the legacy boolean from the final MazeData
+    // literal below — `hideMinimap` is `@deprecated` and should not
+    // round-trip into the runtime MazeData.
+  }
+
+  // F-2026-06-30: 'caught-by-enemy' is a P2-11 teaching-only victory
+  // path. The editor hides the option for non-tutorial levels, but a
+  // hand-edited JSON or an older export could still set it. Reject
+  // here so the bad combo never reaches the runtime — a level that
+  // wins on death is a misconfigured level, and the only legitimate
+  // use is the 哨兵回廊 teaching-03 lesson.
+  if (rules.victory === 'caught-by-enemy' && (!Array.isArray(tutorialSteps) || tutorialSteps.length === 0)) {
+    throw new LevelLoadError(
+      `Maze '${id}': victory 'caught-by-enemy' requires a non-empty tutorialSteps array`,
+    );
   }
 
   // F-D-quality-D-15: assemble the MazeData by name instead of `{ ...m,
@@ -286,7 +337,9 @@ export function validateMaze(raw: unknown, id: string): MazeData {
     enemies,
     ...(i18n !== undefined ? { i18n } : {}),
     ...(tutorialSteps !== undefined ? { tutorialSteps } : {}),
-    ...(hideMinimap !== undefined ? { hideMinimap } : {}),
+    // F-2026-06-30: hideMinimap is no longer round-tripped into the
+    // runtime MazeData; the migration block above already translated
+    // any top-level `hideMinimap: true` into `rules.minimapMode: 'hidden'`.
     ...(folderId !== undefined ? { folderId } : {}),
   };
   return maze;

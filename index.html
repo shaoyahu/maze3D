@@ -3,12 +3,25 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- F-2026-07-01 M-1: Content Security Policy. Locks scripts to same-origin,
+         allows inline styles (needed for React-style prop injection), and
+         whitelists Google Fonts for the <link rel="stylesheet"> below.
+         img-src 'self' data: covers the in-memory data: URLs the editor
+         uses for SVG chevrons (see theme.css --select-chevron). connect-src
+         'self' blocks unexpected fetch/XHR targets. -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' fonts.googleapis.com; font-src fonts.gstatic.com; img-src 'self' data:; connect-src 'self';" />
     <title>3D Maze</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- F-2026-07-01 M-2: crossorigin="anonymous" on both preconnects +
+         stylesheet so the browser sends a CORS request and the response
+         can be SRI-hashed by future hardening. Without it, font requests
+         are opaque, blocking SRI verification and confusing CDNs about
+         whether credentials are needed. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin="anonymous" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
     <link
       href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap"
       rel="stylesheet"
+      crossorigin="anonymous"
     />
   </head>
   <body>

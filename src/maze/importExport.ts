@@ -31,10 +31,47 @@ export class ImportError extends Error {
   }
 }
 
+// F-2026-06-30-M-3: cap the level.name field on export so a hand-edited
+// name with a 100KB string doesn't bloat the exported JSON and break the
+// 1 MiB import cap downstream. 200 chars is well above any legitimate
+// level title (the editor's name input is also a 200-char limit).
+const MAX_NAME_LENGTH = 200;
+
 // exportLevel — pretty-printed so hand-edited diffs in a code review stay
 // readable. Indent of 2 matches the rest of the project's source style.
 export function exportLevel(level: MazeData): string {
-  return JSON.stringify({ schemaVersion: ACCEPTED_SCHEMA_VERSION, level }, null, 2);
+  // F-2026-06-30-M-3: cap level.name to MAX_NAME_LENGTH on export.
+  const safeName = level.name.length > MAX_NAME_LENGTH
+    ? level.name.slice(0, MAX_NAME_LENGTH)
+    : level.name;
+  return JSON.stringify(
+    { schemaVersion: ACCEPTED_SCHEMA_VERSION, level: { ...level, name: safeName } },
+    null,
+    2,
+  );
+}
+
+// F-2026-06-30-M-5: prototype-pollution key blocklist. JSON.parse on its
+// own happily parses `{"__proto__": {"polluted": true}}` and V8 then
+// stuffs those keys onto the resulting object — anything that later
+// does `for (k in parsed)` or `Object.keys(parsed)` will iterate the
+// poisoned proto chain. We strip these keys recursively before any
+// other validation runs.
+const POLLUTING_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+function stripPollutingKeys(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(stripPollutingKeys);
+  }
+  if (value !== null && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (POLLUTING_KEYS.has(k)) continue;
+      out[k] = stripPollutingKeys(v);
+    }
+    return out;
+  }
+  return value;
 }
 
 // parseImport — validates the envelope and the inner level, then returns
@@ -43,6 +80,14 @@ export function exportLevel(level: MazeData): string {
 // when other fields are rewritten; the parsed MazeData's name is the
 // authoritative post-validation copy.
 export function parseImport(raw: string): { level: MazeData; nameToPreserve: string } {
+  // F-2026-06-30-M-4: bound the input size up front so a 500 MB paste
+  // can't lock the tab on JSON.parse. Same cap as readJsonFile so the
+  // two entry points reject at the same threshold.
+  if (raw.length > MAX_IMPORT_BYTES) {
+    throw new ImportError(
+      `Import too large: ${raw.length} bytes; max ${MAX_IMPORT_BYTES}`,
+    );
+  }
   let envelope: unknown;
   try {
     envelope = JSON.parse(raw);
@@ -51,6 +96,11 @@ export function parseImport(raw: string): { level: MazeData; nameToPreserve: str
       `Failed to parse JSON: ${e instanceof Error ? e.message : String(e)}`,
     );
   }
+  // F-2026-06-30-M-5: strip prototype-pollution keys before any further
+  // shape check. Done post-parse so a normal `{ "level": {...} }` body
+  // is unaffected, but a `__proto__` payload has its malicious keys
+  // dropped before reaching validateMaze.
+  envelope = stripPollutingKeys(envelope);
 
   if (typeof envelope !== 'object' || envelope === null) {
     throw new ImportError('Import envelope must be a JSON object');
@@ -97,14 +147,18 @@ export function parseImport(raw: string): { level: MazeData; nameToPreserve: str
 // object URL, clicks an invisible <a download> element, then revokes the
 // URL. The element is appended to the document so Firefox actually fires
 // the download; some browsers ignore programmatic clicks on detached
-// nodes.
+// nodes. F-2026-06-30-L-12: defense in depth — sanitize the filename so
+// a hand-typed name with a path separator or shell metacharacter can't
+// escape the downloads dir. F-2026-06-30-L-13: `noopener noreferrer` on
+// the rel attribute (we don't actually navigate, but the spec says to
+// set it for any cross-origin target).
 export function downloadAsJsonFile(filename: string, content: string): void {
   const blob = new Blob([content], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = filename;
-  a.rel = 'noopener';
+  a.download = sanitizeFilename(filename);
+  a.rel = 'noopener noreferrer';
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -136,6 +190,11 @@ export async function readJsonFile(file: File): Promise<string> {
 // sanitizeFilename — collapses anything outside [A-Za-z0-9_-] to `_` so
 // the result is safe across Windows / macOS / Linux filesystems and
 // survives a round-trip through the browser's download attribute.
+// F-2026-06-30-L-14: the previous `[^\w-]` (JS `\w`) accepted Unicode
+// letters/digits/underscore, which is fine for in-memory display but
+// lets a Chinese fullwidth space or zero-width-joiner slip through. A
+// filename with a path separator or control character is the actual
+// risk here; pin to ASCII so any non-ASCII character is collapsed.
 export function sanitizeFilename(name: string): string {
-  return name.replace(/[^\w-]/g, '_');
+  return name.replace(/[^A-Za-z0-9_-]/g, '_');
 }

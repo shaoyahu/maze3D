@@ -1,10 +1,43 @@
 import { useGameStore } from '../store/gameStore';
+import { useT } from '../i18n';
 import { Timer } from './components/Timer';
 import { HealthBar } from './components/HealthBar';
 import { InventoryBar } from './components/InventoryBar';
 import { ControlHints } from './components/ControlHints';
 import { EnemyCounter } from './components/EnemyCounter';
 import { InvulnerableFlash } from './components/InvulnerableFlash';
+
+// F-2026-06-30: P2-16 — small inline hint that surfaces the M-key
+// binding for levels with the parchment map. Rendered as a sibling
+// of the existing ControlHints (which lists WASD / P / 1 / 2 / Tab)
+// so the binding discovery follows the same pattern. The component
+// is intentionally tiny (no separate file) — there's no behavior to
+// unit-test beyond "it shows up when minimapMode is parchment".
+function MapHint(): React.ReactElement | null {
+  const t = useT();
+  const minimapMode = useGameStore((s) => s.currentMaze?.rules.minimapMode);
+  if (minimapMode !== 'parchment') return null;
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        bottom: 96,
+        right: 16,
+        background: 'rgba(20, 20, 28, 0.85)',
+        color: 'var(--text, #e6e6e6)',
+        padding: '4px 10px',
+        borderRadius: 4,
+        fontSize: 12,
+        fontFamily: 'system-ui, sans-serif',
+        pointerEvents: 'none',
+        zIndex: 5,
+      }}
+      data-testid="hud-map-hint"
+    >
+      {t('overlays.parchment.hint')}
+    </div>
+  );
+}
 
 export function HUD() {
   const timeRemaining = useGameStore((s) => s.timeRemaining);
@@ -30,6 +63,7 @@ export function HUD() {
       <HealthBar health={health} max={maxHealth} />
       <EnemyCounter />
       <InvulnerableFlash />
+      <MapHint />
     </>
   );
 }

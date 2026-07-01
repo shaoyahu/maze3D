@@ -1,0 +1,115 @@
+/* F-2026-06-30: P2-16 — styles for the hand-held parchment modal.
+   The class names are scoped via CSS Modules so they don't leak
+   into other components; consumers reference them through the
+   `styles` object.
+
+   F-2026-07-01 M-27: naming-convention note — the class names below are
+   intentionally camelCase (`.backdrop`, `.frame`, `.closeButton`, `.srOnly`)
+   even though the project's hand-written CSS in theme.css uses kebab-case
+   BEM (`.editor-toolbar__btn`). Renaming here would require updating
+   every `styles.fooBar` consumer, and the .module.css scoping already
+   prevents collision with the global kebab-case classes. Kept camelCase
+   to match how this file is generated / consumed by the `styles` proxy;
+   future P3+ cleanup could rename the whole file to kebab-case BEM and
+   migrate callers in a single pass. */
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.frame {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: #d8c094;
+  border: 2px solid var(--parchment-border, #6a4a2a);
+  border-radius: 6px;
+  box-shadow:
+    0 12px 36px rgba(0, 0, 0, 0.5),
+    inset 0 0 0 1px rgba(255, 240, 200, 0.4);
+  padding: 12px 16px 16px;
+  max-width: 92vw;
+  max-height: 92vh;
+  color: #3a2a1a;
+  font-family: 'Georgia', 'SimSun', serif;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.closeButton {
+  background: transparent;
+  border: 1px solid var(--parchment-border, #6a4a2a);
+  color: #3a2a1a;
+  font-size: 16px;
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0;
+}
+
+.closeButton:hover {
+  background: rgba(60, 30, 10, 0.1);
+}
+
+.canvas {
+  display: block;
+  border: 1px solid var(--parchment-border, #6a4a2a);
+  background: transparent;
+  max-width: 100%;
+  max-height: 70vh;
+}
+
+.footer {
+  margin-top: 8px;
+  font-size: 12px;
+  font-style: italic;
+  color: #5a3a1a;
+  text-align: center;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* F-2026-07-01 M-26: prefers-reduced-motion. The parchment modal is a
+   static-feeling surface (no scroll, no parallax, no spinner), but its
+   `.backdrop` carries both a `backdrop-filter` blur and a transition
+   that fires on open / close. The blur is harmless (no motion), but
+   the transition can be perceived as movement by users who flagged
+   the OS-level "reduce motion" preference. Drop both in that mode. */
+@media (prefers-reduced-motion: reduce) {
+  .backdrop {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    transition: none;
+  }
+}

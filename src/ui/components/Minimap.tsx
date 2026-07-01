@@ -134,6 +134,14 @@ export function Minimap({ maze, gameRef }: MinimapProps) {
  const viewBox = useMemo(() => `0 0 ${w} ${d}`, [w, d]);
 
  return (
+ // F-2026-07-01 M-25: in-game minimap is decorative (the 3D view is the
+ //  authoritative representation of player position + facing), so it
+ //  stays `aria-hidden="true"` and ships with no accessible text. The
+ //  *in-editor* minimap (rendered by EditorViewport, styled by
+ //  `.editor-viewport-minimap` in theme.css) is the surface that
+ //  needs an sr-only <table> summary — that's the one where a blind
+ //  level author would otherwise have no semantic picture of the grid
+ //  they're editing. That table lives in EditorViewport, not here.
  <div aria-hidden="true" data-testid="minimap" style={STYLE_CONTAINER}>
  <svg
  viewBox={viewBox}

@@ -9,6 +9,12 @@ import { createPlayer, applyLook, updatePlayerCamera, type PlayerState } from '.
 import { Enemy, ENEMY_RADIUS } from '../entities/Enemy';
 import { findPickupAt, crossesExit } from '../game/Rules';
 import { injectEnemySpawns } from '../maze/enemySpawner';
+import {
+  createEmptyParchment,
+  recordVisit,
+  maybeRecordDamage,
+  type ParchmentState,
+} from './ParchmentState';
 import type {
   EnemyAggression,
   InventorySlot,
@@ -22,14 +28,26 @@ import { enemyChaseMultiplier, normalizeSurviveSeconds, SURVIVE_SECONDS_DEFAULT 
 
 // Module-level scratch objects to avoid per-frame allocation in the hot
 // update() path. Updated in place each frame; never store the references
-// beyond a single update() call. The grid.get closure reads _currentMaze
+// beyond a single update() call. The grid.get closure reads __SCRATCH_*
 // rather than capturing `this` so it can live at module scope.
-let _currentMaze: MazeData | undefined;
+//
+// L-2 (2026-07-01): the `__SCRATCH_*` prefix is a re-entrancy
+// guard-by-convention. update() runs single-threaded on the rAF
+// tick and the next instance-level closure isn't installed until
+// the previous startLevel() returns, so the module-level refs can
+// in principle be stale across level boundaries. The check at the
+// top of update() (`if (!this.currentMaze) return;`) and the
+// `this.currentMaze` re-assignment in startLevel() keep the scratch
+// cell refreshed on the very next frame, but the prefix is here so
+// a future contributor who tries to add a Promise.then / microtask
+// that reads `_grid` from outside update() sees the warning name and
+// knows the value is per-frame-volatile.
+let __SCRATCH_currentMaze: MazeData | undefined;
 const _grid: WallGrid = {
   width: 0,
   depth: 0,
   cellSize: 0,
-  get: (x, z) => (_currentMaze?.walls[z]?.[x] === 1 ? 1 : 0),
+  get: (x, z) => (__SCRATCH_currentMaze?.walls[z]?.[x] === 1 ? 1 : 0),
 };
 const _prevPos = { x: 0, z: 0 };
 
@@ -75,6 +93,13 @@ export interface GameBridge {
   // Wired to tutorialStore.dispatch in GameCanvas. Optional — production
   // levels without `tutorialSteps` simply omit it.
   onTutorialEvent?: (event: TutorialEvent) => void;
+  // F-2026-06-30: P2-16 — parchment map state push. Fired by Game.update()
+  // whenever `visitedCells` or `damageRegions` change (reference equality
+  // is the trigger, so a player standing still never re-renders the UI).
+  // Wired to gameStore.setParchment in GameCanvas. Optional — the engine
+  // still tracks the state internally, but a level without the parchment
+  // UI mode simply ignores the callback.
+  onParchmentStateChange?: (state: ParchmentState) => void;
 }
 
 // P2-11: events emitted by the engine to drive the tutorial store. The
@@ -151,6 +176,23 @@ export class Game {
   getCurrentEnemyAggression(): EnemyAggression {
     return this.bridge.getCurrentEnemyAggression();
   }
+  // F-2026-06-30: P2-16 — read-only snapshot of the parchment state.
+  // Callers (gameStore, ParchmentMap component) use this when they
+  // need a one-time peek at the current visited/damage set without
+  // subscribing to the bridge's onParchmentStateChange push.
+  getParchment(): ParchmentState {
+    return this.parchment;
+  }
+  // F-2026-06-30: P2-16 — UI-driven open/close. The M key handler in
+  // GameCanvas calls `setParchmentOpen(true)` and the engine mirrors
+  // the change into its own state so a subsequent bridge push (from
+  // a recordVisit) keeps both copies in sync. The isOpen flag also
+  // drives the "pause while open" check at the top of update().
+  setParchmentOpen(open: boolean): void {
+    if (this.parchment.isOpen === open) return;
+    this.parchment = { ...this.parchment, isOpen: open };
+    this.bridge.onParchmentStateChange?.(this.parchment);
+  }
   private currentMode: VictoryType = 'reach-exit';
   private currentSurviveSeconds: SurviveSeconds = SURVIVE_SECONDS_DEFAULT;
   private input?: InputManager;
@@ -163,6 +205,17 @@ export class Game {
   // meshes in sceneRefs are decorative; collision runs against the Enemy
   // instances here, which hold the authoritative position.
   private enemies: Enemy[] = [];
+  // F-2026-06-30: P2-16 — hand-held parchment state. Snapshotted from
+  // `currentMaze.rules.minimapMode === 'parchment'` at startLevel and
+  // driven by recordVisit / maybeRecordDamage in update(). Pushed to
+  // the UI through `bridge.onParchmentStateChange` only on reference
+  // change, so a player standing still doesn't trigger a React re-render.
+  private parchment: ParchmentState = createEmptyParchment();
+  // Wall-clock seconds of the most recent damage event we counted
+  // toward a parchment mark. Mirrors the 0.5s invuln window in
+  // gameStore.applyDamage so a single hit (not a per-frame contact
+  // burst) is what triggers a damage region.
+  private lastDamageAt = 0;
   private bridge: GameBridge;
 
   constructor(bridge: GameBridge) {
@@ -323,6 +376,13 @@ export class Game {
     // previous level ending — without this, retry/next-level would resume
     // motion from a keyup that never happened.
     this.input?.clearKeys();
+    // F-2026-06-30: P2-16 — reset the parchment state at every level
+    // start. The previous level's visited cells and damage regions
+    // would otherwise bleed into the new level. The bridge fires
+    // once here so the UI clears its copy in the same tick.
+    this.parchment = createEmptyParchment();
+    this.lastDamageAt = 0;
+    this.bridge.onParchmentStateChange?.(this.parchment);
     this.loop = new Loop((dt) => this.update(dt));
     this.loop.start();
   }
@@ -374,6 +434,29 @@ export class Game {
     if (this.destroyed) return;
     if (!this.renderer || !this.camera || !this.player || !this.sceneRefs || !this.currentMaze || !this.input) return;
     if (!this.bridge.isActiveLevel(this.currentMaze.id)) return;
+    // F-2026-06-30: P2-16 — when the parchment map is open AND the
+    // level's mapOpenBehavior is 'pause', skip the per-frame gameplay
+    // tick. The render still happens (so the world stays visible
+    // behind the modal) but the player can't move / take damage /
+    // collect pickups while reading. Levels that opt into 'continue'
+    // skip this guard so the world keeps ticking under the modal.
+    //
+    // L-3 (2026-07-01) VERIFIED: guard ordering is correct as-is. The
+    // three predicates short-circuit left-to-right on `&&`, and the
+    // cheap ones (`isOpen` boolean, `'continue'` literal compare) run
+    // first; the level-rules reads (`minimapMode`, `mapOpenBehavior`)
+    // happen only when the modal is actually open. The `return`
+    // skipping the rest of update() but still falling through to
+    // `this.renderer.render(...)` at the bottom keeps the world
+    // visible behind the modal as designed — do NOT move this guard
+    // below the render call or the pause effect silently breaks.
+    if (
+      this.currentMaze.rules.minimapMode === 'parchment' &&
+      this.parchment.isOpen &&
+      this.currentMaze.rules.mapOpenBehavior !== 'continue'
+    ) {
+      return;
+    }
     // Bail when the run is over. pauseLoop() is called for the win path, but
     // game-over and post-goToMenu don't stop the loop — guarding here keeps
     // the player frozen, prevents phantom pickup/exit processing under
@@ -417,7 +500,7 @@ export class Game {
     // Derivation: camForward = (-sinY, 0, -cosY), camRight = (cosY, 0, -sinY).
     const dx = (move.x * cosY + move.z * sinY) * this.player.speed * dt;
     const dz = (-move.x * sinY + move.z * cosY) * this.player.speed * dt;
-    _currentMaze = this.currentMaze;
+    __SCRATCH_currentMaze = this.currentMaze;
     _grid.width = this.currentMaze.size.width;
     _grid.depth = this.currentMaze.size.depth;
     _grid.cellSize = this.currentMaze.cellSize;
@@ -441,6 +524,24 @@ export class Game {
     // wall leaves the camera one frame past it, rendering the world on the
     // far side of the wall.
     updatePlayerCamera(this.camera, this.player);
+
+    // F-2026-06-30: P2-16 — record the player's current cell into
+    // `parchment.visitedCells`. Only fires on a NEW cell (referential
+    // equality short-circuits), so a player standing still never
+    // re-pushes state to the UI. The 0.5s enemy-invuln window logic
+    // (gameStore.applyDamage) uses a wall-clock timestamp; we mirror
+    // it via `performance.now() / 1000` so a damage-region event and
+    // a health hit agree on the same notion of "now".
+    if (this.currentMaze.rules.minimapMode === 'parchment') {
+      const cs = this.currentMaze.cellSize;
+      const cellX = Math.floor(this.player.position.x / cs);
+      const cellZ = Math.floor(this.player.position.z / cs);
+      const nextParchment = recordVisit(this.parchment, cellX, cellZ);
+      if (nextParchment !== this.parchment) {
+        this.parchment = nextParchment;
+        this.bridge.onParchmentStateChange?.(this.parchment);
+      }
+    }
 
     // P2-4a F1: tick each enemy against the current player position, then
     // mirror the result into the corresponding decorative mesh. The order
@@ -473,7 +574,36 @@ export class Game {
           break;
         }
       }
-      if (contact) this.bridge.onEnemyContact(1);
+      if (contact) {
+        this.bridge.onEnemyContact(1);
+        // F-2026-06-30: P2-16 — on a FRESH enemy hit, also try to leave
+        // a damage mark on the parchment. "Fresh" mirrors the 0.5s
+        // invuln window in gameStore.applyDamage so a single logical
+        // hit (not a per-frame contact burst) is what the parchment
+        // sees. The wall-clock timestamp is tracked locally so the
+        // engine doesn't have to peek inside the store. Outside of
+        // `parchment` mode this branch is dead code.
+        if (this.currentMaze.rules.minimapMode === 'parchment') {
+          const nowSec = performance.now() / 1000;
+          if (nowSec - this.lastDamageAt >= 0.5) {
+            this.lastDamageAt = nowSec;
+            const cs = this.currentMaze.cellSize;
+            const cellX = Math.floor(this.player.position.x / cs);
+            const cellZ = Math.floor(this.player.position.z / cs);
+            const nextParchment = maybeRecordDamage(
+              this.parchment,
+              cellX,
+              cellZ,
+              0, // tick counter reserved for future animation
+              Math.random,
+            );
+            if (nextParchment !== this.parchment) {
+              this.parchment = nextParchment;
+              this.bridge.onParchmentStateChange?.(this.parchment);
+            }
+          }
+        }
+      }
     }
 
     const hit = findPickupAt(this.player.position, this.currentMaze, this.remainingPickups);

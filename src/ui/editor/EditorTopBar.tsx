@@ -38,9 +38,10 @@ function formatHHMMSS(ts: number): string {
 export interface EditorTopBarProps {
   onExit?: () => void;
   onSaveAndExit?: () => void;
+  onTutorialManual?: () => void;
 }
 
-export function EditorTopBar({ onExit, onSaveAndExit }: EditorTopBarProps): React.ReactElement {
+export function EditorTopBar({ onExit, onSaveAndExit, onTutorialManual }: EditorTopBarProps): React.ReactElement {
   const t = useT();
   const confirm = useConfirm();
   const tool = useEditorStore((s) => s.tool);
@@ -209,6 +210,19 @@ export function EditorTopBar({ onExit, onSaveAndExit }: EditorTopBarProps): Reac
             <span>{display.message}</span>
           </span>
         )}
+        {/* P2-17: Tutorial manual button. Opens the chapter-based manual
+            (EditorTutorialManual) for users who want a guided walkthrough
+            of editor features. Uses ghost variant (same as "New") since
+            it's an auxiliary action, not a primary one. */}
+        <button
+          type="button"
+          onClick={onTutorialManual}
+          data-testid="tool-tutorial-manual"
+          className="editor-topbar__btn editor-topbar__btn--ghost"
+          title={t('editor.manual.title')}
+        >
+          📖
+        </button>
         <button type="button" onClick={handleNew} data-testid="tool-new" className="editor-topbar__btn editor-topbar__btn--ghost">
           {t('editor.toolbar.new')}
         </button>

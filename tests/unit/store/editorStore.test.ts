@@ -1606,4 +1606,95 @@ it('refuses to commit and surfaces pathNotAdjacent when any segment is diagonal'
       expect(lvl.pickups[0]!.z).toBe(0);
     });
   });
+
+  // F-2026-06-30: P2-16 — three new parchment patch actions. Each
+  // delegates to updateRule under the hood, so the dirty-marking +
+  // history contract is the same as every other rule edit. The
+  // tests pin only the field-specific behavior; the generic dirty
+  // contract is covered by the existing updateRule block.
+  describe('P2-16 — parchment patch actions', () => {
+    // F-2026-06-30: P2-16 — minimal level factory for the new tests.
+    // Mirrors `newLevel(5, 4)` from the store but with no enemy
+    // injection / no `dirty` reset; the `dirty: false` reset comes
+    // from the surrounding setState so the test's contract reads
+    // top-to-bottom.
+    function freshLevel(): MazeData {
+      return {
+        id: 'parchment-test',
+        name: 'Parchment Test',
+        size: { width: 5, depth: 4 },
+        cellSize: 2,
+        start: { x: 0, z: 0 },
+        exit: { x: 4, z: 3 },
+        walls: [
+          [0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0],
+        ],
+        pickups: [],
+        enemies: [],
+        rules: { initialTime: 30, maxHealth: 3, victory: 'reach-exit', timeOnPickup: 10 },
+      };
+    }
+
+    it('updateMinimapMode writes to rules.minimapMode and marks dirty', () => {
+      // Arrange — fresh level, baseline (no minimapMode)
+      useEditorStore.setState({ level: freshLevel(), dirty: false });
+      const beforeDirty = useEditorStore.getState().dirty;
+
+      // Act
+      useEditorStore.getState().updateMinimapMode('parchment');
+
+      // Assert
+      const lvl = useEditorStore.getState().level;
+      expect(lvl.rules.minimapMode).toBe('parchment');
+      expect(useEditorStore.getState().dirty).toBe(true);
+      expect(useEditorStore.getState().dirty).not.toBe(beforeDirty);
+    });
+
+    it('updateMapOpenBehavior writes to rules.mapOpenBehavior', () => {
+      useEditorStore.setState({ level: freshLevel(), dirty: false });
+      useEditorStore.getState().updateMapOpenBehavior('continue');
+      expect(useEditorStore.getState().level.rules.mapOpenBehavior).toBe('continue');
+    });
+
+    it('updateParchmentLifecycle writes to rules.parchmentLifecycle', () => {
+      useEditorStore.setState({ level: freshLevel(), dirty: false });
+      useEditorStore.getState().updateParchmentLifecycle('persist');
+      expect(useEditorStore.getState().level.rules.parchmentLifecycle).toBe('persist');
+    });
+
+    it('updateMinimapMode rejects unknown values silently', () => {
+      // F-2026-06-30: P2-16 — type guard at the store boundary. A
+      // hand-rolled caller passing a string literal that doesn't
+      // match the union must NOT poison the level rules.
+      useEditorStore.setState({ level: freshLevel(), dirty: false });
+      // The action signature is typed as MinimapMode, so the
+      // runtime guard only matters for callers bypassing TS (e.g.
+      // dynamic JSON). Cast through unknown to simulate.
+      useEditorStore
+        .getState()
+        .updateMinimapMode('parchments' as unknown as 'parchment');
+      expect(useEditorStore.getState().level.rules.minimapMode).toBeUndefined();
+      // No write → no dirty flip.
+      expect(useEditorStore.getState().dirty).toBe(false);
+    });
+
+    it('updateMapOpenBehavior rejects unknown values silently', () => {
+      useEditorStore.setState({ level: freshLevel(), dirty: false });
+      useEditorStore
+        .getState()
+        .updateMapOpenBehavior('play' as unknown as 'continue');
+      expect(useEditorStore.getState().level.rules.mapOpenBehavior).toBeUndefined();
+    });
+
+    it('updateParchmentLifecycle rejects unknown values silently', () => {
+      useEditorStore.setState({ level: freshLevel(), dirty: false });
+      useEditorStore
+        .getState()
+        .updateParchmentLifecycle('keep' as unknown as 'persist');
+      expect(useEditorStore.getState().level.rules.parchmentLifecycle).toBeUndefined();
+    });
+  });
 });

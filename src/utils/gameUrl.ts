@@ -136,6 +136,16 @@ export function parseGameSearchParams(
   if (id !== null) {
     // Non-procedural: id is taken as-is. Empty string is treated as missing.
     if (id.length === 0) return { ok: false, error: 'missing-id' };
+    // F-2026-07-01 M-54: cap id length at 256 chars. Built-in ids
+    // (teaching-*, builtin-*) and encoded seed ids (algo-v1-…) all
+    // sit well under 100 chars; a 256-char ceiling gives future custom
+    // id formats (e.g. UUID-based editor exports) plenty of room while
+    // bounding the surface for URL-injection / memory-DoS attacks via
+    // a deep-link carrying a multi-megabyte `id` parameter. Overflow
+    // falls back to the default level rather than throwing — matches
+    // the lenient-bad-input policy used by every other validation
+    // branch in this parser.
+    if (id.length > 256) return { ok: false, error: 'missing-id' };
     return { ok: true, parsed: { id, options } };
   }
 

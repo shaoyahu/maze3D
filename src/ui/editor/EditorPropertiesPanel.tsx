@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { useEditorStore } from '../../store/editorStore';
-import type { MazeData, PickupType, VictoryType } from '../../maze/types';
-import { isPickupType, isVictoryType, VICTORY_TYPE_VALUES } from '../../maze/types';
+import type { MazeData, PickupType, VictoryType, MinimapMode, MapOpenBehavior, ParchmentLifecycle } from '../../maze/types';
+import { isPickupType, isVictoryType, VICTORY_TYPE_VALUES, MINIMAP_MODE_VALUES, MAP_OPEN_BEHAVIOR_VALUES, PARCHMENT_LIFECYCLE_VALUES } from '../../maze/types';
 import { Button } from '../components/Button';
 import { Dropdown, type DropdownOption } from '../components/Dropdown';
 import { useT } from '../../i18n';
@@ -220,18 +220,70 @@ function Segmented<T extends string>({
 // F-2026-06-17-E-M-1: ref pattern. The original implementation
 // depended on `[value, commit, delay]` so the effect re-scheduled
 // every render (commit is an inline arrow in all 7 call sites). The
-// ref pattern keeps the timer stable as long as `delay` is unchanged
-// — commit fires with the latest value/commit via refs, so rapid
-// typing only debounces once.
+// ref pattern keeps `commit` out of the dep list (its identity changes
+// on every render but its behaviour is stable), so the effect only
+// re-schedules on value/delay changes — rapid typing collapses to a
+// single debounce per `delay` window.
+//
+// F-2026-06-15-H-16: also flush a pending commit synchronously on
+// unmount. Before this, unmounting (e.g. switching selection to a
+// different card, navigating away from the editor) silently dropped
+// any debounced update still in flight — the user typed "1.5s" into
+// the dwellTime stepper, switched selection, and the value reverted
+// to the prior committed value with no error. The isMounted ref
+// tracks the difference between an unmount cleanup and a value
+// change cleanup; only the former should flush.
+//
+// F-2026-06-15-M-34: gate the first scheduled fire on hasMountedRef
+// flipping to true. The useState initialiser is fed by the same
+// source as the debounced value (e.g. `name` is `useState(level.name)`),
+// so the very first useEffect tick would have fired `commitRef(initial
+// value)` and written a no-op update to the store. Skipping the
+// first run keeps the commit queue idle until the user actually
+// changes a value.
 function useDebouncedCommit<T>(value: T, commit: (v: T) => void, delay: number): void {
   const valueRef = useRef(value);
   const commitRef = useRef(commit);
+  const hasMountedRef = useRef(false);
+  const pendingRef = useRef(false);
+  const isMountedRef = useRef(true);
   valueRef.current = value;
   commitRef.current = commit;
+  // Track mounted state via a separate effect so the unmount signal
+  // is unambiguous — the inner debounce effect's cleanup runs on
+  // both unmount and value change, but we only want to flush in
+  // the unmount case.
   useEffect(() => {
-    const id = window.setTimeout(() => commitRef.current(valueRef.current), delay);
-    return () => window.clearTimeout(id);
-  }, [delay]);
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    if (!hasMountedRef.current) {
+      hasMountedRef.current = true;
+      return;
+    }
+    pendingRef.current = true;
+    const id = window.setTimeout(() => {
+      pendingRef.current = false;
+      commitRef.current(valueRef.current);
+    }, delay);
+    return () => {
+      window.clearTimeout(id);
+      // H-16: only flush on unmount (not on value-change cleanup).
+      // A value-change cleanup is followed by a fresh schedule on
+      // the next render, so flushing here would defeat the debounce.
+      if (pendingRef.current && !isMountedRef.current) {
+        pendingRef.current = false;
+        commitRef.current(valueRef.current);
+      }
+    };
+    // F-2026-06-15-M-34: re-run on `value` change so subsequent edits
+    // (not just the first one) get their own debounce. `commit` is
+    // intentionally excluded — it's an inline arrow on every call
+    // site and is captured via commitRef.current.
+  }, [value, delay]);
 }
 
 function LevelMetadataForm({ level }: { level: MazeData }): React.ReactElement {
@@ -239,6 +291,9 @@ function LevelMetadataForm({ level }: { level: MazeData }): React.ReactElement {
   const updateName = useEditorStore((s) => s.updateName);
   const updateSize = useEditorStore((s) => s.updateSize);
   const updateRule = useEditorStore((s) => s.updateRule);
+  const updateMinimapMode = useEditorStore((s) => s.updateMinimapMode);
+  const updateMapOpenBehavior = useEditorStore((s) => s.updateMapOpenBehavior);
+  const updateParchmentLifecycle = useEditorStore((s) => s.updateParchmentLifecycle);
 
   const [name, setName] = useState(level.name);
   const [width, setWidth] = useState(level.size.width);
@@ -247,6 +302,28 @@ function LevelMetadataForm({ level }: { level: MazeData }): React.ReactElement {
   const [maxHealth, setMaxHealth] = useState(level.rules.maxHealth);
   const [timeOnPickup, setTimeOnPickup] = useState(level.rules.timeOnPickup);
   const [victory, setVictory] = useState<VictoryType>(level.rules.victory);
+  // F-2026-06-30: P2-16 — three new local mirror states for the
+  // minimap / behavior / lifecycle selectors. Default to the
+  // engine-pinned defaults when the level omits the field, so a
+  // newly-saved level looks the same in the editor regardless of
+  // whether the author has touched the field yet.
+  const [minimapMode, setMinimapMode] = useState<MinimapMode>(
+    level.rules.minimapMode ?? 'top-right',
+  );
+  const [mapOpenBehavior, setMapOpenBehavior] = useState<MapOpenBehavior>(
+    level.rules.mapOpenBehavior ?? 'pause',
+  );
+  const [parchmentLifecycle, setParchmentLifecycle] = useState<ParchmentLifecycle>(
+    level.rules.parchmentLifecycle ?? 'reset-on-death',
+  );
+
+  // F-2026-06-30: 'caught-by-enemy' is a P2-11 teaching-only victory
+  // path (drives the 哨兵回廊 teaching-03 lesson). Hide the option from
+  // the Segmented control whenever the level has no `tutorialSteps` so
+  // authors can't accidentally pick "win on death" for a normal level.
+  // Teaching-03 itself keeps the option visible because its
+  // `tutorialSteps` array is non-empty.
+  const isTutorialLevel = (level.tutorialSteps?.length ?? 0) > 0;
 
   // F-2026-06-17-E-H-1: VICTORY_OPTIONS.map(...) was rebuilt on every
   // render of LevelMetadataForm. The Segmented child has an effect that
@@ -257,9 +334,26 @@ function LevelMetadataForm({ level }: { level: MazeData }): React.ReactElement {
   // re-renders (input typing, store selectors firing) keep the same
   // reference and the effect stays quiet.
   const victoryOptions = useMemo(
-    () => VICTORY_OPTIONS.map((o) => ({ value: o.value, label: t(o.labelKey) })),
-    [t],
+    () =>
+      VICTORY_OPTIONS.filter((o) => isTutorialLevel || o.value !== 'caught-by-enemy').map(
+        (o) => ({ value: o.value, label: t(o.labelKey) }),
+      ),
+    [t, isTutorialLevel],
   );
+
+  // F-2026-06-30: the local `victory` state can still hold
+  // 'caught-by-enemy' if the author just removed all tutorial steps
+  // (the level previously was a teaching level, now isn't). The
+  // filtered `victoryOptions` would no longer include that value, so
+  // the Segmented would render with `aria-checked=false` on every
+  // option. Fall back to 'reach-exit' whenever the saved value is
+  // filtered out — this also keeps the value committed to the store
+  // valid for a non-tutorial level.
+  useEffect(() => {
+    if (!isTutorialLevel && victory === 'caught-by-enemy') {
+      setVictory('reach-exit');
+    }
+  }, [isTutorialLevel, victory]);
 
   useEffect(() => {
     setName(level.name);
@@ -269,6 +363,13 @@ function LevelMetadataForm({ level }: { level: MazeData }): React.ReactElement {
     setMaxHealth(level.rules.maxHealth);
     setTimeOnPickup(level.rules.timeOnPickup);
     setVictory(level.rules.victory);
+    // F-2026-06-30: P2-16 — sync the three new optional fields. The
+    // ?? defaults mirror what the engine reads at runtime, so an
+    // unset field shows up in the UI as the implicit default rather
+    // than an empty selector.
+    setMinimapMode(level.rules.minimapMode ?? 'top-right');
+    setMapOpenBehavior(level.rules.mapOpenBehavior ?? 'pause');
+    setParchmentLifecycle(level.rules.parchmentLifecycle ?? 'reset-on-death');
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: only sync on level identity change (F4)
   }, [level.id]);
 
@@ -299,6 +400,18 @@ function LevelMetadataForm({ level }: { level: MazeData }): React.ReactElement {
     width: level.size.width,
     depth: level.size.depth,
   });
+  // F-2026-06-15-M-35: reset the "last committed size" baseline when
+  // the level identity changes (open a different level in the editor).
+  // Without this, the new level's saved size is compared against the
+  // OLD level's last committed size, and a "no-op" stepper click that
+  // matches the new level's size but not the old ref's value would
+  // schedule a spurious resize that wipes the new level's walls.
+  useEffect(() => {
+    lastCommittedSizeRef.current = {
+      width: level.size.width,
+      depth: level.size.depth,
+    };
+  }, [level.id]);
   useEffect(() => {
     const target = {
       width: Math.max(1, Math.floor(width)),
@@ -330,6 +443,15 @@ function LevelMetadataForm({ level }: { level: MazeData }): React.ReactElement {
   useDebouncedCommit(victory, (v) => {
     if (isVictoryType(v)) updateRule({ victory: v });
   }, 300);
+  // F-2026-06-30: P2-16 — three new debounced commits. Each goes
+  // through the dedicated action so the editor's type-guard layer
+  // (the actions reject unknown values silently) runs before the
+  // store sees the value. This is also why we don't need a separate
+  // `isMinimapMode` check in the debounced commit: the action does
+  // the validation.
+  useDebouncedCommit(minimapMode, (v) => updateMinimapMode(v), 300);
+  useDebouncedCommit(mapOpenBehavior, (v) => updateMapOpenBehavior(v), 300);
+  useDebouncedCommit(parchmentLifecycle, (v) => updateParchmentLifecycle(v), 300);
 
   return (
     <div data-testid="level-metadata-form" className="editor-properties__form">
@@ -420,6 +542,73 @@ function LevelMetadataForm({ level }: { level: MazeData }): React.ReactElement {
             testIdPrefix="meta-victory"
           />
         </div>
+        {/* F-2026-06-30: P2-16 — three-state minimap mode picker.
+            Replaces the legacy `hideMinimap: boolean` switch.
+            See `MazeData.hideMinimap` for the back-compat migration
+            (older levels with `hideMinimap: true` are translated to
+            `minimapMode: 'hidden'` by JsonMazeProvider). */}
+        <div className="editor-properties__field" data-testid="meta-minimap-mode">
+          <span className="editor-properties__field-label">
+            {t('editor.properties.field.minimapMode')}
+          </span>
+          <Segmented<MinimapMode>
+            options={MINIMAP_MODE_VALUES.map((v) => ({
+              value: v,
+              label: t(`editor.properties.minimapMode.${v === 'top-right' ? 'topRight' : v}`),
+            }))}
+            value={minimapMode}
+            onChange={setMinimapMode}
+            testIdPrefix="meta-minimap-mode"
+          />
+        </div>
+        {/* F-2026-06-30: P2-16 — two linked switches. Render only
+            when minimapMode is parchment so authors don't have to
+            look at irrelevant controls for normal levels. The
+            state values persist across minimapMode changes (the
+            un-filtered useEffect above keeps them), so flipping
+            back to parchment preserves the previous choice. */}
+        {minimapMode === 'parchment' && (
+          <>
+            <label
+              className="editor-properties__field"
+              data-testid="meta-map-open-behavior"
+            >
+              <span className="editor-properties__field-label">
+                {t('editor.properties.field.mapOpenBehavior')}
+              </span>
+              <Segmented<MapOpenBehavior>
+                options={MAP_OPEN_BEHAVIOR_VALUES.map((v) => ({
+                  value: v,
+                  label: t(`editor.properties.mapOpenBehavior.${v}`),
+                }))}
+                value={mapOpenBehavior}
+                onChange={setMapOpenBehavior}
+                testIdPrefix="meta-map-open-behavior"
+              />
+            </label>
+            <label
+              className="editor-properties__field"
+              data-testid="meta-parchment-lifecycle"
+            >
+              <span className="editor-properties__field-label">
+                {t('editor.properties.field.parchmentLifecycle')}
+              </span>
+              <Segmented<ParchmentLifecycle>
+                options={PARCHMENT_LIFECYCLE_VALUES.map((v) => ({
+                  value: v,
+                  label: t(
+                    `editor.properties.parchmentLifecycle.${
+                      v === 'reset-on-death' ? 'resetOnDeath' : v
+                    }`,
+                  ),
+                }))}
+                value={parchmentLifecycle}
+                onChange={setParchmentLifecycle}
+                testIdPrefix="meta-parchment-lifecycle"
+              />
+            </label>
+          </>
+        )}
       </Card>
 
       {/* P2-11: per-level tutorial / HUD fields. Live in their own Card so
@@ -853,7 +1042,13 @@ function TutorialCardBody({ level }: { level: MazeData }): React.ReactElement {
               <input
                 type="checkbox"
                 data-testid="meta-hide-minimap"
-                checked={!!level.hideMinimap}
+                // F-2026-06-30: P2-16 — read the (migrated) modern
+                // field instead of the deprecated top-level boolean.
+                // `level.hideMinimap` is no longer round-tripped by
+                // JsonMazeProvider (it gets translated to
+                // `rules.minimapMode`), so this is the only way to
+                // keep the toggle in sync with what the engine sees.
+                checked={level.rules.minimapMode === 'hidden'}
                 onChange={(e) => setHideMinimap(e.target.checked)}
               />
               <span className="editor-tutorial__switch__track" />

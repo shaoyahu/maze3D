@@ -14,9 +14,10 @@
 // drawer anchors to the top of the viewport instead of the centre
 // and the panel slides down rather than rising.
 
-import { useEffect, useId } from 'react';
+import { useEffect, useId, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useT } from '../../i18n';
+import { useFocusRestore, useFocusTrap } from '../components/modalHooks';
 
 export interface EditorHelpDrawerProps {
   open: boolean;
@@ -32,6 +33,12 @@ export function EditorHelpDrawer({
   // stays correct when more than one dialog is open at once. Replaces
   // the hard-coded `editor-help-title` literal.
   const titleId = `${useId()}-title`;
+  // F-2026-06-30: P2-16 — ref to the drawer panel so the shared
+  // focus-trap and focus-restore hooks can drive keyboard navigation
+  // and post-close focus restoration.
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  useFocusTrap(panelRef, open);
+  useFocusRestore(open);
 
   // ESC closes the drawer. Bound on document so the binding survives
   // any focusable input inside the drawer losing focus.
@@ -63,6 +70,7 @@ export function EditorHelpDrawer({
       onClick={handleBackdrop}
     >
       <div
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
