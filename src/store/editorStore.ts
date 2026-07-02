@@ -785,6 +785,11 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
     // cell is a no-op. Same start/exit guard contract as placeWall
     // (you can't erase the player's start or the level's exit — those
     // cells must remain floor so validateMaze accepts the level).
+    //
+    // F-2026-07-01-FCR-M-3: refuse to erase a wall cell that holds a
+    // pickup / trap / door / enemy node. Erasing would orphan the
+    // entity on the resulting floor and the user would have no
+    // visible cue that anything happened.
     placeErase: (x, z) => {
       const { level } = get();
       if (!inBounds(x, z, level.size.width, level.size.depth)) return;
@@ -799,6 +804,15 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
       // No-op on already-floor cells (avoid spurious history entries).
       if (level.walls[z]![x] === 0) {
         set({ lastError: null, lastErrorKey: null });
+        return;
+      }
+      // Block erase when an entity occupies the wall cell — the entity
+      // is anchored to the wall so removing the wall would strand it.
+      // (Floors don't trigger this: an entity on a floor is already
+      // legal and the user can delete it via its own toolbar button.)
+      const occ = isOccupied(level, x, z);
+      if (occ.occupied) {
+        set({ lastError: null, lastErrorKey: 'editor.lastError.eraseOnEntity' });
         return;
       }
       const nextWalls = level.walls.map((r, zi) =>
@@ -1410,6 +1424,16 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
       // history on blur via commitEnemyPath. Without this, every
       // keystroke would push a history entry and saturate
       // HISTORY_LIMIT=50 within a few edits.
+      //
+      // F-2026-07-01-FCR-M-5: guard against NaN inputs. JS's `clamp(NaN, 0,
+      // n)` returns `0` because `NaN < lo` and `NaN > hi` are both
+      // false — a stale or tampered event would silently snap the path
+      // node to the origin without any user-visible error. Reject
+      // non-finite coordinates up-front.
+      if (!Number.isFinite(x) || !Number.isFinite(z)) {
+        set({ lastError: null, lastErrorKey: 'editor.lastError.pathOutOfBounds' });
+        return;
+      }
       const cx = clamp(x, 0, level.size.width - 1);
       const cz = clamp(z, 0, level.size.depth - 1);
       const nextEnemies = level.enemies.map((e) => {

@@ -59,7 +59,6 @@ export function EditorPage({ onExit }: EditorPageProps): React.ReactElement {
   // backdrop blocks input until the user explicitly OKs.
   const lastError = useEditorStore((s) => s.lastError);
   const lastErrorKey = useEditorStore((s) => s.lastErrorKey);
-  const clearLastError = useEditorStore((s) => s.clearLastError);
 
   // P2-17: tutorial manual open state. Lives in EditorPage (not
   // editorStore) because it's purely cosmetic UI state that must
@@ -161,7 +160,14 @@ export function EditorPage({ onExit }: EditorPageProps): React.ReactElement {
     }
     toastTimerRef.current = window.setTimeout(() => {
       setToast((cur) => (cur && cur.id === id ? null : cur));
-      clearLastError();
+      // F-2026-07-01-FCR-L-3: read clearLastError via the store directly so
+      // we don't capture a stale closure of the action. The action
+      // reference is regenerated on every render, so previously the
+      // effect re-ran on every render and the cleanup-then-reschedule
+      // pair ran needlessly. The lookup is cheap (Zustand returns the
+      // current action reference) and removes `clearLastError` from
+      // the dep list.
+      useEditorStore.getState().clearLastError();
       toastTimerRef.current = null;
     }, 2500);
     return () => {
@@ -170,7 +176,9 @@ export function EditorPage({ onExit }: EditorPageProps): React.ReactElement {
         toastTimerRef.current = null;
       }
     };
-  }, [lastError, lastErrorKey, clearLastError, t]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- clearLastError
+    // is read via useEditorStore.getState() inside the timer (see FCR-L-3).
+  }, [lastError, lastErrorKey, t]);
 
   // ---- Autosave: 2s debounce on level identity change ------------------
   const autosaveTimer = useRef<number | null>(null);

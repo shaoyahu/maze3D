@@ -1,0 +1,26 @@
+{
+  "id": "level-tiny-enemy",
+  "name": "敌兵小径",
+  "i18n": { "en": "Tiny Enemy" },
+  "size": { "width": 3, "depth": 3 },
+  "cellSize": 1,
+  "start": { "x": 0, "z": 1 },
+  "exit": { "x": 2, "z": 1 },
+  "walls": [
+    [1, 1, 1],
+    [0, 0, 0],
+    [1, 1, 1]
+  ],
+  "pickups": [],
+  "rules": {
+    "initialTime": 30,
+    "maxHealth": 3,
+    "victory": "reach-exit",
+    "timeOnPickup": 15
+  },
+  "enemies": [
+    { "id": "test-enemy", "x": 1, "z": 1, "path": [{ "x": 1, "z": 1 }] }
+  ],
+  "traps": [],
+  "doors": []
+}

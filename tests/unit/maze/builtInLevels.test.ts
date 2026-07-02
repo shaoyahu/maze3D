@@ -16,6 +16,15 @@ const EXPECTED_BUILT_IN_IDS = [
   'teaching-06',
   'teaching-07',
   'teaching-08',
+  // F-2026-07-01-FCR-C-2: restore the 4 legacy fixtures referenced by
+  // pickup-types.spec / enemies.spec / play-through.spec /
+  // persistence.spec. Their id-based `sublevel-select` selections are
+  // the contract the E2E specs pin; keeping the files in /public/levels
+  // is what makes that contract work end-to-end.
+  'level-small',
+  'level-tiny',
+  'level-tiny-pickups',
+  'level-tiny-enemy',
 ] as const;
 
 describe('BUILT_IN_JSON_PROVIDER (F-project-review-2026-06-13-A-HIGH-4)', () => {
@@ -33,7 +42,7 @@ describe('BUILT_IN_JSON_PROVIDER (F-project-review-2026-06-13-A-HIGH-4)', () => 
     expect(BUILT_IN_JSON_PROVIDER_AGAIN).toBe(BUILT_IN_JSON_PROVIDER);
   });
 
-  it('exposes the four built-in level ids from /public/levels', async () => {
+  it('exposes the built-in level ids from /public/levels', async () => {
     // The fixture directory is the source of truth; the glob in
     // builtInLevels.ts must surface every *.json file. Using
     // arrayContaining keeps the test stable when the fixture order

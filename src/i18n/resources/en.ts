@@ -534,6 +534,10 @@ export const en: Translations = {
   'editor.lastError.doorDuplicate': 'That cell already has a door (one per cell)',
   'editor.lastError.collideWithTrap': 'That cell already has a trap',
   'editor.lastError.collideWithDoor': 'That cell already has a door',
+  // F-2026-07-01-FCR-M-3: refuse erase on a cell that still holds an entity
+  // (pickup / trap / door / enemy node) so the user doesn't silently
+  // strand the entity on the resulting floor.
+  'editor.lastError.eraseOnEntity': 'That cell has a pickup / trap / door / enemy — delete the entity before erasing',
 
   // F-2026-06-17-E-M-7: design-rule issues rendered in the editor
   // warnings popup. Keys mirror the 8 ValidationIssue.messageKey values

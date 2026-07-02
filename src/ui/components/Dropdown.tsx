@@ -369,8 +369,15 @@ export function Dropdown<V extends string | number>(props: DropdownProps<V>): Re
                   // path called `commit(i)` directly while the
                   // keyboard path used `commit(activeIndex)` — mixing
                   // keyboard + mouse could submit a stale activeIndex.
+                  //
+                  // F-2026-07-01-FCR-M-2: commit(i) — pass the clicked index
+                  // directly. The previous `commit(activeIndex)` form
+                  // relied on a stale closure of `activeIndex` (the
+                  // disabled guard happened to mask the bug, but
+                  // passing the click index is the correct shape and
+                  // removes the dependency on that accident).
                   if (!opt.disabled) setActiveIndex(i);
-                  commit(activeIndex);
+                  commit(i);
                 }}
               >
                 <span className="dropdown__option-main">

@@ -541,6 +541,9 @@ export const zh: Translations = {
   'editor.lastError.doorDuplicate': '该格子已有门（每格只能放一个）',
   'editor.lastError.collideWithTrap': '该格子上已有陷阱',
   'editor.lastError.collideWithDoor': '该格子上已有门',
+  // F-2026-07-01-FCR-M-3: 通道工具（擦除）若目标格子上有拾取物/陷阱/门/敌人（路径节点），
+  // 拒绝并提示，避免用户擦掉墙后该实体孤立在地面而不知情。
+  'editor.lastError.eraseOnEntity': '该格子上有拾取物 / 陷阱 / 门 / 敌人，无法擦除（请先删除实体）',
 
   // F-2026-06-17-E-M-7: 关卡检查 (validateDesign) 的全部问题文案。
   // 由 EditorStatusBar 渲染,跟随当前语言。`{id}` / `{value}` 是可选插值。

@@ -27,6 +27,12 @@ export function crossesExit(
   // Sample start, end, and the midpoint so fast movement (dt spikes, debug
   // speed-up) cannot tunnel past the exit cell.
   const cs = maze.cellSize;
+  // F-2026-07-01-FCR-M-6: defense-in-depth guard. `JsonMazeProvider.validateMaze`
+  // already rejects `cellSize <= 0`, but if a future provider bypasses
+  // validation (EditorMazeProvider, programmatic test fixtures), a 0 cell
+  // size would make `cellX` / `cellZ` return Infinity and this function
+  // would silently always return false. Mirror `shouldSurviveWin`'s pattern.
+  if (!Number.isFinite(cs) || cs <= 0) return false;
   const ex = maze.exit.x;
   const ez = maze.exit.z;
   if (cellX(start, cs) === ex && cellZ(start, cs) === ez) return true;
@@ -38,6 +44,8 @@ export function crossesExit(
 
 export function findPickupAt(player: { x: number; z: number }, maze: MazeData, remaining: Pickup[]): Pickup | null {
   const cs = maze.cellSize;
+  // F-2026-07-01-FCR-M-6: defense-in-depth guard (see crossesExit).
+  if (!Number.isFinite(cs) || cs <= 0) return null;
   const px = cellX(player, cs);
   const pz = cellZ(player, cs);
   for (const p of remaining) {
@@ -54,6 +62,9 @@ export function findTrapAt(
   traps: Trap[],
   cs: number,
 ): Trap | null {
+  // F-2026-07-01-FCR-M-6: defense-in-depth guard (see crossesExit). findTrapAt
+  // takes `cs` as an explicit parameter, so we guard it here directly.
+  if (!Number.isFinite(cs) || cs <= 0) return null;
   const px = cellX(player, cs);
   const pz = cellZ(player, cs);
   for (const t of traps) {
@@ -87,12 +98,12 @@ export function onUseItem(
   maze: MazeData | null,
   // P2-18: set of "x,z" coordinate keys for doors that are still closed.
   // Closed doors not in this set are considered open (already unlocked).
-  // F-2026-07-01-C-1: changed from openedDoorIds (door ids) to
+  // F-2026-07-01-FCR-C-1: changed from openedDoorIds (door ids) to
   // closedDoorCells (coordinate strings) for consistency with the
   // collision system.
   closedDoorCells?: ReadonlySet<string>,
   // P2-18: player's current cell coordinates, needed for adjacency check.
-  // F-2026-07-01-H-1: added so findAdjacentDoorForUnlock can verify
+  // F-2026-07-01-FCR-H-1: added so findAdjacentDoorForUnlock can verify
   // the player is actually next to the door before unlocking.
   playerCellX?: number,
   playerCellZ?: number,
@@ -122,7 +133,7 @@ export function onUseItem(
 // P2-18: find a closed door adjacent to the player's current cell that
 // matches the given key color. "Adjacent" = 4-neighbour (Manhattan
 // distance 1). Returns the first matching door id, or null.
-// F-2026-07-01-C-1: changed parameter from openedDoorIds (door ids) to
+// F-2026-07-01-FCR-C-1: changed parameter from openedDoorIds (door ids) to
 // closedDoorCells ("x,z" coordinate keys) to match the key space used
 // by the collision system.
 function findAdjacentDoorForUnlock(
@@ -133,7 +144,7 @@ function findAdjacentDoorForUnlock(
   closedDoorCells?: ReadonlySet<string>,
 ): string | null {
   const closedSet = closedDoorCells ?? new Set<string>();
-  // F-2026-07-01-H-1: check 4-neighbour cells (Manhattan distance 1)
+  // F-2026-07-01-FCR-H-1: check 4-neighbour cells (Manhattan distance 1)
   // instead of scanning all doors. This matches the function name and
   // the design spec's "adjacent" requirement.
   const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];

@@ -1,3 +1,4 @@
+import * as React from 'react';
 import { useGameStore } from '../store/gameStore';
 import { useT } from '../i18n';
 import { Timer } from './components/Timer';
@@ -13,7 +14,10 @@ import { InvulnerableFlash } from './components/InvulnerableFlash';
 // so the binding discovery follows the same pattern. The component
 // is intentionally tiny (no separate file) — there's no behavior to
 // unit-test beyond "it shows up when minimapMode is parchment".
-function MapHint(): React.ReactElement | null {
+//
+// F-2026-07-01-FCR-L-6: memoize — HUD parent re-renders on every tick and
+// MapHint reads only a single string from the store.
+const MapHint = React.memo(function MapHint(): React.ReactElement | null {
   const t = useT();
   const minimapMode = useGameStore((s) => s.currentMaze?.rules.minimapMode);
   if (minimapMode !== 'parchment') return null;
@@ -37,7 +41,7 @@ function MapHint(): React.ReactElement | null {
       {t('overlays.parchment.hint')}
     </div>
   );
-}
+});
 
 export function HUD() {
   const timeRemaining = useGameStore((s) => s.timeRemaining);

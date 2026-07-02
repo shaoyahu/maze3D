@@ -51,7 +51,7 @@ let __SCRATCH_currentMaze: MazeData | undefined;
 // on every startLevel(). The Game.closedDoorCells set is authoritative;
 // this scratch reference just gives the closure access without capturing
 // `this`.
-// F-2026-07-01-C-1: previously this stored door ids (e.g. "door-red-1")
+// F-2026-07-01-FCR-C-1: previously this stored door ids (e.g. "door-red-1")
 // but _grid.get checked has(`${x},${z}`) — the key spaces never matched,
 // so closed doors never blocked movement. Now both use coordinate strings.
 let __SCRATCH_closedDoorCells: ReadonlySet<string> = new Set();
@@ -231,7 +231,7 @@ export class Game {
   // set and hides the door mesh so the player can walk through. The
   // per-frame sync to __SCRATCH_closedDoorCells happens in update() so
   // _grid.get sees the new state on the very next collision check.
-  // F-2026-07-01-C-1: now removes the coordinate key "x,z" from
+  // F-2026-07-01-FCR-C-1: now removes the coordinate key "x,z" from
   // closedDoorCells instead of adding an id to openedDoors, so _grid.get
   // correctly sees the door as passable.
   openDoor(doorId: string): void {
@@ -240,7 +240,7 @@ export class Game {
     const mesh = this.sceneRefs?.doors.get(doorId);
     if (mesh) mesh.visible = false;
   }
-  // F-2026-07-01-H-1: expose closedDoorCells and player cell position
+  // F-2026-07-01-FCR-H-1: expose closedDoorCells and player cell position
   // so the bridge can pass them to onUseItem for adjacency checking.
   getClosedDoorCells(): ReadonlySet<string> {
     return this.closedDoorCells;
@@ -279,7 +279,7 @@ export class Game {
   // P2-18: set of "x,z" coordinate keys for doors that are still closed.
   // Reset on every startLevel(). The module-level __SCRATCH_closedDoorCells
   // mirror is synced from this in update() so the _grid.get closure can
-  // read it this-free. F-2026-07-01-C-1: changed from openedDoors (door ids)
+  // read it this-free. F-2026-07-01-FCR-C-1: changed from openedDoors (door ids)
   // to closedDoorCells (coordinate strings) so _grid.get's has() check
   // matches the key space.
   private closedDoorCells = new Set<string>();
@@ -454,7 +454,7 @@ export class Game {
     // Door unlock state is per-run (not persisted), so a refresh
     // replays the same locked state. Also sync to the module-level
     // scratch so _grid.get sees the reset before the first update()
-    // frame. F-2026-07-01-C-1: use closedDoorCells (coordinate keys)
+    // frame. F-2026-07-01-FCR-C-1: use closedDoorCells (coordinate keys)
     // instead of openedDoors (door ids).
     this.closedDoorCells = new Set(
       injectedMaze.doors.map(d => `${d.x},${d.z}`),
@@ -496,6 +496,13 @@ export class Game {
     // GPU resources (Three.js capsule meshes live in sceneRefs.enemies
     // and are disposed above), but leaving a stale list around would let
     // the next update() iterate ghosts after a dispose/reinit cycle.
+    //
+    // F-2026-07-01-FCR-L-14: this reassignment is the *actual* cleanup site
+    // for the Enemy references. `disposeScene` also zeros its enemies
+    // array argument (defense-in-depth), but `this.enemies` is the
+    // list the Game tick iterates — clearing it here is what guarantees
+    // the next startLevel() doesn't see leftover Enemy instances from
+    // the previous level.
     this.enemies = [];
     this.renderer?.dispose();
   }
@@ -694,7 +701,7 @@ export class Game {
     // P2-18: trap detection. Check if the player's current cell has a trap.
     // Fire traps deal damage; water traps apply a slow debuff. Both record
     // a forced-type damage mark on the parchment (burn / water).
-    // F-2026-07-01-L-1: rate-limit trap bridge callbacks with a 0.5s guard
+    // F-2026-07-01-FCR-L-1: rate-limit trap bridge callbacks with a 0.5s guard
     // (matching the invuln window) so we don't fire onTrapHit every frame
     // while the player stands on the trap cell.
     const trap = findTrapAt(this.player.position, this.currentMaze.traps, this.currentMaze.cellSize);

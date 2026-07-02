@@ -1,6 +1,12 @@
+import { memo } from 'react';
 import { useT } from '../../i18n';
 
-export function ControlHints() {
+// F-2026-07-01-FCR-L-6: memoize ControlHints. The HUD parent re-renders
+// every game tick (multiple store subscriptions); without memo this
+// component also re-renders and the i18n `t()` lookup + array rebuild
+// run on every tick. Props are stable (none — uses store directly),
+// so memo is safe.
+export const ControlHints = memo(function ControlHints() {
   const t = useT();
   // The kbd column holds the keycap label (WASD / 鼠标 / P / ESC); the
   // span column holds the description. In the original Chinese layout
@@ -40,4 +46,4 @@ export function ControlHints() {
       ))}
     </div>
   );
-}
+});

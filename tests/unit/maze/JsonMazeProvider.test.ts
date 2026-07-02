@@ -387,11 +387,17 @@ describe('JsonMazeProvider', () => {
           victory: 'caught-by-enemy',
           timeOnPickup: 10,
         },
+        // F-2026-07-01-FCR-H-3: tutorialSteps are now validated by the
+        // loader — each step must have a string `id`, a string
+        // `messageKey`, and a typed `trigger` object. The previous
+        // fixture used a string trigger + `message: { zh, en }` shape
+        // (which was tolerated by the old `as` cast validator); the
+        // upgraded validator pins the contract here.
         tutorialSteps: [
           {
             id: 's1',
-            trigger: 'reached-exit',
-            message: { zh: '被敌人抓住即胜利', en: 'Caught = win' },
+            messageKey: 'tutorial.teaching03.step1',
+            trigger: { type: 'reached-exit' },
           },
         ],
       });

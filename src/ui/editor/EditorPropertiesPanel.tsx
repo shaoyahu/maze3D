@@ -109,7 +109,12 @@ function Stepper({
       setDraft(String(value));
       return;
     }
-    const rounded = Number.isInteger(step) ? Math.floor(n) : Math.round(n * 10) / 10;
+    // F-2026-07-01-FCR-M-4: round to the nearest step instead of flooring,
+    // so a typed value of 4.6 with step=1 lands at 5 (not 4). The
+    // previous `Math.floor` snapped user input *down* silently — a
+    // player typing a step-aligned value could see the field jump to
+    // a smaller number with no feedback.
+    const rounded = Number.isInteger(step) ? Math.round(n) : Math.round(n * 10) / 10;
     const clamped = Math.max(min, Math.min(max, rounded));
     setDraft(String(clamped));
     if (clamped !== value) onChange(clamped);

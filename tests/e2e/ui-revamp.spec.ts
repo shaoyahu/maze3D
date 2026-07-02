@@ -1,9 +1,10 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('P2-5 UI revamp', () => {
-  test('main menu has a scene backdrop and translucent panel', async ({ page }) => {
+  // F-2026-07-01-FCR-C-1: P2-5 home revamp removed the `main-menu-scene` testid;
+  // only `main-menu-panel` remains. Drop the stale scene assertion.
+  test('main menu shows the translucent home panel', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByTestId('main-menu-scene')).toBeVisible();
     await expect(page.getByTestId('main-menu-panel')).toBeVisible();
   });
 

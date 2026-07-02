@@ -85,6 +85,15 @@ export class InputManager {
     if (this.keys.has('KeyS') || this.keys.has('ArrowDown')) z += 1;
     if (this.keys.has('KeyA') || this.keys.has('ArrowLeft')) x -= 1;
     if (this.keys.has('KeyD') || this.keys.has('ArrowRight')) x += 1;
+    // F-2026-07-01-FCR-M-8: normalize the move vector so diagonal input
+    // (W+A, D+W, etc.) doesn't move ~41% faster than cardinal input.
+    // Without this, |(x, z)| = √2 on diagonals and the player travels
+    // `speed * √2 * dt` per frame instead of `speed * dt`.
+    const len = Math.hypot(x, z);
+    if (len > 0) {
+      x /= len;
+      z /= len;
+    }
     return { x, z };
   }
 

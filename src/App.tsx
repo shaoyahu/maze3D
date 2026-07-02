@@ -1,8 +1,15 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useGameStore } from './store/gameStore';
 import { useLevelStore } from './store/levelStore';
 import { useSettingsStore } from './store/settingsStore';
+// F-2026-07-01-FCR-L-7: lazy-load the heavy editor route so Three.js and the
+// editor's full component tree (drawer / panels / viewport) don't land
+// in the initial bundle. MainMenu / LevelSelect / Settings stay eager —
+// they're tiny and the home route is the cold-start entry point.
+const EditorPage = lazy(() =>
+  import('./ui/editor/EditorPage').then((m) => ({ default: m.EditorPage })),
+);
 import { MainMenu } from './ui/MainMenu';
 import { LevelSelect } from './ui/LevelSelect';
 import { Settings } from './ui/Settings';
@@ -14,7 +21,6 @@ import { GameCanvas } from './ui/GameCanvas';
 import { BUILT_IN_JSON_PROVIDER } from './maze/builtInLevels';
 import { EditorMazeProvider } from './maze/EditorMazeProvider';
 import { AlgorithmMazeProvider } from './maze/AlgorithmMazeProvider';
-import { EditorPage } from './ui/editor/EditorPage';
 import { ConfirmProvider } from './ui/useConfirm';
 import { LevelLoadError, clampErrorValue } from './utils/errors';
 import type { MazeData, StartLevelOptions } from './maze/types';
@@ -502,14 +508,16 @@ export function AppRoutes() {
   return (
     <ConfirmProvider>
       <AppShell>
-        <Routes>
-          <Route path="/" element={<MenuPage />} />
-          <Route path="/levels" element={<LevelsPage />} />
-          <Route path="/settings" element={<SettingsPage />} />
-          <Route path="/editor" element={<EditorRoutePage />} />
-          <Route path="/game" element={<GamePage />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+        <Suspense fallback={null}>
+          <Routes>
+            <Route path="/" element={<MenuPage />} />
+            <Route path="/levels" element={<LevelsPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/editor" element={<EditorRoutePage />} />
+            <Route path="/game" element={<GamePage />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
       </AppShell>
     </ConfirmProvider>
   );

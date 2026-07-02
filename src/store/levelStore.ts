@@ -39,6 +39,15 @@ export interface BestRecord {
 }
 
 interface LevelStore {
+  // F-2026-07-01-FCR-L-1: keyed solely by `levelId` per the URL-as-identity
+  // design — mode / surviveSeconds / enemyCount / progressive live in
+  // the URL query params, not the level id. A procedural maze's id
+  // (algo-v1-...) already encodes algorithm/size/seed; the per-run
+  // configuration is orthogonal and a separate best would mean the
+  // player has to track N best scores per maze. The MVP design
+  // (docs/mvp/design.md L197) deliberately collapses to a single best
+  // per level id; if a future iteration wants per-mode bests, the
+  // migration path is `Record<levelId, Record<RunConfigKey, BestRecord>>`.
   bestByLevel: Record<string, BestRecord>;
   record: (r: BestRecord) => void;
   getBest: (levelId: string) => BestRecord | undefined;
@@ -503,9 +512,18 @@ export const useLevelStore = create<LevelStore>((set, get) => {
   // Throws on structural failure (delegated to validateMaze) so the editor
   // can surface a user-facing error before any persistence happens. On
   // success the level is idempotently merged into both state and storage.
+  //
+  // F-2026-07-01-FCR-L-2: if validation normalizes the id (rare, but possible
+  // for hand-edited JSON), the new id becomes the storage key but the
+  // old id's entry would otherwise linger as an orphan. Delete the old
+  // entry before writing the new one to keep localStorage clean.
   saveCustom: (level) => {
     const validated = validateMaze(level, level.id);
-    const next = { ...get().customLevels, [validated.id]: validated };
+    const next = { ...get().customLevels };
+    if (next[level.id] && validated.id !== level.id) {
+      delete next[level.id];
+    }
+    next[validated.id] = validated;
     // F-2026-06-15-H-3.1: same surfacing pattern as record() above —
     // editor save UX needs to know when persistence actually failed.
     const result = safeSetItem(CUSTOM_STORAGE_KEY, next);
@@ -683,6 +701,12 @@ export const useLevelStore = create<LevelStore>((set, get) => {
   moveFolder: (folderId, parentId) => {
     if (folderId === DEFAULT_FOLDER_ID) {
       // 默认文件夹不挪位置,保持根。
+      // F-2026-07-01-FCR-M-9: log a dev-side warning so callers can detect
+      // a misuse in tests; mirrors deleteFolder's behavior for the
+      // same DEFAULT_FOLDER_ID case (line 594) where a console.warn is
+      // already emitted. The user-facing UX stays silent (no toast),
+      // only dev console surfaces the mismatch.
+      console.warn('levelStore.moveFolder: cannot move the default folder');
       return false;
     }
     const all = get().folders;

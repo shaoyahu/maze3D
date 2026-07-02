@@ -1,6 +1,7 @@
 import { LevelLoadError, clampErrorValue } from '../utils/errors';
 import { PLAYER_RADIUS } from '../entities/Player';
 import { generateId } from '../utils/id';
+import { validateTutorialSteps } from '../utils/tutorialValidator';
 import type {
   CellType,
   EnemySpawn,
@@ -257,6 +258,15 @@ export function validateMaze(raw: unknown, id: string): MazeData {
   }
   let tutorialSteps: MazeData['tutorialSteps'];
   if (Array.isArray(m.tutorialSteps)) {
+    // F-2026-07-01-FCR-H-3: validate each step's trigger shape so malformed
+    // tutorial data is rejected at load time, not silently ignored at
+    // runtime when the banner tries to render the bad trigger.
+    const tsValidation = validateTutorialSteps(m.tutorialSteps);
+    if (!tsValidation.ok) {
+      throw new LevelLoadError(
+        `Maze '${id}': invalid tutorialSteps: ${tsValidation.error}`,
+      );
+    }
     tutorialSteps = m.tutorialSteps as NonNullable<MazeData['tutorialSteps']>;
   }
   // P2-13: optional folderId for the editor's left-panel file tree.

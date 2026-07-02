@@ -1,0 +1,24 @@
+{
+  "id": "level-tiny",
+  "name": "试炼小径",
+  "i18n": { "en": "Tiny Corridor" },
+  "size": { "width": 3, "depth": 3 },
+  "cellSize": 1,
+  "start": { "x": 0, "z": 1 },
+  "exit": { "x": 2, "z": 1 },
+  "walls": [
+    [1, 1, 1],
+    [0, 0, 0],
+    [1, 1, 1]
+  ],
+  "pickups": [],
+  "rules": {
+    "initialTime": 30,
+    "maxHealth": 3,
+    "victory": "reach-exit",
+    "timeOnPickup": 15
+  },
+  "enemies": [],
+  "traps": [],
+  "doors": []
+}

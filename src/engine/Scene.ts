@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { MazeData } from '../maze/types';
+import type { KeyColor, MazeData } from '../maze/types';
 import { createPickupMaterial } from '../entities/Pickup';
 import { ENEMY_HEIGHT, ENEMY_RADIUS } from '../entities/Enemy';
 
@@ -340,7 +340,7 @@ export function buildScene(maze: MazeData, darkMode =false): SceneRefs {
 
   // P2-18: trap meshes. Fire traps are warm-orange flat planes with a
   // subtle flicker; water traps are blue discs with a ripple look.
-  // F-2026-07-01-M-3: hoisted geometries outside the loop (like wallGeom,
+  // F-2026-07-01-FCR-M-3: hoisted geometries outside the loop (like wallGeom,
   // pickupGeom, etc.) so they are shared across all trap meshes instead
   // of creating one geometry per trap.
   const traps: THREE.Mesh[] = [];
@@ -376,14 +376,18 @@ export function buildScene(maze: MazeData, darkMode =false): SceneRefs {
   const doors = new Map<string, THREE.Mesh>();
   const doorGeom = new THREE.BoxGeometry(cs, 2.4, cs);
   // P2-18: key color → door tint mapping.
-  const DOOR_COLOR: Record<string, number> = {
+  // F-2026-07-01-FCR-M-7: type the map as Record<KeyColor, number> so
+  // TypeScript verifies all four colors are present at compile time.
+  // Previously `Record<string, number>` allowed a fifth color to
+  // silently fall through to the 0x555555 gray fallback.
+  const DOOR_COLOR: Record<KeyColor, number> = {
     red: 0x882222,
     blue: 0x222288,
     green: 0x228822,
     yellow: 0x888822,
   };
   for (const d of maze.doors) {
-    const color = DOOR_COLOR[d.keyColor] ?? 0x555555;
+    const color = DOOR_COLOR[d.keyColor];
     const doorMat = new THREE.MeshLambertMaterial({
       color,
       emissive: color & 0x222222,
@@ -404,7 +408,7 @@ export function disposeScene(
   pickups: THREE.Mesh[],
   enemies: THREE.Mesh[] = [],
   traps: THREE.Mesh[] = [],
-  // F-2026-07-01-M-2: added doors Map parameter so we can clear stale
+  // F-2026-07-01-FCR-M-2: added doors Map parameter so we can clear stale
   // references after disposal. Without this, the Map still held references
   // to disposed meshes after a level transition.
   doors?: Map<string, THREE.Mesh>,
@@ -465,7 +469,7 @@ export function disposeScene(
   pickups.length = 0;
   enemies.length = 0;
   traps.length = 0;
-  // F-2026-07-01-M-2: clear the doors Map so stale mesh references
+  // F-2026-07-01-FCR-M-2: clear the doors Map so stale mesh references
   // don't survive past a level transition.
   doors?.clear();
   // F-2026-06-17-B-L-3: clear the module-level disposedTexs /

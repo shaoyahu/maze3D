@@ -6,7 +6,11 @@
 // chosen trade-off: slow enough to clamp away the worst backgrounded
 // spikes, fast enough that any real visible stutter (a few hundred ms) is
 // still mostly replayed faithfully.
-const MAX_DT_SECONDS = 0.1;
+//
+// F-2026-07-01-FCR-L-13: export the constant so enemy path recompute, trap
+// timers, and other per-tick helpers can clamp their own dt against the
+// same bound instead of duplicating the 0.1 magic number.
+export const MAX_DT_SECONDS = 0.1;
 
 export class Loop {
   private raf = 0;

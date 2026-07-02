@@ -56,8 +56,6 @@ export function EditorTopBar({ onExit, onSaveAndExit, onTutorialManual }: Editor
   const saveLevel = useEditorStore((s) => s.saveLevel);
   const exportJson = useEditorStore((s) => s.exportJson);
   const importJson = useEditorStore((s) => s.importJson);
-  const lastError = useEditorStore((s) => s.lastError);
-  const lastErrorKey = useEditorStore((s) => s.lastErrorKey);
   // F-2026-06-18: lastError / lastErrorKey are now surfaced as a
   // modal dialog in EditorPage (so the user can't miss a blocked
   // click). The TopBar no longer renders the small chip; the
@@ -65,7 +63,11 @@ export function EditorTopBar({ onExit, onSaveAndExit, onTutorialManual }: Editor
   // the user dismisses it, and clicking "OK" (or Esc / backdrop)
   // routes through the dialog's onClose which resolves the modal
   // promise, after which EditorPage calls `clearLastError()`.
-  void lastError; void lastErrorKey;
+  //
+  // F-2026-07-01-FCR-L-4: don't subscribe to these fields at all. The
+  // previous code read them with `void` to suppress "unused" warnings
+  // — that still triggered a re-render on every store change with no
+  // observable benefit. Just don't subscribe.
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [status, setStatus] = useState<Status>({ kind: 'idle' });

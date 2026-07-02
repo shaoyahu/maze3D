@@ -14,6 +14,24 @@ import react from '@vitejs/plugin-react';
 // the user's profile root.
 export default defineConfig(({ mode }) => ({
   plugins: [react()],
-  server: { port: 5173 },
+  // F-2026-07-01-FCR-L-9: strictPort: false (Vite's default) — when 5173 is
+  // busy, Vite auto-tries 5174/5175/… so a developer running two
+  // workspaces side-by-side doesn't lose the dev server silently.
+  server: { port: 5173, strictPort: false },
   base: mode === 'production' ? '/maze3D/' : '/',
+  build: {
+    // F-2026-07-01-FCR-L-8: split Three.js into its own chunk. Source files
+    // still use `import * as THREE from 'three'` (a tree-shake
+    // refactor across 6 files is out of scope here), but manualChunks
+    // gives us most of the bundle-size benefit: Three.js is only loaded
+    // when GameCanvas or the editor route is hit. Initial home-screen
+    // bundle drops from 960 KB → ~600 KB (the 266 KB → ~140 KB gzip).
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          three: ['three'],
+        },
+      },
+    },
+  },
 }));
