@@ -66,6 +66,12 @@ export function EditorPage({ onExit }: EditorPageProps): React.ReactElement {
   // both EditorTopBar (the 📖 button) and EditorViewport (the ESC
   // gate) need to know about it.
   const [manualOpen, setManualOpen] = useState(false);
+  // Ref latch: once the manual has been auto-opened on this mount,
+  // don't auto-open it again if the user dismisses it. Without this,
+  // closing the manual triggers the useEffect, which sees
+  // manualOpen=false + tutorialManualAutoOpen=true and immediately
+  // re-opens it in an infinite loop.
+  const autoOpenedRef = useRef(false);
 
   // ---- Draft recovery on mount ----------------------------------------
   const [showDraftPrompt, setShowDraftPrompt] = useState(false);
@@ -90,17 +96,21 @@ export function EditorPage({ onExit }: EditorPageProps): React.ReactElement {
   // "open at most once on first visit" but it also blocked re-opening
   // if the user dismissed the manual and later toggled the
   // `tutorialManualAutoOpen` setting back on (e.g. a fresh sign-in
-  // share-link). The cleaner pattern is to gate the effect on
-  // `manualOpen` itself: while the manual is open (or after it has
-  // been auto-opened and the user has not yet closed it), the effect
-  // is a no-op; once it closes, the effect re-runs and is again a
-  // candidate to open — but only if `showDraftPrompt` is done and
-  // the user still has the auto-open preference enabled.
+  // share-link). A subsequent fix removed the ref entirely, gating
+  // only on `manualOpen` — but that caused an infinite loop: closing
+  // the manual set manualOpen=false, which re-triggered the effect,
+  // which immediately re-opened it. The current fix restores the ref
+  // latch (`autoOpenedRef`) so the manual auto-opens at most once per
+  // EditorPage mount. If the user later re-enables the auto-open
+  // preference, they must navigate away and back (or refresh) to see
+  // it auto-open again — a reasonable trade-off vs. the infinite loop.
   const tutorialManualAutoOpen = useSettingsStore((s) => s.tutorialManualAutoOpen);
   useEffect(() => {
     if (manualOpen) return;
     if (showDraftPrompt) return;
+    if (autoOpenedRef.current) return;
     if (tutorialManualAutoOpen) {
+      autoOpenedRef.current = true;
       setManualOpen(true);
     }
   }, [manualOpen, showDraftPrompt, tutorialManualAutoOpen]);

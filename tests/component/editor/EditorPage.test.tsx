@@ -388,5 +388,26 @@ describe('EditorPage (P2-7 ConfirmProvider)', () => {
         expect(screen.getByTestId('editor-manual-panel')).toBeInTheDocument();
       });
     });
+
+    it('does NOT re-open the manual immediately after the user closes it (infinite-loop bug)', async () => {
+      // Regression: closing the manual while tutorialManualAutoOpen is
+      // still true must NOT cause the useEffect to immediately re-open
+      // it in an infinite loop. The autoOpenedRef latch ensures the
+      // manual auto-opens at most once per EditorPage mount.
+      useSettingsStore.setState({ tutorialManualAutoOpen: true });
+      renderPage();
+      const panel = await screen.findByTestId('editor-manual-panel');
+      expect(panel).toBeInTheDocument();
+
+      // Close the manual (simulate clicking the × button)
+      const closeBtn = screen.getByTestId('editor-manual-close');
+      fireEvent.click(closeBtn);
+
+      // After closing, the manual should stay closed — the useEffect
+      // must NOT re-trigger setManualOpen(true).
+      await waitFor(() => {
+        expect(screen.queryByTestId('editor-manual-panel')).toBeNull();
+      });
+    });
   });
 });
