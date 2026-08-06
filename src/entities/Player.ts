@@ -205,7 +205,6 @@ export function applyVerticalTransition(
   // the caller forgets to drive the per-frame update for a
   // full tween's worth of frames, which would otherwise leave
   // the player frozen mid-air.)
-  void kind;
 }
 
 // P3-1: per-frame tween driver. The Game tick (or any caller

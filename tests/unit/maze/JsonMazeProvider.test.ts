@@ -719,4 +719,102 @@ describe('JsonMazeProvider', () => {
       await expect(provider.load('level-test')).rejects.toThrow(/keyColor/i);
     });
   });
+
+  // P3-1d (M-2 fix): host-side DoS guards. JsonMazeProvider is the
+  // only validator between untrusted JSON (shared link / import file)
+  // and the in-memory MazeData, so a malicious payload that requests
+  // a 10⁶×10⁶ grid, or stuffs the entity arrays with millions of
+  // entries, would otherwise OOM the tab. These cases pin the
+  // rejection contract.
+  describe('M-2 host-side DoS guards', () => {
+    it('rejects width > MAX_MAZE_SIZE', async () => {
+      const level = makeValidLevel({ size: { width: 1000, depth: 5 } });
+      const provider = new JsonMazeProvider({ 'level-test': level });
+      await expect(provider.load('level-test')).rejects.toThrow(/width \(1000\)/);
+    });
+
+    it('rejects depth > MAX_MAZE_SIZE', async () => {
+      const level = makeValidLevel({ size: { width: 5, depth: 1000 } });
+      const provider = new JsonMazeProvider({ 'level-test': level });
+      await expect(provider.load('level-test')).rejects.toThrow(/depth \(1000\)/);
+    });
+
+    it('rejects non-integer width (e.g. 5.5)', async () => {
+      const level = makeValidLevel({ size: { width: 5.5, depth: 5 } });
+      const provider = new JsonMazeProvider({ 'level-test': level });
+      await expect(provider.load('level-test')).rejects.toThrow(/width/);
+    });
+
+    it('rejects width <= 0', async () => {
+      const level = makeValidLevel({ size: { width: 0, depth: 5 } });
+      const provider = new JsonMazeProvider({ 'level-test': level });
+      await expect(provider.load('level-test')).rejects.toThrow(/width/);
+    });
+
+    it('accepts the boundary size (200x200)', async () => {
+      // MAX_MAZE_SIZE is 200; a 200x200 grid is allowed.
+      const walls = Array.from({ length: 200 }, () => Array<number>(200).fill(0));
+      const level = makeValidLevel({
+        size: { width: 200, depth: 200 },
+        walls,
+        start: { x: 0, z: 0 },
+        exit: { x: 199, z: 199 },
+      });
+      const provider = new JsonMazeProvider({ 'level-test': level });
+      await expect(provider.load('level-test')).resolves.toBeDefined();
+    });
+
+    it('rejects oversized enemies array', async () => {
+      const enemies = Array.from({ length: 1001 }, (_, i) => ({
+        id: `e${i}`, x: 1, z: 1, path: [{ x: 1, z: 1 }, { x: 1, z: 2 }],
+      }));
+      const level = makeValidLevel({ enemies });
+      const provider = new JsonMazeProvider({ 'level-test': level });
+      await expect(provider.load('level-test')).rejects.toThrow(/enemies has 1001/);
+    });
+
+    it('rejects oversized pickups array', async () => {
+      // Use a 50×50 grid so all 1001 pickups can sit on unique cells
+      // (the duplicate-cell check would fire first if we reused coords
+      // on a 5×3 grid). Start and exit live at opposite corners,
+      // pickups spread across the 48×48 interior.
+      const walls = Array.from({ length: 50 }, () => Array<number>(50).fill(0));
+      const pickups = Array.from({ length: 1001 }, (_, i) => {
+        const x = (i % 48) + 1; // 1..48
+        const z = (Math.floor(i / 48) % 48) + 1; // 1..48
+        return { id: `p${i}`, x, z, type: 'time' as const, value: 1 };
+      });
+      const level = makeValidLevel({
+        size: { width: 50, depth: 50 },
+        walls,
+        start: { x: 0, z: 0 },
+        exit: { x: 49, z: 49 },
+        pickups,
+      });
+      const provider = new JsonMazeProvider({ 'level-test': level });
+      await expect(provider.load('level-test')).rejects.toThrow(/pickups has 1001/);
+    });
+
+    it('rejects oversized tutorialSteps array', async () => {
+      const tutorialSteps = Array.from({ length: 65 }, (_, i) => ({
+        id: `s${i}`,
+        messageKey: 'tutorial.teaching01.step1',
+        trigger: { type: 'timeout', timeoutSec: 1 },
+      }));
+      const level = makeValidLevel({ tutorialSteps });
+      const provider = new JsonMazeProvider({ 'level-test': level });
+      await expect(provider.load('level-test')).rejects.toThrow(/tutorialSteps has 65/);
+    });
+
+    it('accepts the boundary tutorialSteps count (64)', async () => {
+      const tutorialSteps = Array.from({ length: 64 }, (_, i) => ({
+        id: `s${i}`,
+        messageKey: 'tutorial.teaching01.step1',
+        trigger: { type: 'timeout', timeoutSec: 1 },
+      }));
+      const level = makeValidLevel({ tutorialSteps });
+      const provider = new JsonMazeProvider({ 'level-test': level });
+      await expect(provider.load('level-test')).resolves.toBeDefined();
+    });
+  });
 });

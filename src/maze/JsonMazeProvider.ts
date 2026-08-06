@@ -20,6 +20,19 @@ import { isPickupType, isVictoryType, isMinimapMode, isMapOpenBehavior, isParchm
 // automatically tightens or loosens the level-size floor.
 const MIN_CELL_SIZE = 2 * PLAYER_RADIUS;
 
+// P3-1d (M-2 fix): host-side DoS guards. Without these, a malicious
+// shared-link / import-file (JsonMazeProvider is the only validator
+// between untrusted JSON and the in-memory MazeData) could OOM the
+// tab by requesting a 10⁶×10⁶ grid, or by stuffing the entity arrays
+// with millions of entries. The cap is generous (the largest legit
+// level is 50×50, the largest legit multi-level is 6 layers of that
+// — well under MAX_MAZE_SIZE * MAX_MAZE_SIZE * 6) and the error
+// messages name the offending field so a malformed fixture can be
+// diagnosed without guessing.
+const MAX_MAZE_SIZE = 200;                  // single-layer width/depth cap
+const MAX_ENTITIES_PER_KIND = 1000;          // pickups / traps / doors / enemies / transitions
+const MAX_TUTORIAL_STEPS = 64;              // tutorialSteps array cap (steps are 1-liner, not 3D objects)
+
 export type MazeLoader = () => Promise<unknown>;
 
 export class JsonMazeProvider implements MazeProvider {
@@ -79,6 +92,19 @@ export function validateMaze(raw: unknown, id: string): MazeData {
   // single source of truth for the rest of the function.
   const width = requireNumber(size, 'width', `${id}.size`);
   const depth = requireNumber(size, 'depth', `${id}.size`);
+  // P3-1d (M-2): reject oversized grids before allocating the walls
+  // array. Without this, a malicious `width: 1000000` would crash the
+  // tab (or freeze the test runner) on the next line.
+  if (!Number.isInteger(width) || width < 1 || width > MAX_MAZE_SIZE) {
+    throw new LevelLoadError(
+      `Maze '${id}': width (${width}) must be an integer in [1, ${MAX_MAZE_SIZE}]`,
+    );
+  }
+  if (!Number.isInteger(depth) || depth < 1 || depth > MAX_MAZE_SIZE) {
+    throw new LevelLoadError(
+      `Maze '${id}': depth (${depth}) must be an integer in [1, ${MAX_MAZE_SIZE}]`,
+    );
+  }
   const cellSize = requireNumber(m, 'cellSize', id);
   if (cellSize <= 0) {
     throw new LevelLoadError(`Maze '${id}': cellSize must be a finite positive number`);
@@ -279,6 +305,39 @@ export function validateMaze(raw: unknown, id: string): MazeData {
   }
   const enemies = parseEnemies(m.enemies, id, width, depth, walls);
 
+  // P3-1d (M-2): cap each entity array at MAX_ENTITIES_PER_KIND before
+  // dispatching to the parser. parseEnemies / parseTraps / parseDoors
+  // walk the array linearly, so an unbounded array would just slow
+  // down the validator — but a million-entry enemies array balloons
+  // the runtime enemy roster and the Scene's Mesh count. The check
+  // here is the cheap "stop early" gate; the per-element validation
+  // inside the parsers still runs.
+  if (Array.isArray(m.enemies) && m.enemies.length > MAX_ENTITIES_PER_KIND) {
+    throw new LevelLoadError(
+      `Maze '${id}': enemies has ${m.enemies.length} entries; max ${MAX_ENTITIES_PER_KIND}`,
+    );
+  }
+  if (Array.isArray(m.traps) && m.traps.length > MAX_ENTITIES_PER_KIND) {
+    throw new LevelLoadError(
+      `Maze '${id}': traps has ${m.traps.length} entries; max ${MAX_ENTITIES_PER_KIND}`,
+    );
+  }
+  if (Array.isArray(m.doors) && m.doors.length > MAX_ENTITIES_PER_KIND) {
+    throw new LevelLoadError(
+      `Maze '${id}': doors has ${m.doors.length} entries; max ${MAX_ENTITIES_PER_KIND}`,
+    );
+  }
+  if (Array.isArray(m.pickups) && m.pickups.length > MAX_ENTITIES_PER_KIND) {
+    throw new LevelLoadError(
+      `Maze '${id}': pickups has ${m.pickups.length} entries; max ${MAX_ENTITIES_PER_KIND}`,
+    );
+  }
+  if (Array.isArray(m.transitions) && m.transitions.length > MAX_ENTITIES_PER_KIND) {
+    throw new LevelLoadError(
+      `Maze '${id}': transitions has ${m.transitions.length} entries; max ${MAX_ENTITIES_PER_KIND}`,
+    );
+  }
+
   // P2-18: traps and doors are optional fields. Missing or non-array → [].
   const traps = parseTraps(m.traps, id, width, depth, walls, start as { x: number; z: number }, exit as { x: number; z: number });
   const doors = parseDoors(m.doors, id, width, depth, walls, start as { x: number; z: number }, exit as { x: number; z: number });
@@ -303,6 +362,16 @@ export function validateMaze(raw: unknown, id: string): MazeData {
   }
   let tutorialSteps: MazeData['tutorialSteps'];
   if (Array.isArray(m.tutorialSteps)) {
+    // P3-1d (M-2): cap tutorial steps. The cap is generous (64) —
+    // teaching levels typically have 3-8 steps; 32 is the largest
+    // historically-observed teaching level (final试炼). 64 leaves 2x
+    // headroom while still preventing a malicious JSON from forcing
+    // the banner to render hundreds of step chips.
+    if (m.tutorialSteps.length > MAX_TUTORIAL_STEPS) {
+      throw new LevelLoadError(
+        `Maze '${id}': tutorialSteps has ${m.tutorialSteps.length} entries; max ${MAX_TUTORIAL_STEPS}`,
+      );
+    }
     // F-2026-07-01-FCR-H-3: validate each step's trigger shape so malformed
     // tutorial data is rejected at load time, not silently ignored at
     // runtime when the banner tries to render the bad trigger.
