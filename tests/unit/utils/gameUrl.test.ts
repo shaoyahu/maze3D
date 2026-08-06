@@ -312,12 +312,54 @@ describe('parseGameSearchParams tamper resistance (P3-1 isProcedural fix)', () =
   // regress to a teaching default. Post-fix: `?seed=algo-v3-…` lands
   // in `bad-seed`, and the `?id=algo-v3-…` path keeps the gate
   // strict via the 256-char length cap on the `?id=` branch.
-  it('rejects ?seed=algo-v3-… (unknown seed prefix) as bad-seed', () => {
+  it('rejects ?seed=algo-v3-… with a NON-3D algorithm (unknown to v3 whitelist) as bad-seed', () => {
+    // P4: v3 ids are now a real format (3D voxel mazes). But
+    // the v3 whitelist only accepts 3D-prefixed algorithm
+    // names (`3d-recursive-backtracker`); a v3 id carrying a
+    // 2D algorithm name is malformed and must be rejected.
     const r = parseGameSearchParams(
       new URLSearchParams('?seed=algo-v3-recursive-backtracker-30-0123456789abcdef'),
     );
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toBe('bad-seed');
+  });
+
+  it('accepts ?seed=algo-v3-3d-recursive-backtracker-7-… (P4 3D voxel id) and round-trips through build → parse', () => {
+    // P4: 3D voxel mazes are a real codec, not a future
+    // placeholder. The isProcedural gate now accepts the v3
+    // prefix, and `encodeSeedV3` (not `encodeSeed`) is the
+    // canonical encoder so the URL doesn't get downgraded to
+    // a wire-invalid v1 id with the 3D algorithm name.
+    const v3Id = 'algo-v3-3d-recursive-backtracker-7-0123456789abcdef';
+    // Parse directly.
+    const parsed = parseGameSearchParams(new URLSearchParams(`?seed=${v3Id}`));
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) {
+      expect(parsed.parsed.id).toBe(v3Id);
+      expect(parsed.parsed.options.seed?.algorithm).toBe('3d-recursive-backtracker');
+      expect(parsed.parsed.options.seed?.size).toBe(7);
+      expect(parsed.parsed.options.seed?.mazeSeed).toBe('0123456789abcdef');
+    }
+    // Build → parse round-trip.
+    const built = buildGameSearchParams(v3Id, { mode: 'reach-exit' });
+    const reparsed = parseGameSearchParams(built);
+    expect(reparsed.ok).toBe(true);
+    if (reparsed.ok) {
+      expect(reparsed.parsed.id).toBe(v3Id);
+      expect(reparsed.parsed.options.seed?.algorithm).toBe('3d-recursive-backtracker');
+    }
+  });
+
+  it('buildGameSearchParams routes a v3 id through encodeSeedV3 (not encodeSeed)', () => {
+    // Regression: pre-fix `buildGameSearchParams` only knew about
+    // encodeSeed (v1) and encodeSeedV2. A v3 id would have been
+    // re-emitted as `algo-v1-3d-recursive-backtracker-7-…` — a
+    // wire-invalid v1 id (the v1 whitelist rejects the 3d-
+    // algorithm name). The fix is the `algorithm.startsWith('3d-')`
+    // branch in `buildGameSearchParams` routing to encodeSeedV3.
+    const v3Id = 'algo-v3-3d-recursive-backtracker-7-0123456789abcdef';
+    const built = buildGameSearchParams(v3Id, { mode: 'reach-exit' });
+    expect(built.get('seed')).toBe(v3Id);
   });
 
   it('rejects ?seed=algo-v99-future-… (any unknown prefix) as bad-seed', () => {

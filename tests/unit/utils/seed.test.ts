@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   encodeSeed,
   encodeSeedV2,
+  encodeSeedV3,
   decodeSeed,
   fallbackRandomHexSeed,
   fnv1a,
@@ -290,6 +291,88 @@ describe('encodeSeed / decodeSeed', () => {
       // And a v1 id with an extra junk segment.
       expect(() =>
         decodeSeed('algo-v1-recursive-backtracker-30-2-0123456789abcdef'),
+      ).toThrow(InvalidSeedError);
+    });
+  });
+
+  // P4: v3 codec for 3D voxel mazes. The wire format is
+  //   algo-v3-{algorithm}-{size}-{hex}
+  // where `algorithm` is one of the 3D-prefixed literals
+  // (currently only `3d-recursive-backtracker`) and `size` is
+  // one of {5, 7, 9}. v3 ids don't carry `levelCount` — a
+  // 3D cube is by definition a single voxel mass, never a
+  // stack of layers. `decodeSeed` tries the v3 regex first
+  // (most specific 3-segment pattern), then v2, then v1.
+  describe('v3 3D voxel seed (P4)', () => {
+    it('encodeSeedV3 emits the documented v3 wire format', () => {
+      const id = encodeSeedV3(
+        { algorithm: '3d-recursive-backtracker', size: 7, mazeSeed: '0123456789abcdef' },
+        7,
+      );
+      expect(id).toBe('algo-v3-3d-recursive-backtracker-7-0123456789abcdef');
+    });
+
+    it('encodeSeedV3 round-trips every 3D size in {5, 7, 9}', () => {
+      for (const size of [5, 7, 9] as const) {
+        const id = encodeSeedV3(
+          { algorithm: '3d-recursive-backtracker', size, mazeSeed: '0000000000000001' },
+          size,
+        );
+        expect(id).toMatch(/^algo-v3-3d-recursive-backtracker-(5|7|9)-[0-9a-f]{16}$/);
+        const decoded = decodeSeed(id);
+        expect(decoded.algorithm).toBe('3d-recursive-backtracker');
+        expect(decoded.size).toBe(size);
+        expect(decoded.mazeSeed).toBe('0000000000000001');
+        expect(decoded.levelCount).toBeUndefined();
+      }
+    });
+
+    it('decodeSeed routes a v3 id through the v3 branch (algorithm + 3D size)', () => {
+      const id = 'algo-v3-3d-recursive-backtracker-9-fedcba9876543210';
+      const decoded = decodeSeed(id);
+      expect(decoded).toEqual({
+        algorithm: '3d-recursive-backtracker',
+        size: 9,
+        mazeSeed: 'fedcba9876543210',
+        // v3 has no levelCount slot — the renderer picks the 3D
+        // path off `walls3D` presence, not levelCount.
+      });
+    });
+
+    it('decodeSeed rejects v3 with a non-3D algorithm (only 3d- prefix is valid)', () => {
+      // A v3 id carrying a 2D algorithm name (e.g. 'recursive-backtracker')
+      // must be rejected because the v3 whitelist only accepts the 3d-
+      // prefixed literals. The v1/v2 regexes wouldn't match a v3 id
+      // (different prefix), so the v3 branch is the only failure surface.
+      expect(() =>
+        decodeSeed('algo-v3-recursive-backtracker-7-0123456789abcdef'),
+      ).toThrow(InvalidSeedError);
+    });
+
+    it.each([0, 1, 3, 4, 6, 8, 10, 11, 15, 50, -1, 1.5, '4', null])(
+      'decodeSeed rejects v3 with out-of-range size %s',
+      (bad) => {
+        // String template coerces the size to a string; the codec
+        // regex's (\d+) accepts the digits and the whitelist check
+        // rejects the resulting integer. NaN / null / -1 / 1.5
+        // either fall through the regex or coerce to a disallowed
+        // number; the test exercises both shapes. `5`, `7`, `9`
+        // are the only valid sizes so we exclude them.
+        const id = `algo-v3-3d-recursive-backtracker-${bad}-0123456789abcdef`;
+        expect(() => decodeSeed(id)).toThrow(InvalidSeedError);
+      },
+    );
+
+    it('decodeSeed rejects v3 with a malformed hex mazeSeed', () => {
+      expect(() =>
+        decodeSeed('algo-v3-3d-recursive-backtracker-7-not-hex-aaaaaa'),
+      ).toThrow(InvalidSeedError);
+    });
+
+    it('decodeSeed rejects a v3 id with extra junk segments', () => {
+      // 6 segments instead of v3's expected 4 (algo-v3-alg-size-hex).
+      expect(() =>
+        decodeSeed('algo-v3-3d-recursive-backtracker-7-2-0123456789abcdef'),
       ).toThrow(InvalidSeedError);
     });
   });

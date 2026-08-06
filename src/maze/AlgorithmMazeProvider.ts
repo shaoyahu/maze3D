@@ -10,6 +10,7 @@ import { decodeSeed, fnv1a, mulberry32 } from '../utils/seed';
 // whitelist in levelStore. The Registry widens / narrows in lockstep
 // with the union via `id: Algorithm` and `ALGORITHM_BY_ID: Record<Algorithm, _>`.
 import { ALGORITHM_BY_ID } from './algorithmRegistry';
+import { generateRecursiveBacktracker3D } from './generators/recursiveBacktracker3D';
 import type {
   Algorithm,
   CellType,
@@ -106,6 +107,16 @@ export class AlgorithmMazeProvider implements MazeProvider {
     // decodeSeed throws InvalidSeedError on a malformed id, which satisfies
     // the test "throws InvalidSeedError on a malformed seed id".
     const seed = decodeSeed(id);
+    // P4: v3 ids encode a 3D voxel maze (no `levelCount` slot — a 3D
+    // cube is by definition a single voxel mass). The `algorithm`
+    // slot carries the `3d-` prefix, which is the runtime signal
+    // that the generator should return `CellType[][][]` instead of
+    // `CellType[][]`. We branch here BEFORE the v1/v2 levelCount
+    // collapse so the 3D path doesn't accidentally inherit a
+    // `levelCount` from a malformed parse.
+    if (seed.algorithm.startsWith('3d-')) {
+      return this.load3D(seed.algorithm, seed.size, seed.mazeSeed, prngFromHex(seed.mazeSeed), id);
+    }
     // P3-1: v1 seed id implies levelCount=1 (back-compat); v2 id
     // carries the level count explicitly. The `?? 1` collapse is
     // the single source of truth for "v1 = single layer" — see
@@ -133,6 +144,158 @@ export class AlgorithmMazeProvider implements MazeProvider {
     perLayerWallsByLevelId.set(maze.id, perLayerWalls);
     return maze;
   }
+
+  // P4: 3D voxel maze loader. Dispatches by algorithm literal
+  // (currently only `'3d-recursive-backtracker'`) and produces a
+  // `MazeData` with `walls3D` set instead of `walls`. The start
+  // and exit are sampled by `pickStartExit3D` — the 3D equivalent
+  // of the v1/v2 corner-cell pinning (the 3D RB generator carves
+  // a spanning tree, so any two non-wall cells are reachable;
+  // we still want a determinism contract for the URL round-trip,
+  // so the start/exit are picked from a PRNG that's seeded by
+  // `mazeSeed`).
+  private load3D(
+    algorithm: Algorithm,
+    size: number,
+    mazeSeed: string,
+    prng: () => number,
+    id: string,
+  ): MazeData {
+    // F-P4-PROVIDER-1: only the 3D RB algorithm ships in P4a. A
+    // runtime assert here keeps the v3 codec honest — a future
+    // algorithm that lands in v3 must also add a dispatch case
+    // below, and the assert is the loud failure if they forget.
+    if (algorithm !== '3d-recursive-backtracker') {
+      throw new Error(
+        `AlgorithmMazeProvider.load3D: unhandled v3 algorithm ${String(algorithm)}`,
+      );
+    }
+    // F-P4-PROVIDER-2: 3D RB is a 3D-only shape, so it doesn't go
+    // through the 2D registry. We import the generator directly
+    // here and bind the per-call prng.
+    const walls3D = generateRecursiveBacktracker3D(size, prng);
+    // F-P4-PROVIDER-3: pick start + exit. The 3D RB is a spanning
+    // tree so any non-wall cell is reachable from any other. We
+    // pick the start first (rng), then a random exit that's
+    // sufficiently far away (`>= N/3` cells). The exit picker
+    // loops until the distance constraint is met or until the
+    // scan budget is exhausted — if the budget runs out we accept
+    // whatever cell is currently chosen (better than throwing on
+    // a 5³ cube that happens to have only 3 viable exits).
+    const cs = size;
+    const startExit = pickStartExit3D(walls3D, prng, cs);
+    const { start, exit } = startExit;
+    return {
+      id,
+      name: `3D RB ${cs}×${cs}×${cs} (${mazeSeed.slice(0, 8)})`,
+      size: { width: cs, depth: cs },
+      cellSize: 2,
+      // F-P4-PROVIDER-4: 3D start/exit carry a `level: 0` so the
+      // existing 2D-shape consumers (HUD level indicator, etc.)
+      // don't have to special-case 3D. The 3D path is selected
+      // by `walls3D !== undefined`, not by `level`. Same trick
+      // P3-1 used for `level: 0` defaults on stacked layers.
+      start: { x: start.x, z: start.z, level: 0 },
+      exit: { x: exit.x, z: exit.z, level: 0 },
+      // F-P4-PROVIDER-8: 3D start/exit in 3D cell coords. The 2D
+      // `start` / `exit` above only carry the (x, z) projection —
+      // the engine's 3D path needs the full (x, y, z) so the
+      // player can spawn on the right cell on the right y layer
+      // and the 3D exit check (player.y === 0 && cell (x, z)
+      // matches) has a well-defined target. Mutually exclusive
+      // with the 2D fields in spirit, but the union shape allows
+      // both to be set so existing 2D consumers (HUD level
+      // indicator, etc.) keep reading `start` / `exit` without
+      // a special case.
+      start3D: { x: start.x, y: start.y, z: start.z },
+      exit3D: { x: exit.x, y: exit.y, z: exit.z },
+      // F-P4-PROVIDER-7: `walls` is required on MazeData (P2's
+      // historical contract), but 3D cubes have no 2D walls.
+      // We satisfy the type with an empty `[]` — the renderer
+      // and physics pick the 3D path off `walls3D !== undefined`
+      // and never read `walls`. The validator at JsonMazeProvider
+      // accepts the empty array.
+      walls: [],
+      walls3D,
+      // F-P4-PROVIDER-5: 3D cubes don't carry pickups / enemies /
+      // traps / doors / tutorial steps / transitions. The
+      // validator accepts an empty array for any of these
+      // (the historical P2 defaults), and the engine only
+      // reads entities that exist. P4b may add entity placement
+      // (e.g. enemy AI in 3D).
+      pickups: [],
+      rules: { initialTime: 30, maxHealth: 3, victory: 'reach-exit', timeOnPickup: 15 },
+      enemies: [],
+      traps: [],
+      doors: [],
+      // F-P4-PROVIDER-6: levelCount is intentionally NOT set on
+      // a 3D maze. The historical `levelCount` field is a P3-1
+      // concept (1..6 stacked layers); a 3D cube has no such
+      // notion — vertical movement is just a 6th neighbor axis.
+      // The renderer picks the 3D path off `walls3D` presence,
+      // so leaving `levelCount` undefined is the explicit
+      // "this is 3D, not a stacked 2D" signal.
+      //
+      // F-P4-PROVIDER-9: `transitions` is an empty array (not
+      // undefined) for 3D mazes. The 2D P3-1 path uses
+      // `transitions` for stair / hole / ladder connections
+      // between stacked layers; a 3D cube has no such notion.
+      // Setting it to `[]` matches the JsonMazeProvider default
+      // and lets the engine's per-frame `transitions.length > 0`
+      // check (P3-1) safely read 0 without a separate `?? []`
+      // fallback. Same logic for `pickups` / `enemies` / `traps`
+      // / `doors` above.
+      transitions: [],
+    };
+  }
+}
+
+// P4: 3D start/exit picker. Walks the 3D walls grid, collects
+// all passage cells (CellType === 0), then picks a start at
+// index `Math.floor(rng() * candidates.length)`. The exit is
+// the first passage cell whose Chebyshev distance from the
+// start is `>= N/3` (N = size³). The Chebyshev metric is the
+// same as the 2D variant — a "diagonal through 3D space"
+// counts once per axis, which is what the BFS / exploration
+// budget model assumes. The scan budget (1k attempts) caps
+// the worst case; a 5³ cube has plenty of viable exits so
+// the budget is never hit on real inputs.
+function pickStartExit3D(
+  walls3D: CellType[][][],
+  prng: () => number,
+  visualSize: number,
+): {
+  start: { x: number; y: number; z: number };
+  exit: { x: number; y: number; z: number };
+} {
+  const candidates: Array<{ x: number; y: number; z: number }> = [];
+  for (let z = 0; z < visualSize; z++) {
+    for (let y = 0; y < visualSize; y++) {
+      for (let x = 0; x < visualSize; x++) {
+        if (walls3D[z][y][x] === 0) candidates.push({ x, y, z });
+      }
+    }
+  }
+  if (candidates.length < 2) {
+    // Defensive — a 5³ cube has 27-89 passage cells, so this is
+    // unreachable in practice. Throw rather than silently
+    // returning a self-loop.
+    throw new Error('pickStartExit3D: not enough passage cells for start/exit');
+  }
+  const start = candidates[Math.floor(prng() * candidates.length)];
+  const targetDist = visualSize * visualSize * visualSize / 3;
+  let exit = candidates[0];
+  for (let i = 0; i < 1000; i++) {
+    const candidate = candidates[Math.floor(prng() * candidates.length)];
+    const dx = Math.abs(candidate.x - start.x);
+    const dy = Math.abs(candidate.y - start.y);
+    const dz = Math.abs(candidate.z - start.z);
+    if (Math.max(dx, dy, dz) >= targetDist) {
+      exit = candidate;
+      break;
+    }
+  }
+  return { start, exit };
 }
 
 // Convert a 16-char hex seed into a function-typed mulberry32 PRNG. We hash

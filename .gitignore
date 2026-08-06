@@ -17,3 +17,19 @@ playwright/.cache/
 # Ad-hoc editor screenshots produced during local review / debugging.
 # These are not committed artifacts — keep the repo root clean.
 editor-*.png
+
+# Pnpm transient side effects. The project uses npm (see CLAUDE.md
+# "常用命令" — `npm install` / `npm test` / `npm run build`); pnpm
+# 9 sometimes writes these files when invoked by accident and they
+# should never be committed. Re-generate with `npm install` to
+# get a clean package-lock.json.
+pnpm-lock.yaml
+pnpm-workspace.yaml
+
+# Ad-hoc deploy verification scripts. P3 deploy workflow (and
+# occasional hand-runs) drop these at repo root as one-off
+# Playwright health checks. They're useful as artifacts but
+# shouldn't be committed; the real test suite is
+# `npm run test:e2e` (Playwright in tests/e2e/).
+verify-deploy.mjs
+verify-security.mjs

@@ -174,6 +174,36 @@ Type system 不会挡住"主动改 mapping"(exhaustive switch 仍过), 需 revie
 
 **只 hole-down 触发**:HUD 屏闪由 Game.startWarningFlash 驱动(同 P3-2 状态机),其他 transition kinds (stair-up/-down/hole-up/ladder) 走旧路径,既无 3D 环也无 HUD 屏闪。
 
+### 3D voxel mazes (P4) — locked contracts
+
+**MazeData 新增 3D 字段**(`src/maze/types.ts`):`walls3D?: CellType[][][]` (z × y × x 顺序)、`start3D?: { x; y; z }`、`exit3D?: { x; y; z }`。三字段都是**可选**的 — 2D 关卡继续用 `walls: CellType[][]` / `start` / `exit`(P2 / P3-1 contract 完整保留)。`walls3D !== undefined` 是引擎分派 3D vs 2D 路径的唯一信号。`levelCount` 在 3D 路径**故意不设**(3D 体素立方体不是 P3-1 堆叠层概念)。
+
+**3D 数据满足 type 但不读 2D 字段**:`MazeData.walls: CellType[][]` 是必填的(P2 historical contract),3D 关卡用 `walls: []` 满足类型 — 渲染永远走 `walls3D !== undefined` 分支不读 `walls`。同理 `start` / `exit` 在 3D 路径由 `start3D` / `exit3D` 提供,2D 字段 mirror 3D 的 (x, z) at level 0 让 legacy consumer 不需要 special case。
+
+**Algorithm 联合新增 1 字面量**:`'3d-recursive-backtracker'`(`src/maze/types.ts:401`)。3D RB **不通过 ALGORITHM_REGISTRY** — registry 的 `generate` 签名是 `(visualSize, rng) => CellType[][]` (2D),3D RB 是 `CellType[][][]` 不兼容。`AlgorithmMazeProvider.load3D` 自己 dispatch 3D 算法(`algorithm.startsWith('3d-')` 分支,`src/maze/AlgorithmMazeProvider.ts:117`)。
+
+**3D size whitelist 锁 `{5, 7, 9}`**:`recursiveBacktracker3D.ts` 的 `VALID_3D_SIZES` + `isVoxel3DSize` + seed.ts 的 `VALID_3D_SIZES` 三处 lockstep。3D RB 用 thick-wall 编码,odd sizes only(logicalSize = (visualSize + 1) / 2 必须是 integer)。even sizes / 11/13/15 留 P4b。
+
+**Seed codec v3**:`algo-v3-3d-recursive-backtracker-{size}-{hex}`(`src/utils/seed.ts:133`)。`size ∈ {5, 7, 9}`(3D visualSize, **不是** P2 的 15/30/50);3D 算法名带 `3d-` 前缀强制与 2D 名字空间隔离。`encodeSeedV3` / `decodeSeed` v3 分支 + `VALID_3D_ALGORITHMS: ['3d-recursive-backtracker']` 单独白名单。**v3 不带 `levelCount` slot** — 3D 立方体是单个 voxel mass,不是堆叠层。
+
+**3D 数据形状 (z × y × x)**:`walls3D[z][y][x] = 0|1`,visualSize 在三个轴等长,外层 ring 全部 wall(立方体密封)。`generateRecursiveBacktracker3D`(新文件,`src/maze/generators/recursiveBacktracker3D.ts`)用 6 邻居 DFS(±x, ±y, ±z),step 2 cells(thick-wall 编码,跟 2D 1:1 翻译),`isVoxel3DSize` 在最前端拒绝 even / out-of-whitelist sizes。RNG 消耗顺序(start cell pick + 每次 DFS 邻居 pick)是 determinism contract 的一部分,refactor 必须保持。
+
+**3D BFS reachability**:`isReachable3D(walls3D, start, exit)`(`src/maze/reachability.ts:248-310`)。6 邻居 BFS,flat `Uint8Array` visited,head-index FIFO 队列。returns false 当 start/exit 在 wall cell / out-of-bounds / 不连通。P4a 用作 `load3D` 出口可达性 sanity check(spec 实际不强制,但 test 覆盖)。
+
+**3D Scene 渲染**:Scene.ts 早返回分支 `if (maze.walls3D !== undefined) return buildScene3D(maze, darkMode)`(`src/engine/Scene.ts:204-209`)。`buildScene3D` 画 cuboid per wall cell:`BoxGeometry(cs, cs, cs)` at `(x+0.5)*cs, (y+0.5)*cs, (z+0.5)*cs` — 跟 2D cell-center 锁存 invariant 一致。**不画 floor / ceiling**(spec §6 Q6 决策,玩家在 cell 内 3D 自由,flat floor 反而挡 down 视野)。exit 是绿色 emissive box 浮在 exit3D cell 上方 0.3cs;playerMarker 是 horizontal ring on y=startY plane。
+
+**3D 6 邻居移动**:`InputManager.getMove3D()` 返回 `{dx, dy, dz}` one-hot triple: W = dz -1, S = dz +1, A = dx -1, D = dx +1, Space = dy +1, KeyC = dy -1(`src/engine/InputManager.ts:106-128`)。**ArrowUp/ArrowDown 故意不绑 3D dz**(避免 2D 玩家切到 3D 关卡时按键被静默重映射)。
+
+**3D Game tick**:`Game.tick3DMovement(_dt)`(`src/engine/Game.ts:478-602`),`update()` 顶部 short-circuit 当 `currentMaze.walls3D !== undefined`。P4a 简化 = **瞬移**(无 lerp),按下键直接 teleport 一格 cell 中心。Collision = cell-based `walls3D[tz][ty][tx] === 1` 拒绝 / 越界拒绝,不动 `Collision.resolveMove` 2D 路径。Exit check = `tx === exit3D.x && ty === exit3D.y && tz === exit3D.z` 直接调 `bridge.onReachExit()` + `pauseLoop()`。
+
+**P4a 实体省略**:P4a 是数据 + 6 方向移动 MVP,**不做** enemy / pickup / trap / door / parchment / tutorial / 3D lerp 动画 / 3D 多 cell size 11/13/15。`pickups` / `enemies` / `traps` / `doors` / `transitions` 全部 `[]`,`levelCount` 不设。`setWarningFlashState` 是 no-op closure(3D 不用 hole-down warning)。`setDarkMode` 共享 2D palette 切换 API。
+
+**3D vs 2D dispatch key**:`maze.walls3D !== undefined`。所有 3D-specific 代码路径都用这个判断(Scene.buildScene、Game.update、Game.startLevel、JsonMazeProvider 暂未路由 — 3D 必须走 AlgorithmMazeProvider.load3D)。
+
+**为什么 3D 算法不通过 registry**:Registry 的 `AlgorithmEntry.generate: (visualSize, rng) => CellType[][]` 是 2D 强类型,3D 是 `CellType[][][]`。把 registry 改成 union signature 反而增加所有 15 个 2D 算法的复杂度(每次 generate 都要 narrow 分支)。3D 单独 dispatch(`AlgorithmMazeProvider.load3D` 内部直接 `generateRecursiveBacktracker3D(size, prng)`)保留两个形状的隔离,新增 3D 算法时也只改 3D 这条线。
+
+**测试**(`tests/unit/maze/recursiveBacktracker3D.test.ts` 新建 10 case + `tests/unit/utils/seed.test.ts` v3 段 +7 case + `tests/unit/inputManager.test.ts` getMove3D 段 8 case + `tests/unit/maze/algorithmMazeProvider.test.ts` 3D 段 4 case + `tests/unit/engine/Game.3D.test.ts` 新建 5 case):覆盖 determinism / cube shape / 边界 wall / spanning-tree reachability / 6-neighbor input / 3D seed codec round-trip / load3D 形状 / Game 3D 移动 collision / 出口 check。
+
 ## 测试
 
 ```

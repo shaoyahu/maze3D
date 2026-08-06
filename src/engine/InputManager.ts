@@ -2,6 +2,14 @@ import type { InventorySlot } from '../maze/types';
 
 export interface Move { x: number; z: number; }
 export interface MouseDelta { x: number; y: number; }
+// P4: 3D 6-neighbor movement. The 3D tick (`Game.tick3DMovement`)
+// reads this every frame to teleport the player to an adjacent
+// open cell. The shape is a one-hot triple (one of {dx, dy, dz}
+// is non-zero at a time when a single key is pressed); the
+// engine collapses a diagonal to whichever axis fires LAST in
+// the keydown → keyup ordering, which is the same fallback
+// behavior as the 2D `getMove()` for diagonal WASD.
+export interface Move3D { dx: number; dy: number; dz: number; }
 
 // F-2026-06-30: P2-16 — logical action name + the key code bound to
 // it. Exported as a single constant so the GameCanvas useEffect and
@@ -95,6 +103,30 @@ export class InputManager {
       z /= len;
     }
     return { x, z };
+  }
+
+  // P4: 3D 6-neighbor move. Reads WASD + Space + KeyC into a
+  // one-hot triple. Unlike the 2D `getMove()`, the values are
+  // NOT normalized — the 3D tick does cell-based collision
+  // (one cell at a time), so a normalized diagonal wouldn't
+  // map to a valid 6-neighbor. When two opposing keys are
+  // held (W+S), both deltas cancel and the player stays put;
+  // this matches the 2D behavior.
+  //
+  // Space and KeyC are the canonical 3D up / down keys. ArrowUp
+  // and ArrowDown are reserved for the 2D z- axis (so a player
+  // who hasn't realized they're in 3D can still walk forward /
+  // back). We deliberately don't reuse ArrowUp for 3D up to
+  // avoid silent re-binding on a level swap.
+  getMove3D(): Move3D {
+    let dx = 0, dy = 0, dz = 0;
+    if (this.keys.has('KeyW')) dz -= 1;
+    if (this.keys.has('KeyS')) dz += 1;
+    if (this.keys.has('KeyA')) dx -= 1;
+    if (this.keys.has('KeyD')) dx += 1;
+    if (this.keys.has('Space')) dy += 1;
+    if (this.keys.has('KeyC')) dy -= 1;
+    return { dx, dy, dz };
   }
 
   consumeMouseDelta(): MouseDelta {

@@ -91,14 +91,57 @@ export const HOLE_DOWN_DURATION_SEC = 0.4;
 export function createPlayer(
   startCell: { x: number; z: number; level?: number },
   cellSize: number,
+): PlayerState;
+export function createPlayer(
+  startCell3D: { x: number; y: number; z: number },
+  cellSize: number,
+  // Marker overload discriminator: when the 3-arg form is called
+  // with a 3D cell + the `cellSize` + a `mode: '3d'` literal,
+  // we use the 3D shape. The string literal is the only way to
+  // distinguish 2D vs 3D at the call site without an interface
+  // tag, because both shapes share the `x` and `z` fields.
+  mode: '3d',
+): PlayerState;
+export function createPlayer(
+  startCell: { x: number; z: number; level?: number } | { x: number; y: number; z: number },
+  cellSize: number,
+  mode?: '3d',
 ): PlayerState {
+  if (mode === '3d') {
+    // P4: 3D start cell. The y is the integer cell index (not
+    // world meters); the world y is `y * cellSize + cellSize / 2`
+    // so the player spawns at the cell center, matching the
+    // 3D scene renderer's `cell-center` invariant. `currentLevel`
+    // stays 0 for 3D — the level dimension is the 3D path's own
+    // (x, y, z) tuple, not a stack count. The input lock and
+    // transition fields stay at their zero-defaults (no tween
+    // in flight at spawn).
+    const c = startCell as { x: number; y: number; z: number };
+    return {
+      position: {
+        x: c.x * cellSize + cellSize / 2,
+        y: c.y * cellSize + cellSize / 2,
+        z: c.z * cellSize + cellSize / 2,
+      },
+      yaw: 0,
+      pitch: 0,
+      speed: 3,
+      radius: PLAYER_RADIUS,
+      currentLevel: 0,
+      inputLocked: false,
+      transitionStartTime: 0,
+      transitionFromY: 0,
+      transitionToY: 0,
+      transitionDuration: 0,
+    };
+  }
   // P3-1: layer is the `level` field on the start cell. The
   // JsonMazeProvider back-fills `level: 0` when the JSON omits
   // the field, so `level ?? 0` collapses the pre-P3-1 shape
   // (no `level` field) to the historical y = 0 starting
   // position. Multi-level levels carry their start cell's layer
   // and the player spawns on that layer's floor.
-  const startLevel = startCell.level ?? 0;
+  const startLevel = (startCell as { x: number; z: number; level?: number }).level ?? 0;
   return {
     position: {
       x: startCell.x * cellSize + cellSize / 2,

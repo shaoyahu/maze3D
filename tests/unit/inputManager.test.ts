@@ -146,6 +146,68 @@ describe('InputManager', () => {
     window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyW' }));
   });
 
+  // P4: 3D 6-neighbor input. The 3D tick (Game.tick3DMovement)
+  // reads getMove3D() each frame to teleport the player to an
+  // adjacent 3D cell. The shape is a one-hot triple (one of
+  // {dx, dy, dz} is non-zero at a time when a single key is
+  // pressed). Opposing keys on the same axis cancel out (W+S,
+  // A+D, Space+C).
+  describe('P4 — getMove3D (6-neighbor input)', () => {
+    it('reports no movement initially', () => {
+      expect(im.getMove3D()).toEqual({ dx: 0, dy: 0, dz: 0 });
+    });
+
+    it('W key sets dz = -1 (forward, toward -z)', () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyW' }));
+      expect(im.getMove3D().dz).toBe(-1);
+      window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyW' }));
+      expect(im.getMove3D().dz).toBe(0);
+    });
+
+    it('S key sets dz = +1 (backward)', () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyS' }));
+      expect(im.getMove3D().dz).toBe(1);
+    });
+
+    it('A and D keys set dx = -1 / +1 respectively', () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyA' }));
+      expect(im.getMove3D().dx).toBe(-1);
+      window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyA' }));
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyD' }));
+      expect(im.getMove3D().dx).toBe(1);
+    });
+
+    it('Space sets dy = +1 (up); KeyC sets dy = -1 (down)', () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space' }));
+      expect(im.getMove3D().dy).toBe(1);
+      window.dispatchEvent(new KeyboardEvent('keyup', { code: 'Space' }));
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyC' }));
+      expect(im.getMove3D().dy).toBe(-1);
+    });
+
+    it('W + S pressed together cancel (dz = 0)', () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyW' }));
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyS' }));
+      expect(im.getMove3D().dz).toBe(0);
+    });
+
+    it('Space + KeyC pressed together cancel (dy = 0)', () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space' }));
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyC' }));
+      expect(im.getMove3D().dy).toBe(0);
+    });
+
+    it('does NOT bind ArrowUp/ArrowDown to dz (Arrow keys are 2D-only)', () => {
+      // Re-binding the arrow keys to the 3D dz axis would
+      // silently re-map a 2D player's controls when they
+      // swap to a 3D level. The 3D tick must use W/S (or
+      // a future 3D-dedicated key) for forward/back.
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'ArrowUp' }));
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'ArrowDown' }));
+      expect(im.getMove3D().dz).toBe(0);
+    });
+  });
+
   // F-A-architecture-M8: InputManager's constructor adds 4 listeners
   // (keydown, keyup on window; mousemove, pointerlockchange on document).
   // dispose() must remove exactly those 4 — same event type, same target,

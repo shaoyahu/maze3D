@@ -229,3 +229,82 @@ export function isReachableMultiLevel(
   }
   return false;
 }
+
+// P4: 3D voxel maze BFS. 6 neighbors (±x, ±y, ±z) instead of
+// 4. The signature mirrors `isReachable` (above) so a 2D level
+// validator can use both interchangeably; the multi-level
+// variant (`isReachableMultiLevel`, also above) does NOT use
+// this function because P3-1's stacked layers use a different
+// shape (per-level walls + transition graph) than P4's single
+// cube. The two paths are deliberately separate — P4a doesn't
+// add a `levelCount > 1` concept to the 3D shape, it just adds
+// the y axis.
+//
+// `walls3D` is a `[z][y][x]` `CellType[][][]` (P4a convention).
+// The function only iterates open cells (0); a wall cell (1)
+// has no outgoing edges and isn't a valid start / exit position.
+// The visited set is a single flat Uint8Array sized to the
+// full cube so `visited[k]` is an O(1) check.
+export function isReachable3D(
+  walls3D: CellType[][][],
+  start: { x: number; y: number; z: number },
+  exit: { x: number; y: number; z: number },
+): boolean {
+  const depth = walls3D.length;
+  if (depth === 0) return false;
+  const height = walls3D[0].length;
+  if (height === 0) return false;
+  const width = walls3D[0][0].length;
+  if (width === 0) return false;
+  // Bounds check (mirrors the 2D guard above).
+  if (
+    start.x < 0 || start.x >= width ||
+    start.y < 0 || start.y >= height ||
+    start.z < 0 || start.z >= depth
+  ) return false;
+  if (
+    exit.x < 0 || exit.x >= width ||
+    exit.y < 0 || exit.y >= height ||
+    exit.z < 0 || exit.z >= depth
+  ) return false;
+  if (
+    walls3D[start.z][start.y][start.x] === 1 ||
+    walls3D[exit.z][exit.y][exit.x] === 1
+  ) return false;
+  // F-P4-3D-BFS-1: flat visited array, O(1) lookup. Cubic size
+  // up to visualSize=9 → N=729 cells, fits in 729 bytes.
+  const visited = new Uint8Array(width * height * depth);
+  const queue: Array<{ x: number; y: number; z: number }> = [start];
+  let head = 0;
+  const cellKey = (x: number, y: number, z: number): number =>
+    (z * height + y) * width + x;
+  visited[cellKey(start.x, start.y, start.z)] = 1;
+  while (head < queue.length) {
+    const c = queue[head++];
+    if (c.x === exit.x && c.y === exit.y && c.z === exit.z) return true;
+    // 6 neighbors — same shape as the 3D RB generator's DIRS
+    // constant, kept inline for the hot BFS loop.
+    const neighbors: ReadonlyArray<readonly [number, number, number]> = [
+      [c.x + 1, c.y, c.z],
+      [c.x - 1, c.y, c.z],
+      [c.x, c.y + 1, c.z],
+      [c.x, c.y - 1, c.z],
+      [c.x, c.y, c.z + 1],
+      [c.x, c.y, c.z - 1],
+    ];
+    for (let i = 0; i < neighbors.length; i++) {
+      const n = neighbors[i];
+      if (
+        n[0] < 0 || n[0] >= width ||
+        n[1] < 0 || n[1] >= height ||
+        n[2] < 0 || n[2] >= depth
+      ) continue;
+      if (walls3D[n[2]][n[1]][n[0]] === 1) continue;
+      const k = cellKey(n[0], n[1], n[2]);
+      if (visited[k]) continue;
+      visited[k] = 1;
+      queue.push({ x: n[0], y: n[1], z: n[2] });
+    }
+  }
+  return false;
+}

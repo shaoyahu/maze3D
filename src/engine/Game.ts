@@ -5,7 +5,7 @@ import { buildScene, disposeScene, type SceneRefs } from './Scene';
 import { InputManager } from './InputManager';
 import { Loop } from './Loop';
 import { resolveMove, type WallGrid } from './Collision';
-import { createPlayer, applyLook, updatePlayerCamera, type PlayerState } from '../entities/Player';
+import { createPlayer, applyLook, updatePlayerCamera, EYE_HEIGHT, type PlayerState } from '../entities/Player';
 import { Enemy, ENEMY_RADIUS } from '../entities/Enemy';
 import { findPickupAt, findTrapAt, crossesExit } from '../game/Rules';
 import { injectEnemySpawns } from '../maze/enemySpawner';
@@ -467,6 +467,147 @@ export class Game {
       this.startActiveTransition(t);
     }
   }
+
+  // P4: 3D 6-neighbor movement tick. Reads the input's 3D move
+  // (WASD + Space/C), checks the 6-neighbor target cell against
+  // the 3D wall grid, and teleports the player to the cell
+  // center on a valid move. No lerp, no animation — P4a is the
+  // minimum viable 3D walk-through; P4b can layer a smooth tween
+  // on top.
+  //
+  // Movement model:
+  //   - Each frame, if any of {W, A, S, D, Space, KeyC} is held,
+  //     the corresponding axis delta is one (positive or
+  //     negative). The player teleports one cell along that
+  //     axis if the target is in-bounds AND a passage cell.
+  //   - If TWO opposing keys are held on the same axis (W+S,
+  //     A+D, Space+C) the deltas cancel and the player stays
+  //     put. Same fallback as the 2D diagonal handling.
+  //   - If the target is a wall OR out of bounds, the move is
+  //     rejected and the player stays on the current cell.
+  //
+  // The tick also handles mouse-look (yaw / pitch unchanged
+  // from the 2D path), the on-floor position marker sync
+  // (player marker x / z / y all update on a successful move),
+  // the camera sync (eye height 1.6m above the player's feet),
+  // and the 3D exit check (player at exit3D cell → win).
+  //
+  // The `dt` parameter is unused for the 3D path — P4a is
+  // input-driven, not time-driven. We accept the parameter for
+  // API parity with `update` and the 2D `tickActiveTransition`
+  // (which does use dt for the tween).
+  private tick3DMovement(_dt: number): void {
+    // Narrow refs; the outer `update()` guard already verified
+    // they're present, but TypeScript's strict null checks
+    // don't propagate the narrowing into this method.
+    const maze = this.currentMaze;
+    const player = this.player;
+    if (!maze || !player) return;
+    const walls3D = maze.walls3D;
+    if (!walls3D) return;
+    // F-P4-3D-MOUSE-LOOK: same as 2D — read the mouse delta
+    // from input, apply it to the player's yaw / pitch, emit
+    // the tutorial event if a consumer is registered. The
+    // 3D cube has no tutorial steps in P4a (Q13: 3D 教学关
+    // 不做), so the onTutorialEvent branch is a no-op for
+    // every 3D level, but we keep the wire in place so a
+    // future P4b teaching level can flip the bridge listener
+    // on without a code change here.
+    const mouseDelta = this.input!.consumeMouseDelta();
+    applyLook(player, mouseDelta);
+    if (this.bridge.onTutorialEvent && (mouseDelta.x !== 0 || mouseDelta.y !== 0)) {
+      this.bridge.onTutorialEvent({ kind: 'mouse-look', deltaYaw: mouseDelta.x, deltaPitch: mouseDelta.y });
+    }
+    for (const key of this.input!.consumeJustPressedKeys()) {
+      this.bridge.onTutorialEvent?.({ kind: 'key-pressed', key });
+    }
+
+    // F-P4-3D-CLOCK: tick the HUD timer so a 3D maze with
+    // `time-trial` victory still has a countdown. The store
+    // owns the timer; the engine just feeds it dt. We skip
+    // this when not actively playing (a paused / game-over
+    // state would otherwise drain the timer).
+    this.bridge.onTick(_dt);
+    if (!this.bridge.isPlaying()) return;
+
+    // 1. Read the 3D input triple.
+    const move = this.input!.getMove3D();
+    // No-op when no key is held. This is also the bail when
+    // the player is at the keyboard's rest state — no move,
+    // no collision check, no exit recheck, just the render
+    // at the end of the function.
+    if (move.dx === 0 && move.dy === 0 && move.dz === 0) {
+      updatePlayerCamera(this.camera!, player);
+      this.camera!.position.y = player.position.y + EYE_HEIGHT;
+      return;
+    }
+
+    // 2. Resolve the target cell. The current cell is the
+    //    player's (x, z) floor + y / cs. We add the move
+    //    delta to get the target cell coords.
+    const cs = maze.cellSize;
+    const curCellX = Math.floor(player.position.x / cs);
+    const curCellY = Math.floor(player.position.y / cs);
+    const curCellZ = Math.floor(player.position.z / cs);
+    const tx = curCellX + move.dx;
+    const ty = curCellY + move.dy;
+    const tz = curCellZ + move.dz;
+
+    // 3. Bounds check. Out-of-bounds = wall, no move.
+    const visualSize = walls3D.length;
+    if (tx < 0 || tx >= visualSize || ty < 0 || ty >= visualSize || tz < 0 || tz >= visualSize) {
+      updatePlayerCamera(this.camera!, player);
+      this.camera!.position.y = player.position.y + EYE_HEIGHT;
+      return;
+    }
+
+    // 4. Wall check. The 3D RB generator leaves every cell
+    //    either wall (1) or passage (0); a 0 cell is a valid
+    //    target.
+    if (walls3D[tz][ty][tx] === 1) {
+      updatePlayerCamera(this.camera!, player);
+      this.camera!.position.y = player.position.y + EYE_HEIGHT;
+      return;
+    }
+
+    // 5. Teleport the player to the cell center. P4a is
+    //    "瞬移" (teleport) — no lerp, no animation. P4b
+    //    can layer a 0.1s tween on top.
+    player.position.x = tx * cs + cs / 2;
+    player.position.y = ty * cs + cs / 2;
+    player.position.z = tz * cs + cs / 2;
+
+    // 6. Sync the on-floor marker to the new cell. The
+    //    marker is shared with the 2D path; for 3D we
+    //    also update the y (the 2D path only updates
+    //    x / z because y never changes outside of a
+    //    vertical transition).
+    const marker = this.sceneRefs!.playerMarker;
+    marker.position.x = player.position.x;
+    marker.position.y = player.position.y;
+    marker.position.z = player.position.z;
+
+    // 7. Camera + eye height. Same EYE_HEIGHT (1.6m) as
+    //    the 2D path — the player stands the same way in
+    //    a 3D cube as on a 2D layer.
+    updatePlayerCamera(this.camera!, player);
+    this.camera!.position.y = player.position.y + EYE_HEIGHT;
+
+    // 8. Exit check. The 3D exit is at `exit3D` (cell
+    //    coords). The player wins when they occupy that
+    //    exact cell. No "midpoint sampling" — P4a is
+    //    cell-based movement so a teleport can't tunnel
+    //    past the exit (the worst case is "pressed W
+    //    while standing on the exit cell" which the
+    //    next tick's cell-mismatch check rejects).
+    const exit3D = maze.exit3D;
+    if (exit3D && tx === exit3D.x && ty === exit3D.y && tz === exit3D.z) {
+      this.bridge.onTutorialEvent?.({ kind: 'reached-exit' });
+      this.bridge.onReachExit();
+      this.pauseLoop();
+    }
+  }
+
   // P3-1: per-frame y interpolation. Called from update() while a
   // transition is active (and only then). Advances `elapsed`, lerps
   // `playerY`, and clears `activeTransition` on completion. When the
@@ -774,7 +915,18 @@ export class Game {
     // mode flag, so the follow-up setDarkMode() (which would re-run
     // applyPalette a second time) is no longer needed.
     this.sceneRefs = buildScene(injectedMaze, this.bridge.getCurrentDarkMode());
-    this.player = createPlayer(injectedMaze.start, injectedMaze.cellSize);
+    // P4: 3D voxel levels use `start3D` (3D cell coords) and
+    // dispatch `createPlayer` to the 3D overload (sets player.y
+    // to the cell center, not the layer-0 floor). The 2D path
+    // keeps using `start` and the 2D overload (sets player.y
+    // to `level * FLOOR_HEIGHT`). The dispatch is the same
+    // `walls3D !== undefined` test the renderer uses.
+    if (injectedMaze.walls3D !== undefined) {
+      const start3D = injectedMaze.start3D ?? { x: injectedMaze.start.x, y: 0, z: injectedMaze.start.z };
+      this.player = createPlayer(start3D, injectedMaze.cellSize, '3d');
+    } else {
+      this.player = createPlayer(injectedMaze.start, injectedMaze.cellSize);
+    }
     updatePlayerCamera(this.camera, this.player);
     this.currentMaze = injectedMaze;
     this.remainingPickups = [...injectedMaze.pickups];
@@ -935,6 +1087,22 @@ export class Game {
     if (this.destroyed) return;
     if (!this.renderer || !this.camera || !this.player || !this.sceneRefs || !this.currentMaze || !this.input) return;
     if (!this.bridge.isActiveLevel(this.currentMaze.id)) return;
+    // P4: 3D voxel maze. The 2D path below assumes a stack of
+    // layers (per-layer walls / pickups / enemies / parchment /
+    // transitions); a 3D cube has none of those. The 3D tick is
+    // a single short-circuit that handles mouse-look, 6-neighbor
+    // movement, exit check, and the render. Every per-entity
+    // branch (parchment / pickup / enemy / trap / transition) is
+    // skipped on purpose — P4a is the data + movement MVP and
+    // doesn't carry any 3D entities. The dispatch key is
+    // `walls3D !== undefined` so a hand-crafted 3D JSON round-
+    // trips through `load3D` (which sets it) AND a future
+    // 3D-priming path (P4b) can use the same branch.
+    if (this.currentMaze.walls3D !== undefined) {
+      this.tick3DMovement(dt);
+      this.renderer.render(this.sceneRefs.scene, this.camera);
+      return;
+    }
     // P3-1: in-flight vertical transition. The animation owns the
     // player for its entire duration — input is locked, the
     // player position is pinned at the transition cell, and
