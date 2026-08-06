@@ -697,7 +697,24 @@ export class Game {
     // scene). Stop first, dispose, rebuild, start.
     if (this.loop) this.loop.stop();
     if (this.sceneRefs) {
-      disposeScene(this.sceneRefs.scene, this.sceneRefs.walls, this.sceneRefs.pickups, this.sceneRefs.enemies, this.sceneRefs.traps, this.sceneRefs.doors);
+      // P3-2 fix (code review): pass `warningRings` and `transitions`
+      // to disposeScene. The arrays themselves were previously
+      // silently cleared by the `= []` default inside disposeScene
+      // (no-op) but `this.sceneRefs.warningRings` and
+      // `this.sceneRefs.transitions` still pointed at the disposed
+      // mesh arrays. Now the JS-side reference arrays are cleared
+      // in lockstep with the GPU resources, matching the wall /
+      // pickup / enemy / trap / door contract.
+      disposeScene(
+        this.sceneRefs.scene,
+        this.sceneRefs.walls,
+        this.sceneRefs.pickups,
+        this.sceneRefs.enemies,
+        this.sceneRefs.traps,
+        this.sceneRefs.doors,
+        this.sceneRefs.transitions,
+        this.sceneRefs.warningRings,
+      );
     }
     // P2-3: snapshot the mode so getCurrentMode() callers (HUD/UI) see
     // the level's active mode without having to reach into the store. The
@@ -845,7 +862,23 @@ export class Game {
     this.loop?.stop();
     this.input?.dispose();
     if (this.sceneRefs) {
-      disposeScene(this.sceneRefs.scene, this.sceneRefs.walls, this.sceneRefs.pickups, this.sceneRefs.enemies, this.sceneRefs.traps, this.sceneRefs.doors);
+      // P3-2 fix (code review): pass `warningRings` and `transitions`
+      // to disposeScene so the JS-side reference arrays are cleared
+      // in lockstep with the GPU resources. The previous
+      // 6-arg call left `sceneRefs.warningRings` and
+      // `sceneRefs.transitions` pointing at disposed arrays — the
+      // GPU resources were fine (scene.traverse walks every mesh)
+      // but the reference handles leaked until the next buildScene.
+      disposeScene(
+        this.sceneRefs.scene,
+        this.sceneRefs.walls,
+        this.sceneRefs.pickups,
+        this.sceneRefs.enemies,
+        this.sceneRefs.traps,
+        this.sceneRefs.doors,
+        this.sceneRefs.transitions,
+        this.sceneRefs.warningRings,
+      );
     }
     // P2-4a F1: drop the Enemy refs along with the scene. They hold no
     // GPU resources (Three.js capsule meshes live in sceneRefs.enemies

@@ -601,7 +601,14 @@ export function buildScene(maze: MazeData, darkMode =false): SceneRefs {
     });
     const ring = new THREE.Mesh(ringGeom, ringMat);
     ring.rotation.x = -Math.PI / 2; // lie flat on the floor
-    ring.position.set(cellCenterX, tcs + 0.03, cellCenterZ);
+    // P3-2 (code-review fix): the dark `hole-down` square sits at
+    // y = 0.02 (just above the floor). The warning ring previously
+    // sat at y = 0.03 — only 0.01 above the square, well inside the
+    // depth-buffer precision floor on most GPUs and guaranteed to
+    // z-fight when the camera looked down at a low angle. The 0.06
+    // offset gives ~3x the previous safety margin and still keeps
+    // the ring visually attached to the source cell.
+    ring.position.set(cellCenterX, tcs + 0.06, cellCenterZ);
     ring.visible = false;
     ring.userData = { transition: t, isWarningRing: true };
     scene.add(ring);
@@ -724,6 +731,13 @@ export function disposeScene(
   // `.length = 0` is for the reference array, not the GPU
   // resources.
   transitions: THREE.Mesh[] = [],
+  // P3-2: warning ring meshes, one per `hole-down` transition.
+  // Same dispose-in-lockstep contract as `transitions` — the
+  // scene-graph walk above already releases the GPU resources
+  // (geometry + material), the explicit `.length = 0` below
+  // clears the JS-side reference array so a level swap doesn't
+  // leak stale THREE.Mesh handles into the next SceneRefs.
+  warningRings: THREE.Mesh[] = [],
 ) {
   // F-2026-06-17-B-H-1: Set (strong refs), not WeakSet. Three.js
   // BufferGeometry / Material / Texture must be dispose()'d explicitly;
@@ -782,6 +796,13 @@ export function disposeScene(
   enemies.length = 0;
   traps.length = 0;
   transitions.length = 0;
+  // P3-2: clear the warningRings array in lockstep with the rest.
+  // Without this, the per-build array inside the new SceneRefs
+  // would still hold a reference to the disposed meshes until the
+  // next buildScene() overwrites it — a subtle source of
+  // "stale mesh in the next frame's render" bugs that the scene
+  // walk above would mask (it walks the graph, not the array).
+  warningRings.length = 0;
   // F-2026-07-01-FCR-M-2: clear the doors Map so stale mesh references
   // don't survive past a level transition.
   doors?.clear();

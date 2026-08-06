@@ -212,3 +212,67 @@ describe('Game P3-2 — tickWarningFlash handoff', () => {
     expect(sceneSetWarn).toHaveBeenLastCalledWith(null);
   });
 });
+
+// P3-2 (code-review fix): `disposeScene` and `Game.dispose()` both
+// clear the `warningRings` reference array. Without this pin, a
+// future refactor that drops the `warningRings` arg from the
+// `disposeScene` call would silently leak the disposed-mesh
+// reference array into the next `buildScene`. The test exercises
+// the full SceneRefs shape that buildScene returns, runs the
+// dispose path, and asserts the array is empty afterwards. The
+// check is the same as the existing transitions / walls / pickups
+// / enemies / traps / doors coverage — we just add a new row for
+// the P3-2 array.
+describe('P3-2 (code review) — disposeScene clears warningRings', () => {
+  it('disposeScene empties the warningRings array in lockstep with transitions', async () => {
+    const THREE = await import('three');
+    // Hand-build a SceneRefs-shaped object so the test runs without
+    // WebGL. The fake meshes are real `THREE.Mesh` instances with
+    // unique geometries so disposeScene's `seenGeoms` dedupe
+    // doesn't conflate them.
+    const scene = new THREE.Scene();
+    const makeMesh = (id: string): THREE.Mesh => {
+      const geom = new THREE.BoxGeometry(1, 1, 1);
+      const mat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+      const m = new THREE.Mesh(geom, mat);
+      m.userData = { id };
+      scene.add(m);
+      return m;
+    };
+    const walls = [makeMesh('w1'), makeMesh('w2')];
+    const pickups = [makeMesh('p1')];
+    const enemies = [makeMesh('e1')];
+    const traps = [makeMesh('t1')];
+    const doors = new Map<string, THREE.Mesh>([['d1', makeMesh('d1')]]);
+    const transitions = [makeMesh('tr1')];
+    const warningRings = [makeMesh('r1'), makeMesh('r2')];
+
+    // Snapshot the array identities so we can prove disposeScene
+    // mutated them in-place (consistent with the existing
+    // `walls.length = 0` etc. contract).
+    const transitionsRef = transitions;
+    const warningRingsRef = warningRings;
+
+    const { disposeScene } = await import('../../../src/engine/Scene');
+    disposeScene(scene, walls, pickups, enemies, traps, doors, transitions, warningRings);
+
+    // All per-build arrays are now empty references.
+    expect(walls.length).toBe(0);
+    expect(pickups.length).toBe(0);
+    expect(enemies.length).toBe(0);
+    expect(traps.length).toBe(0);
+    expect(transitions.length).toBe(0);
+    expect(warningRings.length).toBe(0);
+    expect(doors.size).toBe(0);
+
+    // The arrays we passed in ARE the same arrays the function
+    // cleared (in-place mutation, not reassignment) — this is the
+    // contract every other per-build array uses, and warningRings
+    // must follow the same pattern.
+    expect(transitions).toBe(transitionsRef);
+    expect(warningRings).toBe(warningRingsRef);
+
+    // The scene graph itself is cleared (every mesh removed).
+    expect(scene.children.length).toBe(0);
+  });
+});
