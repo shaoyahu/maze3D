@@ -8,6 +8,7 @@ import { InventoryBar } from './components/InventoryBar';
 import { ControlHints } from './components/ControlHints';
 import { EnemyCounter } from './components/EnemyCounter';
 import { InvulnerableFlash } from './components/InvulnerableFlash';
+import { WarningFlashOverlay } from './components/WarningFlashOverlay';
 
 // F-2026-06-30: P2-16 — small inline hint that surfaces the M-key
 // binding for levels with the parchment map. Rendered as a sibling
@@ -144,6 +145,7 @@ export function HUD() {
       <HealthBar health={health} max={maxHealth} />
       <EnemyCounter />
       <InvulnerableFlash />
+      <WarningFlashOverlay />
       <MapHint />
       <LevelIndicator />
     </>

@@ -140,6 +140,23 @@ export function GameCanvas({ maze, options }: { maze: MazeData; options?: StartL
       // `tickActiveTransition` in Game.ts), so a player standing
       // still never churns the React tree.
       onLevelChange: (level) => useGameStore.getState().setCurrentLevel(level),
+      // P3-3: hole-down warning flash HUD sync. `active=true`
+      // arms the wall-clock timestamp to `Date.now()/1000 + 0.5`
+      // (matches WARNING_FLASH_DURATION_SEC in Game.ts) and bumps
+      // the trigger counter so WarningFlashOverlay's React `key`
+      // re-mounts the element, restarting the CSS animation.
+      // `active=false` resets the timestamp to 0; the overlay's
+      // `until > now` check then fails and the component returns
+      // null. Both calls are no-ops if the store is unmounted.
+      onWarningFlashState: (active) => {
+        const s = useGameStore.getState();
+        if (active) {
+          s.setWarningFlashUntil(Date.now() / 1000 + 0.5);
+          s.bumpWarningFlashTriggerId();
+        } else {
+          s.setWarningFlashUntil(0);
+        }
+      },
     };
     const game = new Game(bridge);
     game.init(ref.current);

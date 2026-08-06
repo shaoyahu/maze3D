@@ -160,6 +160,20 @@ Type system 不会挡住"主动改 mapping"(exhaustive switch 仍过), 需 revie
 
 **HUD 屏闪是 P3-3 候选**:本期只做 3D 脚底红色环(spec §12 Q2 "脚底闪红"),HUD 红色 vignette overlay 留 P3-3。3D 视觉是核心提示,玩家低头就能看到;HUD 屏闪是 polish 上 polish。
 
+### HUD warning flash overlay (P3-3) — locked contracts
+
+**WarningFlashOverlay 镜像 P3-2 0.5s 状态机**(`src/ui/components/WarningFlashOverlay.tsx`):HUD 在 `warningFlashUntil > Date.now()/1000` 期间挂载全屏红色 vignette `rgba(255, 30, 30, 0.3)`,`pointerEvents: none`,复用 P2-4a `invulnerable-fade` keyframe (0% opacity 1 → 100% opacity 0, 0.5s linear forwards),**不引入新 CSS**。
+
+**Bridge callback**:`GameBridge.onWarningFlashState?: (active: boolean) => void`(`src/engine/Game.ts:184-189`)。Game.startWarningFlash 调 `true` + tickWarningFlash 完成 + startLevel reset 各调 `false`。GameCanvas.tsx 实现:`active=true` 写 `setWarningFlashUntil(Date.now()/1000 + 0.5)` + `bumpWarningFlashTriggerId()`;`active=false` 写 `setWarningFlashUntil(0)`。
+
+**Wall-clock compare**(同 P2-4a InvulnerableFlash):用 `Date.now()/1000` 不是 `elapsedTime`,这样 backgrounded tab 的 throttled rAF 不能冻结 overlay。F-2026-06-17-B-F-2 注释里详细说明这个 bug 修复。
+
+**Trigger id 重启 CSS animation**:`warningFlashTriggerId` 是 monotonic counter,WarningFlashOverlay 的 `key={triggerId}` 让 React 在新 warning 时重新挂载元素(继承 `data-trigger-id` 属性),CSS animation 重启。F-P3-3-1 注释解释。
+
+**0.5s 锁 WARNING_FLASH_DURATION_SEC**(P3-2 锁定):HUD 屏闪的 0.5s 必须与 Game.startWarningFlash 的 0.5s 对齐(两处都是 spec §12 Q2)。改其中一处必须同步改另一处。bridge 写 `Date.now()/1000 + 0.5` 而非新常量,保留 single source of truth。
+
+**只 hole-down 触发**:HUD 屏闪由 Game.startWarningFlash 驱动(同 P3-2 状态机),其他 transition kinds (stair-up/-down/hole-up/ladder) 走旧路径,既无 3D 环也无 HUD 屏闪。
+
 ## 测试
 
 ```

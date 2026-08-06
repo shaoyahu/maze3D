@@ -80,6 +80,20 @@ export interface GameState {
   // so the flash animation re-triggers on every hit, even when the
   // second hit lands inside the 0.5s window and is a no-op for health.
   hitCount: number;
+  // P3-3: HUD warning flash window. Same wall-clock-second contract
+  // as `invulnerableUntil` — the overlay compares against
+  // `Date.now()/1000` so a backgrounded tab's throttled rAF can't
+  // pin the red vignette on screen. Updated by the bridge
+  // `onWarningFlashState` callback when Game.startWarningFlash
+  // begins (set to now + 0.5) and when the warning completes (reset
+  // to 0). 0 = not flashing.
+  warningFlashUntil: number;
+  // P3-3: monotonic counter of warning-flash triggers. The
+  // WarningFlashOverlay uses this as the React `key` so a second
+  // warning (player falls into another hole-down before the first
+  // overlay unmounts) restarts the CSS animation cleanly. Mirrors
+  // `hitCount` for the InvulnerableFlash pattern.
+  warningFlashTriggerId: number;
   // P2-4a: progressive spawn scheduler state. SpawnSchedule comes from
   // StartLevelOptions.spawnSchedule; initial count is
   // StartLevelOptions.enemyCount (default 3). The counter increments up
@@ -185,6 +199,18 @@ export interface GameState {
   // P2-18: returns the current speed multiplier (1.0 normal, 0.5 slowed).
   // The engine calls this every frame via bridge.getPlayerSpeedMultiplier().
   getPlayerSpeedMultiplier: () => number;
+  // P3-3: set the wall-clock timestamp until which the warning
+  // vignette overlay should be visible. Called by the bridge's
+  // `onWarningFlashState` callback when Game.startWarningFlash
+  // begins (Date.now()/1000 + 0.5) and when the warning completes
+  // (reset to 0). The 0.5s window matches WARNING_FLASH_DURATION_SEC
+  // (P3-2 spec §12 Q2) — changing either requires changing the other.
+  setWarningFlashUntil: (until: number) => void;
+  // P3-3: bump the trigger counter. The WarningFlashOverlay's
+  // React `key={warningFlashTriggerId}` re-mounts the element,
+  // restarting the CSS animation. Mirrors the hitCount pattern
+  // for InvulnerableFlash.
+  bumpWarningFlashTriggerId: () => void;
 }
 
 export const useGameStore = create<GameState>((set, get) => ({
@@ -203,6 +229,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   currentSurviveSeconds: SURVIVE_SECONDS_DEFAULT,
   invulnerableUntil: 0,
   hitCount: 0,
+  warningFlashUntil: 0,
+  warningFlashTriggerId: 0,
   spawnSchedule: { ...SPAWN_SCHEDULE_DEFAULT },
   progressiveEnemyCount: 0,
   currentEnemyCount: 0,
@@ -320,6 +348,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         currentSurviveSeconds: surviveSeconds,
         invulnerableUntil: 0,
         hitCount: 0,
+        warningFlashUntil: 0,
+        warningFlashTriggerId: 0,
         spawnSchedule: { ...(options?.spawnSchedule ?? SPAWN_SCHEDULE_DEFAULT) },
         progressiveEnemyCount: requestedEnemyCount,
         currentEnemyCount: totalEnemyCount,
@@ -651,6 +681,16 @@ export const useGameStore = create<GameState>((set, get) => ({
   // P2-18: set the slow-until timestamp (called by bridge's onTrapHit
   // handler when a water trap fires).
   setSlowUntil: (until) => set({ slowUntil: until }),
+
+  // P3-3: warning flash setters. `setWarningFlashUntil` is the
+  // wall-clock-second timestamp setter (mirrors `invulnerableUntil`).
+  // `bumpWarningFlashTriggerId` is a separate setter so the bridge
+  // doesn't have to read-modify-write the trigger id — the bridge
+  // just calls both setters in sequence and the overlay's
+  // `key={warningFlashTriggerId}` re-mounts the element.
+  setWarningFlashUntil: (until) => set({ warningFlashUntil: until }),
+  bumpWarningFlashTriggerId: () =>
+    set((s) => ({ warningFlashTriggerId: s.warningFlashTriggerId + 1 })),
 
   // P2-18: returns the current speed multiplier based on whether the
   // player is still in the slow window. Called by the engine every frame

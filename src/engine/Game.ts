@@ -175,6 +175,17 @@ export interface GameBridge {
   // internally, and a level without multi-level UI simply ignores
   // the callback.
   onLevelChange?: (level: number) => void;
+  // P3-3: hole-down warning flash HUD sync. Fires `true` when
+  // Game.startWarningFlash begins (WarningFlashOverlay should
+  // mount) and `false` when the warning completes (or on a
+  // startLevel reset). The bridge implementation in
+  // GameCanvas.tsx writes the wall-clock timestamp to
+  // useGameStore.setWarningFlashUntil; the overlay reads it on
+  // every render and mounts the red vignette while the wall
+  // clock is past the threshold. Optional — the engine still
+  // runs the warning phase regardless, and a level without
+  // multi-level UI simply ignores the callback.
+  onWarningFlashState?: (active: boolean) => void;
 }
 
 // P2-11: events emitted by the engine to drive the tutorial store. The
@@ -427,6 +438,11 @@ export class Game {
     // pattern is the same as the rest of the engine ↔ scene
     // contract.
     this.sceneRefs?.setWarningFlashState(t);
+    // P3-3: notify the bridge so the HUD's WarningFlashOverlay can
+    // mount the red vignette. Optional (the engine runs the warning
+    // phase regardless); the bridge wires this to
+    // useGameStore.setWarningFlashUntil in GameCanvas.tsx.
+    this.bridge.onWarningFlashState?.(true);
   }
   // P3-2: per-frame warning driver. Accumulates `dt`; on completion
   // it hands the captured `transition` to `startActiveTransition`
@@ -443,6 +459,11 @@ export class Game {
       const t = w.transition;
       this.warningFlash = null;
       this.sceneRefs?.setWarningFlashState(null);
+      // P3-3: hide the HUD vignette at the same time the 3D ring
+      // hides. The bridge resets the wall-clock timestamp so the
+      // overlay's `until > now` check fails and the component
+      // returns null.
+      this.bridge.onWarningFlashState?.(false);
       this.startActiveTransition(t);
     }
   }
@@ -833,6 +854,13 @@ export class Game {
     // `activeTransition = null` reset above.
     this.warningFlash = null;
     this.sceneRefs?.setWarningFlashState(null);
+    // P3-3: also clear the HUD vignette. The bridge call is
+    // optional; without it the wall-clock timestamp would still
+    // fire the overlay on the new level for up to 0.5s, which
+    // would be a confusing "you just landed, why is the screen
+    // still red?" UX. The reset mirrors the scene-side clear
+    // above.
+    this.bridge.onWarningFlashState?.(false);
     this.loop = new Loop((dt) => this.update(dt));
     this.loop.start();
   }
