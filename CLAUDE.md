@@ -125,6 +125,27 @@ Type system 不会挡住"主动改 mapping"(exhaustive switch 仍过), 需 revie
 
 自研零依赖的 i18n,不是 i18next。`getT(locale)` 是纯函数翻译器;`useT()` 是绑定到 `settingsStore.language` 的 React hook,语言切换会重渲染所有消费者。占位符使用 `{name}` 语法。缺失 key → `console.warn` + 原样返回 key 字符串。未知 locale → warn + 回退到 `DEFAULT_LOCALE`。新增翻译写在 `src/i18n/resources/{zh,en}.ts`。关卡可带可选的 `i18n.en` 显示名;面向用户显示时用 `getDisplayName(maze, locale)`,缺失时回退到 `maze.name`。
 
+### Multi-level mazes (P3-1) — locked contracts
+
+**Level count range = 1..6**(`src/maze/types.ts:393`)。`LevelCount = 1 | 2 | 3 | 4 | 5 | 6` 是闭区间 union,`LEVEL_COUNT_VALUES` 是 runtime whitelist 守 `isLevelCount` type guard。任何超过 6 的关卡(程序化或手编)在 `JsonMazeProvider.validateMaze` / `levelStore.isValidSeed` / `algorithmForMode` 路径都会拒收。
+
+**Y-axis math is duplicated in 3 places**(故意 lockstep,见每处 inline 注释):
+- `FLOOR_HEIGHT = 2.4` — `Player.ts:20` / `Scene.ts:166` / `Game.ts:214`
+- `EYE_HEIGHT = 1.6` — `Player.ts:13` / `Game.ts:798/932`
+- 玩家 y 公式:`position.y = currentLevel * FLOOR_HEIGHT`(脚底) / `camera.y = position.y + EYE_HEIGHT`(头高)
+
+任一处改值必须 3 处同步;统一抽常量是 P3-1d 候选,但本增量刻意不抽(避免跨文件 typecheck blast radius)。
+
+**Seed codec 双版本**(`src/utils/seed.ts`):
+- `algo-v1-{algorithm}-{size}-{hex}` 既有 — 单层隐式 (`levelCount = undefined → 1`)
+- `algo-v2-{algorithm}-{size}-{levels}-{hex}` 新 — 显式 levels 1-6
+
+`Algorithm` 联合 + v2 编码是 URL seed 的一部分;**重命名/删除已有 algorithm 字面量 = breaking change**(影响 localStorage best 记录)。新增算法走 4 处同步路径(见 `ALGORITHM_REGISTRY` 段)。
+
+**`enemySpawner` 跨层分布契约**(P3-1 D5 fix):`injectEnemySpawns(maze, count, options?: { levelCount?: number })`。`levelCount >= 2` 时第 i 个 enemy `level = i % levelCount`(round-robin)。`options` 缺省 / `levelCount <= 1` 时 enemy 不带 `level` 字段(单层 back-compat)。两个 caller 同步传 `{ levelCount: maze.levelCount ?? 1 }`(`engine/Game.ts:649` + `store/gameStore.ts:297`),任一漏改会让多 enemy 在 L0 堆叠。
+
+**Editor 多层 UI**(`src/ui/editor/LevelTabs.tsx`):左侧 panel 底部的 level tab bar + [+]/[−] 按钮。`addLevel` 6 上限 / `removeLevel` 1 下限 都由 store 守门,UI 同步 `disabled` 视觉态。删层弹 confirm(`useConfirm` + `editor.leftPanel.removeLevelTitle/Message`)避免误删带实体的层。
+
 ## 测试
 
 ```

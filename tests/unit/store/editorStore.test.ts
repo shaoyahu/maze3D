@@ -22,8 +22,16 @@ function makeMaze(over: Partial<MazeData> = {}): MazeData {
     name: 'seed',
     size: { width: 5, depth: 4 },
     cellSize: 2,
-    start: { x: 0, z: 0 },
-    exit: { x: 4, z: 3 },
+    // P3-1: every P3-1 defaulted field is mirrored in the factory
+    // so `toEqual` against a `validateMaze` round-trip doesn't
+    // fail on the new defaults. A pre-P3-1 hand-crafted level
+    // (no `level` / `levelCount` / `transitions`) goes through
+    // the same default-fill and comes out byte-equivalent to this
+    // factory's output.
+    start: { x: 0, z: 0, level: 0 },
+    exit: { x: 4, z: 3, level: 0 },
+    levelCount: 1,
+    transitions: [],
     // All-walls grid: every cell is a wall. The editor starts with an
     // empty (fully-walled) canvas and the user carves out floors.
     walls: [
@@ -78,8 +86,8 @@ describe('useEditorStore', () => {
       expect(lvl.id.startsWith('custom-')).toBe(true);
       expect(lvl.name).toBe('新关卡');
       expect(lvl.size).toEqual({ width: 5, depth: 4 });
-      expect(lvl.start).toEqual({ x: 0, z: 0 });
-      expect(lvl.exit).toEqual({ x: 4, z: 3 });
+      expect(lvl.start).toEqual({ x: 0, z: 0, level: 0 });
+      expect(lvl.exit).toEqual({ x: 4, z: 3, level: 0 });
       expect(lvl.walls).toHaveLength(4);
       // F-2026-06-17: a fresh level is now a fully open floor (all 0s) —
       // matching the user's mental model of a "blank canvas". The W
@@ -632,7 +640,7 @@ describe('useEditorStore', () => {
       // Act
       useEditorStore.getState().placeStart(2, 2);
       // Assert
-      expect(useEditorStore.getState().level.start).toEqual({ x: 2, z: 2 });
+      expect(useEditorStore.getState().level.start).toEqual({ x: 2, z: 2, level: 0 });
       expect(useEditorStore.getState().dirty).toBe(true);
       expect(useEditorStore.getState().past.length).toBe(1);
     });
@@ -645,7 +653,7 @@ describe('useEditorStore', () => {
       // Assert — start moves to (3,1) AND the wall is carved to floor.
       // UX win over the legacy silent-reject so the user isn't stuck
       // with "I clicked but nothing happened".
-      expect(useEditorStore.getState().level.start).toEqual({ x: 3, z: 1 });
+      expect(useEditorStore.getState().level.start).toEqual({ x: 3, z: 1, level: 0 });
       expect(useEditorStore.getState().level.walls[1]![3]).toBe(0);
       expect(useEditorStore.getState().dirty).toBe(true);
       expect(useEditorStore.getState().past.length).toBe(1);
@@ -657,7 +665,7 @@ describe('useEditorStore', () => {
       // Act
       useEditorStore.getState().placeStart(99, 99);
       // Assert
-      expect(useEditorStore.getState().level.start).toEqual({ x: 0, z: 0 });
+      expect(useEditorStore.getState().level.start).toEqual({ x: 0, z: 0, level: 0 });
       expect(useEditorStore.getState().dirty).toBe(false);
       expect(useEditorStore.getState().past.length).toBe(0);
     });
@@ -678,7 +686,7 @@ describe('useEditorStore', () => {
       // Act
       useEditorStore.getState().placeExit(1, 1);
       // Assert
-      expect(useEditorStore.getState().level.exit).toEqual({ x: 1, z: 1 });
+      expect(useEditorStore.getState().level.exit).toEqual({ x: 1, z: 1, level: 0 });
       expect(useEditorStore.getState().dirty).toBe(true);
       expect(useEditorStore.getState().past.length).toBe(1);
     });
@@ -1047,7 +1055,7 @@ it('refuses to commit and surfaces pathNotAdjacent when any segment is diagonal'
       // Act — move start to (1, 1).
       useEditorStore.getState().placeStart(1, 1);
       // Assert — start was not moved (default grid keeps start at (0, 0)).
-      expect(useEditorStore.getState().level.start).toEqual({ x: 0, z: 0 });
+      expect(useEditorStore.getState().level.start).toEqual({ x: 0, z: 0, level: 0 });
       expect(useEditorStore.getState().lastErrorKey).toBe('editor.lastError.collideWithPickup');
     });
 
@@ -1159,9 +1167,9 @@ it('refuses to commit and surfaces pathNotAdjacent when any segment is diagonal'
         }
       }
       // Exit (4,3) → (2,2) after clamp.
-      expect(lvl.exit).toEqual({ x: 2, z: 2 });
+      expect(lvl.exit).toEqual({ x: 2, z: 2, level: 0 });
       // Start stays in bounds.
-      expect(lvl.start).toEqual({ x: 0, z: 0 });
+      expect(lvl.start).toEqual({ x: 0, z: 0, level: 0 });
     });
 
     // F-2026-06-12-T2-d: a resize to a grid that keeps start/exit in bounds should
@@ -1194,8 +1202,8 @@ it('refuses to commit and surfaces pathNotAdjacent when any segment is diagonal'
       const lvl = useEditorStore.getState().level;
       expect(lvl.size).toEqual({ width: 1, depth: 1 });
       expect(lvl.walls).toEqual([[0]]);
-      expect(lvl.start).toEqual({ x: 0, z: 0 });
-      expect(lvl.exit).toEqual({ x: 0, z: 0 });
+      expect(lvl.start).toEqual({ x: 0, z: 0, level: 0 });
+      expect(lvl.exit).toEqual({ x: 0, z: 0, level: 0 });
     });
   });
 
@@ -1602,7 +1610,7 @@ it('refuses to commit and surfaces pathNotAdjacent when any segment is diagonal'
       // Assert
       const lvl = useEditorStore.getState().level;
       expect(lvl.size).toEqual({ width: 5, depth: 4 });
-      expect(lvl.start).toEqual({ x: 0, z: 0 });
+      expect(lvl.start).toEqual({ x: 0, z: 0, level: 0 });
       expect(lvl.pickups).toHaveLength(1);
       expect(lvl.pickups[0]!.x).toBe(1);
       expect(lvl.pickups[0]!.z).toBe(0);
@@ -1908,6 +1916,445 @@ it('refuses to commit and surfaces pathNotAdjacent when any segment is diagonal'
       useEditorStore.getState().deleteSelected();
       expect(useEditorStore.getState().level.doors).toHaveLength(0);
       expect(useEditorStore.getState().dirty).toBe(true);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // P3-1c (H-2 fix): multi-level editor — currentLevel / addLevel /
+  // removeLevel / placeTransition / updateTransition / transition
+  // deletion / import / loadLevel clamp coverage.
+  //
+  // Background: P3-1c added the level-tab data + actions in editorStore
+  // but the test file never grew cases for them — the user-facing bug
+  // was "editor multi-level is half-shipped, no test pins the layer
+  // contract". These cases pin each clamp / filter / default so a
+  // future refactor can't silently regress.
+  // -----------------------------------------------------------------------
+  describe('multi-level editor (P3-1c H-2)', () => {
+    describe('setCurrentLevel', () => {
+      it('switches currentLevel to the requested index', () => {
+        useEditorStore.setState({
+          level: makeMaze({ levelCount: 3 }),
+          currentLevel: 0,
+        });
+        useEditorStore.getState().setCurrentLevel(2);
+        expect(useEditorStore.getState().currentLevel).toBe(2);
+      });
+
+      it('clamps currentLevel to the upper bound (levelCount - 1)', () => {
+        useEditorStore.setState({
+          level: makeMaze({ levelCount: 3 }),
+          currentLevel: 0,
+        });
+        useEditorStore.getState().setCurrentLevel(99);
+        expect(useEditorStore.getState().currentLevel).toBe(2);
+      });
+
+      it('clamps negative input to 0', () => {
+        useEditorStore.setState({
+          level: makeMaze({ levelCount: 3 }),
+          currentLevel: 1,
+        });
+        useEditorStore.getState().setCurrentLevel(-5);
+        expect(useEditorStore.getState().currentLevel).toBe(0);
+      });
+
+      it('is a no-op when the requested value equals currentLevel', () => {
+        useEditorStore.setState({
+          level: makeMaze({ levelCount: 3 }),
+          currentLevel: 1,
+        });
+        const beforeHash = useEditorStore.getState().level.id;
+        useEditorStore.getState().setCurrentLevel(1);
+        expect(useEditorStore.getState().currentLevel).toBe(1);
+        // No set() should have fired — the level id stays the same.
+        expect(useEditorStore.getState().level.id).toBe(beforeHash);
+      });
+
+      it('clears lastError / lastErrorKey on a successful switch', () => {
+        useEditorStore.setState({
+          level: makeMaze({ levelCount: 3 }),
+          currentLevel: 0,
+          lastError: 'prior rejection',
+          lastErrorKey: 'editor.lastError.wallOnStart',
+        });
+        useEditorStore.getState().setCurrentLevel(2);
+        expect(useEditorStore.getState().lastError).toBeNull();
+        expect(useEditorStore.getState().lastErrorKey).toBeNull();
+      });
+
+      it('clamps to 0 on a single-layer level regardless of input', () => {
+        // levelCount=1, currentLevel=0. Anything positive should clamp to 0.
+        useEditorStore.setState({
+          level: makeMaze({ levelCount: 1 }),
+          currentLevel: 0,
+        });
+        useEditorStore.getState().setCurrentLevel(7);
+        expect(useEditorStore.getState().currentLevel).toBe(0);
+      });
+    });
+
+    describe('addLevel', () => {
+      it('bumps levelCount by 1 and pins currentLevel to the new top', () => {
+        useEditorStore.setState({
+          level: makeMaze({ levelCount: 1 }),
+          currentLevel: 0,
+          dirty: false,
+        });
+        useEditorStore.getState().addLevel();
+        expect(useEditorStore.getState().level.levelCount).toBe(2);
+        expect(useEditorStore.getState().currentLevel).toBe(1);
+      });
+
+      it('is a no-op at the 6-layer cap', () => {
+        useEditorStore.setState({
+          level: makeMaze({ levelCount: 6 }),
+          currentLevel: 5,
+        });
+        useEditorStore.getState().addLevel();
+        expect(useEditorStore.getState().level.levelCount).toBe(6);
+        expect(useEditorStore.getState().currentLevel).toBe(5);
+      });
+
+      it('marks the level as dirty (so save draft / save level flag a change)', () => {
+        useEditorStore.setState({
+          level: makeMaze({ levelCount: 1 }),
+          currentLevel: 0,
+          dirty: false,
+        });
+        useEditorStore.getState().addLevel();
+        expect(useEditorStore.getState().dirty).toBe(true);
+      });
+
+      it('pushes a history entry so undo can revert the structural change', () => {
+        useEditorStore.setState({
+          level: makeMaze({ levelCount: 2 }),
+          currentLevel: 0,
+          past: [],
+          future: [],
+        });
+        useEditorStore.getState().addLevel();
+        expect(useEditorStore.getState().past.length).toBeGreaterThan(0);
+        const before = useEditorStore.getState().past.length;
+        useEditorStore.getState().undo();
+        expect(useEditorStore.getState().level.levelCount).toBe(2);
+        expect(useEditorStore.getState().past.length).toBe(before - 1);
+      });
+    });
+
+    describe('removeLevel', () => {
+      it('decrements levelCount by 1 and clamps currentLevel to the new top', () => {
+        useEditorStore.setState({
+          level: makeMaze({ levelCount: 3 }),
+          currentLevel: 2,
+        });
+        useEditorStore.getState().removeLevel();
+        expect(useEditorStore.getState().level.levelCount).toBe(2);
+        expect(useEditorStore.getState().currentLevel).toBe(1);
+      });
+
+      it('is a no-op at levelCount=1 (cannot remove the bottom layer)', () => {
+        useEditorStore.setState({
+          level: makeMaze({ levelCount: 1 }),
+          currentLevel: 0,
+        });
+        useEditorStore.getState().removeLevel();
+        expect(useEditorStore.getState().level.levelCount).toBe(1);
+        expect(useEditorStore.getState().currentLevel).toBe(0);
+      });
+
+      it('filters out entities whose level equals the removed layer', () => {
+        const maze = makeMaze({
+          levelCount: 3,
+          pickups: [
+            { id: 'p0', x: 0, z: 0, type: 'time', value: 5, level: 0 },
+            { id: 'p2', x: 1, z: 1, type: 'health', value: 1, level: 2 },
+          ],
+          enemies: [
+            { id: 'e2', x: 2, z: 2, path: [{ x: 2, z: 2 }, { x: 2, z: 3 }], level: 2 },
+          ],
+          traps: [
+            { id: 't2', x: 3, z: 2, kind: 'fire', level: 2 },
+            { id: 't1', x: 3, z: 1, kind: 'water', level: 1 },
+          ],
+          doors: [
+            { id: 'd2', x: 4, z: 2, keyColor: 'red', level: 2 },
+          ],
+        });
+        useEditorStore.setState({ level: maze, currentLevel: 1 });
+        useEditorStore.getState().removeLevel();
+        // Layer 2 (the removed top) is gone — its entities drop.
+        // Layer 0 and 1 entities survive.
+        const after = useEditorStore.getState().level;
+        expect(after.pickups.map((p) => p.id)).toEqual(['p0']);
+        expect(after.enemies).toHaveLength(0);
+        expect(after.traps.map((t) => t.id)).toEqual(['t1']);
+        expect(after.doors).toHaveLength(0);
+      });
+
+      it('filters out transitions whose source OR destination equals the removed layer', () => {
+        const maze = makeMaze({
+          levelCount: 3,
+          transitions: [
+            { id: 'tr01', kind: 'stair-up', level: 0, x: 0, z: 0, toLevel: 1, toX: 0, toZ: 0 },
+            { id: 'tr12', kind: 'stair-up', level: 1, x: 1, z: 1, toLevel: 2, toX: 1, toZ: 1 },
+          ],
+        });
+        useEditorStore.setState({ level: maze, currentLevel: 0 });
+        useEditorStore.getState().removeLevel();
+        const after = useEditorStore.getState().level;
+        // tr01 stays (0→1, no 2 involvement). tr12 dropped (1→2).
+        expect(after.transitions?.map((t) => t.id)).toEqual(['tr01']);
+      });
+
+      it('pushed history so undo restores the removed layer + its entities', () => {
+        const maze = makeMaze({
+          levelCount: 2,
+          pickups: [{ id: 'p1', x: 1, z: 1, type: 'time', value: 5, level: 1 }],
+        });
+        useEditorStore.setState({ level: maze, currentLevel: 1, past: [], future: [] });
+        useEditorStore.getState().removeLevel();
+        expect(useEditorStore.getState().level.levelCount).toBe(1);
+        useEditorStore.getState().undo();
+        expect(useEditorStore.getState().level.levelCount).toBe(2);
+        expect(useEditorStore.getState().level.pickups.map((p) => p.id)).toEqual(['p1']);
+      });
+
+      it('add then remove restores the original levelCount (round-trip)', () => {
+        // Round-trip contract: the user can grow and shrink the layer
+        // count without losing entities on the layers they kept.
+        useEditorStore.setState({
+          level: makeMaze({
+            levelCount: 2,
+            pickups: [{ id: 'p0', x: 0, z: 0, type: 'time', value: 5, level: 0 }],
+          }),
+          currentLevel: 0,
+        });
+        useEditorStore.getState().addLevel();
+        expect(useEditorStore.getState().level.levelCount).toBe(3);
+        useEditorStore.getState().removeLevel();
+        expect(useEditorStore.getState().level.levelCount).toBe(2);
+        // L0 entity survived both ops.
+        expect(useEditorStore.getState().level.pickups.map((p) => p.id)).toEqual(['p0']);
+      });
+    });
+
+    describe('placeTransition', () => {
+      // 5x4 walkable grid for happy-path placement.
+      const openMaze = (): MazeData =>
+        makeMaze({
+          walls: [
+            [0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0],
+          ],
+          start: { x: 0, z: 0, level: 0 },
+          exit: { x: 4, z: 3, level: 0 },
+          levelCount: 3,
+        });
+
+      it("places a stair-up with toLevel = currentLevel + 1", () => {
+        useEditorStore.setState({ level: openMaze(), currentLevel: 0 });
+        useEditorStore.getState().placeTransition('stair-up', 2, 2);
+        const t = useEditorStore.getState().level.transitions?.[0];
+        expect(t).toMatchObject({ kind: 'stair-up', level: 0, x: 2, z: 2, toLevel: 1 });
+      });
+
+      it("places a stair-down with toLevel = currentLevel - 1", () => {
+        useEditorStore.setState({ level: openMaze(), currentLevel: 2 });
+        useEditorStore.getState().placeTransition('stair-down', 2, 2);
+        const t = useEditorStore.getState().level.transitions?.[0];
+        expect(t).toMatchObject({ kind: 'stair-down', level: 2, x: 2, z: 2, toLevel: 1 });
+      });
+
+      it('places a hole-up with toLevel = currentLevel + 1', () => {
+        useEditorStore.setState({ level: openMaze(), currentLevel: 1 });
+        useEditorStore.getState().placeTransition('hole-up', 1, 1);
+        const t = useEditorStore.getState().level.transitions?.[0];
+        expect(t).toMatchObject({ kind: 'hole-up', level: 1, toLevel: 2 });
+      });
+
+      it('places a hole-down with toLevel = currentLevel - 1', () => {
+        useEditorStore.setState({ level: openMaze(), currentLevel: 1 });
+        useEditorStore.getState().placeTransition('hole-down', 1, 1);
+        const t = useEditorStore.getState().level.transitions?.[0];
+        expect(t).toMatchObject({ kind: 'hole-down', level: 1, toLevel: 0 });
+      });
+
+      it('places a ladder (default toLevel clamps to currentLevel when isUp is false)', () => {
+        // Ladder is NOT in the `isUp` set (stair-up / hole-up), so the
+        // current implementation defaults to `currentLevel - 1` and
+        // clamps into [0, count-1]. With currentLevel=0, the
+        // resulting toLevel is 0 — the user can override via
+        // updateTransition. We pin the actual contract so a future
+        // change to ladder's default direction is caught here.
+        useEditorStore.setState({ level: openMaze(), currentLevel: 0 });
+        useEditorStore.getState().placeTransition('ladder', 3, 3);
+        const t = useEditorStore.getState().level.transitions?.[0];
+        expect(t).toMatchObject({ kind: 'ladder', level: 0, toLevel: 0 });
+      });
+
+      it('rejects placement out of bounds (no transition, no lastErrorKey)', () => {
+        // OOB is a silent no-op (the spec deliberately avoids a
+        // toast for OOB — the click lands on no cell). Pin the
+        // contract so a future refactor can't accidentally surface
+        // a translation-less "out of bounds" string.
+        useEditorStore.setState({ level: openMaze(), currentLevel: 0 });
+        useEditorStore.getState().placeTransition('stair-up', 99, 99);
+        expect(useEditorStore.getState().level.transitions ?? []).toHaveLength(0);
+        expect(useEditorStore.getState().lastErrorKey).toBeNull();
+      });
+
+      it('rejects placement on a wall cell', () => {
+        const maze = makeMaze({
+          walls: [
+            [0, 0, 0, 0, 0],
+            [0, 1, 0, 0, 0],
+            [0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0],
+          ],
+          start: { x: 0, z: 0, level: 0 },
+          exit: { x: 4, z: 3, level: 0 },
+          levelCount: 2,
+        });
+        useEditorStore.setState({ level: maze, currentLevel: 0 });
+        useEditorStore.getState().placeTransition('stair-up', 1, 1);
+        expect(useEditorStore.getState().level.transitions ?? []).toHaveLength(0);
+        expect(useEditorStore.getState().lastErrorKey).toBe('editor.lastError.transitionOnWall');
+      });
+
+      it('rejects placement on the start cell', () => {
+        useEditorStore.setState({ level: openMaze(), currentLevel: 0 });
+        useEditorStore.getState().placeTransition('stair-up', 0, 0);
+        expect(useEditorStore.getState().level.transitions ?? []).toHaveLength(0);
+        expect(useEditorStore.getState().lastErrorKey).toBe('editor.lastError.transitionOnStart');
+      });
+
+      it('rejects placement on the exit cell', () => {
+        useEditorStore.setState({ level: openMaze(), currentLevel: 0 });
+        useEditorStore.getState().placeTransition('stair-up', 4, 3);
+        expect(useEditorStore.getState().level.transitions ?? []).toHaveLength(0);
+        expect(useEditorStore.getState().lastErrorKey).toBe('editor.lastError.transitionOnExit');
+      });
+
+      it('rejects a same-cell duplicate on the same source layer', () => {
+        useEditorStore.setState({ level: openMaze(), currentLevel: 0 });
+        useEditorStore.getState().placeTransition('stair-up', 2, 2);
+        useEditorStore.getState().placeTransition('stair-up', 2, 2);
+        expect(useEditorStore.getState().level.transitions).toHaveLength(1);
+        expect(useEditorStore.getState().lastErrorKey).toBe('editor.lastError.transitionDuplicate');
+      });
+
+      it('allows the same (x, z) on a different source layer', () => {
+        useEditorStore.setState({ level: openMaze(), currentLevel: 0 });
+        useEditorStore.getState().placeTransition('stair-up', 2, 2);
+        useEditorStore.setState({ currentLevel: 1 });
+        useEditorStore.getState().placeTransition('stair-up', 2, 2);
+        expect(useEditorStore.getState().level.transitions).toHaveLength(2);
+      });
+
+      it('clamps toLevel to the top layer when stair-up is placed on the top layer', () => {
+        // currentLevel=2 (top of a 3-layer maze). desiredTo = 3, but
+        // Math.max(0, Math.min(2, 3)) = 2. The user can fix the
+        // destination via the properties panel; the editor accepts
+        // the placement so the click is never lost.
+        useEditorStore.setState({ level: openMaze(), currentLevel: 2 });
+        useEditorStore.getState().placeTransition('stair-up', 1, 1);
+        const t = useEditorStore.getState().level.transitions?.[0];
+        expect(t).toMatchObject({ kind: 'stair-up', level: 2, toLevel: 2 });
+      });
+    });
+
+    describe('updateTransition', () => {
+      const seeded = (): MazeData =>
+        makeMaze({
+          levelCount: 3,
+          transitions: [
+            { id: 't1', kind: 'stair-up', level: 0, x: 1, z: 1, toLevel: 1 },
+          ],
+        });
+
+      it('patches the matching transition by id', () => {
+        useEditorStore.setState({ level: seeded() });
+        useEditorStore.getState().updateTransition('t1', { kind: 'hole-up' });
+        expect(useEditorStore.getState().level.transitions?.[0].kind).toBe('hole-up');
+      });
+
+      it('clamps toLevel into [0, levelCount - 1]', () => {
+        useEditorStore.setState({ level: seeded() });
+        useEditorStore.getState().updateTransition('t1', { toLevel: 99 });
+        expect(useEditorStore.getState().level.transitions?.[0].toLevel).toBe(2);
+        useEditorStore.getState().updateTransition('t1', { toLevel: -7 });
+        expect(useEditorStore.getState().level.transitions?.[0].toLevel).toBe(0);
+      });
+
+      it('patches toX / toZ (landing offset)', () => {
+        useEditorStore.setState({ level: seeded() });
+        useEditorStore.getState().updateTransition('t1', { toX: 2, toZ: 3 });
+        expect(useEditorStore.getState().level.transitions?.[0]).toMatchObject({ toX: 2, toZ: 3 });
+      });
+
+      it('is a no-op when the id does not match any transition', () => {
+        const before = seeded();
+        useEditorStore.setState({ level: before });
+        useEditorStore.getState().updateTransition('does-not-exist', { kind: 'ladder' });
+        // Level is shallow-copied only on a real touch; on no-op the
+        // transition list is unchanged. We compare by id + kind.
+        expect(useEditorStore.getState().level.transitions?.[0].kind).toBe('stair-up');
+      });
+    });
+
+    describe('deleteSelected: transition', () => {
+      it('removes the transition matching the selection id', () => {
+        const maze = makeMaze({
+          levelCount: 2,
+          transitions: [
+            { id: 't1', kind: 'stair-up', level: 0, x: 1, z: 1, toLevel: 1 },
+            { id: 't2', kind: 'stair-up', level: 0, x: 2, z: 1, toLevel: 1 },
+          ],
+        });
+        useEditorStore.setState({ level: maze, selection: { kind: 'transition', id: 't1' } });
+        useEditorStore.getState().deleteSelected();
+        expect(useEditorStore.getState().level.transitions?.map((t) => t.id)).toEqual(['t2']);
+      });
+
+      it('is a no-op when the selection id is not in the transitions list', () => {
+        const maze = makeMaze({
+          levelCount: 2,
+          transitions: [
+            { id: 't1', kind: 'stair-up', level: 0, x: 1, z: 1, toLevel: 1 },
+          ],
+        });
+        useEditorStore.setState({ level: maze, selection: { kind: 'transition', id: 'ghost' } });
+        useEditorStore.getState().deleteSelected();
+        expect(useEditorStore.getState().level.transitions).toHaveLength(1);
+      });
+    });
+
+    describe('loadLevel currentLevel clamp', () => {
+      it('clamps a stale currentLevel to the new levelCount - 1', () => {
+        useEditorStore.setState({
+          level: makeMaze({ id: 'a', levelCount: 1 }),
+          currentLevel: 3,
+        });
+        const target = makeMaze({ id: 'b', levelCount: 4 });
+        useEditorStore.getState().loadLevel(target);
+        expect(useEditorStore.getState().level.id).toBe('b');
+        expect(useEditorStore.getState().currentLevel).toBe(3);
+      });
+
+      it('clamps a stale currentLevel when the new levelCount is smaller', () => {
+        useEditorStore.setState({
+          level: makeMaze({ id: 'a', levelCount: 5 }),
+          currentLevel: 4,
+        });
+        const target = makeMaze({ id: 'b', levelCount: 2 });
+        useEditorStore.getState().loadLevel(target);
+        expect(useEditorStore.getState().level.id).toBe('b');
+        // currentLevel 4 → clamp to 1 (levelCount - 1)
+        expect(useEditorStore.getState().currentLevel).toBe(1);
+      });
     });
   });
 });

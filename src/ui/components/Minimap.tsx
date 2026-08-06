@@ -35,6 +35,20 @@ const COLOR_WALL = '#2a2a3a';
 const COLOR_PATH = '#4a4a5a';
 const COLOR_EXIT = 'rgba(92, 255, 92, 0.75)';
 const COLOR_VIEW_CONE = 'rgba(255, 184, 77, 0.18)'; // accent @18% - the "I see here" wedge
+// P3-1: per-layer visited cells get a subtle cyan tint so the
+// player can see at a glance which cells they've already walked
+// into on the current layer. Distinct from the parchment's
+// sepia tint (`rgba(120, 80, 40, 0.18)`) so the two surfaces
+// don't visually drift. The alpha is intentionally low — the
+// highlight is decorative, not a primary cue (the player
+// arrow is the authoritative position signal).
+const COLOR_VISITED = 'rgba(120, 200, 255, 0.18)';
+// P3-1: shared empty visited set for levels the player hasn't
+// walked into yet. The Map.get fallback in the Minimap body
+// points at this constant so the visited overlay's reference
+// stays stable across re-renders (memoized on identity) and the
+// `<g>`'s opacity transition runs without a key churn.
+const EMPTY_VISITED: ReadonlySet<string> = new Set<string>();
 const PICKUP_DOT_ALPHA =0.95; // F1: per-type pickup dot alpha
 
 // View cone: length2 grid cells (so the player can see ~2 cells ahead).
@@ -95,6 +109,58 @@ const StaticMaze = memo(function StaticMaze({ maze }: { maze: MazeData }) {
  );
 });
 
+// P3-1: per-layer visited cells overlay. The minimap auto-switches
+// to the player's current layer (subscribed from `player.currentLevel`)
+// and the engine writes visited cells into `parchment.visitedCells`
+// partitioned by layer (a `Map<level, Set<"x,z">>`). This component:
+//   - selects the current level's visited set
+//     (`parchment.visitedCells.get(level) ?? new Set()`);
+//   - renders one rect per visited cell, color-coded
+//     `COLOR_VISITED`;
+//   - re-renders the parent minimap via the store subscription
+//     when either the level or the visited set changes
+//     (engine pushes on every `recordVisit` via
+//     `setParchment`).
+//
+// We memoize on `(level, visitedSet)` so a tick that doesn't grow
+// the visited set (player standing still on an already-visited
+// cell) skips reconciliation — the static maze + view cone +
+// player arrow are not re-diffed.
+const VisitedCells = memo(function VisitedCells({
+ level,
+ visited,
+}: {
+ level: number;
+ visited: ReadonlySet<string>;
+}) {
+ const rects: React.ReactElement[] = [];
+ for (const key of visited) {
+ const [xStr, zStr] = key.split(',');
+ const x = Number(xStr);
+ const z = Number(zStr);
+ // P3-1: defensive — a hand-authored level that emits a key
+ // outside the current maze size should never crash the
+ // minimap. Skip silently; the next `recordVisit` will
+ // refresh the subscription.
+ if (!Number.isFinite(x) || !Number.isFinite(z)) continue;
+ rects.push(
+ <rect
+ key={`${x}-${z}`}
+ data-level={level}
+ x={x}
+ y={z}
+ width="1"
+ height="1"
+ fill={COLOR_VISITED}
+ />,
+ );
+ }
+ // `data-testid` on the group so tests can grab the rect list
+ // per level and assert which layer the minimap is currently
+ // displaying.
+ return <g data-testid="minimap-visited" data-level={level}>{rects}</g>;
+});
+
 // Top-down view of the maze. Player position is polled at ~10 Hz from the
 // engine's player state via gameRef - this avoids pushing the player
 // position through React state on every frame (which would re-render
@@ -103,9 +169,54 @@ const StaticMaze = memo(function StaticMaze({ maze }: { maze: MazeData }) {
 //
 // P2-11: when `maze.hideMinimap` is true, return null. Used by the
 // 哨兵回廊 teaching level to hide the map during the chase.
+//
+// P3-1: §6.2 — auto-switches to the player's current layer
+// (`useGameStore.player.currentLevel`) and renders that layer's
+// visited cells on top of the maze background. The visited overlay
+// is `VisitedCells` (memoized on `(level, set)`); the player-level
+// subscription is a single `useGameStore` selector so a transition
+// that flips the layer triggers a full minimap re-render with the
+// new level's data — no manual refresh needed.
 export function Minimap({ maze, gameRef }: MinimapProps) {
  if (maze.hideMinimap) return null;
  useTickRef(gameRef,100);
+ // P3-1: subscribe to the player's current layer (engine pushes
+ // via `GameBridge.onLevelChange` → `setCurrentLevel` in
+ // GameCanvas). The selector is intentionally narrow — only
+ // `player?.currentLevel` — so unrelated store churn (health,
+ // inventory, etc.) doesn't re-render the minimap.
+ const currentLevel = useGameStore((s) => s.player?.currentLevel ?? 0);
+ // P3-1: subscribe to the parchment so the engine's per-tick
+ // `recordVisit` push updates the visited overlay. We read
+ // `visitedCells` directly (the `Map<level, Set<"x,z">>` shape)
+ // and select the current level's subset in the render body.
+ const visitedMap = useGameStore((s) => s.parchment.visitedCells);
+ // P3-1: select the current level's visited set. The Map.get
+ // short-circuits to undefined for an unknown level (the engine
+ // populates the entry on the first `recordVisit` for that
+ // layer; the fallback empty Set renders an empty overlay,
+ // which is correct for a level the player hasn't walked into
+ // yet).
+ const visitedForLevel = useMemo(
+ () => visitedMap.get(currentLevel) ?? EMPTY_VISITED,
+ [visitedMap, currentLevel],
+ );
+ // P3-1: 0.1s smooth re-render on layer change. The flash state
+ // drops opacity to 0.4 on every level flip and the CSS
+ // `transition` (see STYLE_CONTAINER extension below) smooths
+ // the jump; the timer then restores it. Without the flash
+ // the visited overlay would pop (old rects vanish, new rects
+ // appear in the same frame), which on a dark / sepia UI feels
+ // like a glitch.
+ const [overlayOpacity, setOverlayOpacity] = useState(1);
+ const prevLevelRef = useRef(currentLevel);
+ useEffect(() => {
+ if (prevLevelRef.current === currentLevel) return;
+ prevLevelRef.current = currentLevel;
+ setOverlayOpacity(0.4);
+ const id = window.setTimeout(() => setOverlayOpacity(1), 50);
+ return () => window.clearTimeout(id);
+ }, [currentLevel]);
  const p = gameRef.current?.getPlayerPosition() ?? {
  x: maze.start.x * maze.cellSize + maze.cellSize /2,
  z: maze.start.z * maze.cellSize + maze.cellSize /2,
@@ -142,7 +253,7 @@ export function Minimap({ maze, gameRef }: MinimapProps) {
  //  needs an sr-only <table> summary — that's the one where a blind
  //  level author would otherwise have no semantic picture of the grid
  //  they're editing. That table lives in EditorViewport, not here.
- <div aria-hidden="true" data-testid="minimap" style={STYLE_CONTAINER}>
+ <div aria-hidden="true" data-testid="minimap" data-level={currentLevel} style={STYLE_CONTAINER}>
  <svg
  viewBox={viewBox}
  width="100%"
@@ -150,6 +261,18 @@ export function Minimap({ maze, gameRef }: MinimapProps) {
  preserveAspectRatio="xMidYMid meet"
  >
  <StaticMaze maze={maze} />
+ {/* P3-1: visited cells for the current layer. The <g> wrapper
+ carries the layer-flip opacity transition (0.1s) so the
+ swap from the previous level's set to the new one doesn't
+ pop. We render a fresh memoized subtree per level so the
+ old rects are unmounted, not faded out alongside the new
+ ones (which would briefly double-draw the same cell). */}
+ <g
+ style={{ opacity: overlayOpacity, transition: 'opacity 0.1s linear' }}
+ data-testid="minimap-visited-wrap"
+ >
+ <VisitedCells level={currentLevel} visited={visitedForLevel} />
+ </g>
  <polygon
  points={conePoints}
  fill={COLOR_VIEW_CONE}

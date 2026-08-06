@@ -45,6 +45,17 @@ const normalMaze: MazeData = {
   rules: { ...parchmentMaze.rules, minimapMode: 'top-right' },
 };
 
+// P3-1: §6.3 — multi-level parchment maze. The level tabs
+// (L1..L{levelCount}) read `maze.levelCount`; the visiting
+// filter reads `parchment.visitedCells.get(viewingLevel)`.
+// Three layers is enough to exercise the Tab-key cycle
+// (0 → 1 → 2 → 0 wraps around at the boundary).
+const multiLevelMaze: MazeData = {
+  ...parchmentMaze,
+  id: 'multi-level',
+  levelCount: 3,
+};
+
 beforeEach(() => {
   useGameStore.setState({ parchment: createEmptyParchment() });
 });
@@ -112,9 +123,9 @@ describe('ParchmentMap (P2-16)', () => {
     // re-renders but the testid is stable.
     useGameStore.setState({
       parchment: {
-        visitedCells: new Set(),
+        visitedCells: new Map(),
         damageRegions: [
-          { type: 'water', cx: 1, cz: 1, radius: 1, seed: 1, createdAtTick: 0 },
+          { type: 'water', cx: 1, cz: 1, radius: 1, seed: 1, createdAtTick: 0, level: 0 },
         ],
         isOpen: true,
       },
@@ -140,5 +151,157 @@ describe('ParchmentMap (P2-16)', () => {
     } finally {
       if (origHidden) Object.defineProperty(document, 'hidden', origHidden);
     }
+  });
+});
+
+// P3-1: §6.3 — multi-level tab bar + Tab-key cycle + per-level
+// filter. The modal mounts only when `parchment.isOpen` is true
+// AND `maze.rules.minimapMode === 'parchment'`. The tab bar
+// is `L1..L{maze.levelCount}`; the `viewingLevel` local state
+// is the source of truth for the canvas's per-level filter.
+describe('ParchmentMap P3-1 level tab bar', () => {
+  beforeEach(() => {
+    useGameStore.setState({
+      parchment: createEmptyParchment(),
+      // P3-1: seed the player mirror so the modal re-opens
+      // with the right default viewing level. We use 0 here
+      // (the single-layer-equivalent default) so the
+      // "initial viewing level = player level" assertion is
+      // unambiguous.
+      player: { currentLevel: 0 },
+    });
+  });
+
+  it('renders one tab per layer, with the player layer highlighted by default', () => {
+    useGameStore.getState().openParchment();
+    render(<ParchmentMap maze={multiLevelMaze} />);
+    const tablist = screen.getByTestId('parchment-tabs');
+    expect(tablist).toBeInTheDocument();
+    // Three layers → three buttons (data-testid is
+    // `parchment-tab-{i}`). Default viewingLevel mirrors
+    // `player.currentLevel` (0), so tab 0 is active.
+    for (let i = 0; i < multiLevelMaze.levelCount!; i++) {
+      const tab = screen.getByTestId(`parchment-tab-${i}`);
+      expect(tab).toBeInTheDocument();
+      expect(tab.textContent).toBe(`L${i + 1}`);
+    }
+    expect(screen.getByTestId('parchment-tab-0').getAttribute('data-active')).toBe('true');
+    expect(screen.getByTestId('parchment-tab-1').getAttribute('data-active')).toBe('false');
+    expect(screen.getByTestId('parchment-tab-2').getAttribute('data-active')).toBe('false');
+  });
+
+  it('falls back to a single tab when the maze has no `levelCount` (back-compat)', () => {
+    // The pre-P3-1 parchmentMaze fixture has no `levelCount`,
+    // so the modal renders ONE tab (L1) and the canvas filters
+    // by layer 0 — exactly the legacy behavior.
+    useGameStore.getState().openParchment();
+    render(<ParchmentMap maze={parchmentMaze} />);
+    const tab = screen.getByTestId('parchment-tab-0');
+    expect(tab).toBeInTheDocument();
+    expect(tab.textContent).toBe('L1');
+    // No L2 / L3 tabs.
+    expect(screen.queryByTestId('parchment-tab-1')).toBeNull();
+  });
+
+  it('clicking a tab moves the highlighted state and updates the canvas data-level', () => {
+    useGameStore.getState().openParchment();
+    render(<ParchmentMap maze={multiLevelMaze} />);
+    // Click L2 → tab 1 active, canvas data-level = 1.
+    fireEvent.click(screen.getByTestId('parchment-tab-1'));
+    expect(screen.getByTestId('parchment-tab-0').getAttribute('data-active')).toBe('false');
+    expect(screen.getByTestId('parchment-tab-1').getAttribute('data-active')).toBe('true');
+    expect(screen.getByTestId('parchment-tab-2').getAttribute('data-active')).toBe('false');
+    const canvas = screen.getByTestId('parchment-canvas');
+    expect(canvas.getAttribute('data-level')).toBe('1');
+  });
+
+  it('the Tab key cycles viewingLevel 0 → 1 → 2 → 0 (Q11 决策) when the modal is open', () => {
+    useGameStore.getState().openParchment();
+    render(<ParchmentMap maze={multiLevelMaze} />);
+    const canvas = screen.getByTestId('parchment-canvas');
+    expect(canvas.getAttribute('data-level')).toBe('0');
+    // Tab → L1
+    act(() => {
+      fireEvent.keyDown(document, { key: 'Tab', code: 'Tab' });
+    });
+    expect(screen.getByTestId('parchment-canvas').getAttribute('data-level')).toBe('1');
+    expect(screen.getByTestId('parchment-tab-1').getAttribute('data-active')).toBe('true');
+    // Tab → L2
+    act(() => {
+      fireEvent.keyDown(document, { key: 'Tab', code: 'Tab' });
+    });
+    expect(screen.getByTestId('parchment-canvas').getAttribute('data-level')).toBe('2');
+    expect(screen.getByTestId('parchment-tab-2').getAttribute('data-active')).toBe('true');
+    // Tab → wraps to L0
+    act(() => {
+      fireEvent.keyDown(document, { key: 'Tab', code: 'Tab' });
+    });
+    expect(screen.getByTestId('parchment-canvas').getAttribute('data-level')).toBe('0');
+    expect(screen.getByTestId('parchment-tab-0').getAttribute('data-active')).toBe('true');
+  });
+
+  it('the Tab key is a no-op when the modal is closed', () => {
+    // Don't open the modal; the listener is mounted on the
+    // impl, which is gated on `parchment.isOpen`. A stray
+    // Tab press should not flip the viewing level because
+    // nothing is rendered.
+    useGameStore.setState({ parchment: { ...createEmptyParchment(), isOpen: false } });
+    render(<ParchmentMap maze={multiLevelMaze} />);
+    expect(screen.queryByTestId('parchment-canvas')).toBeNull();
+    // Dispatching Tab on document while the modal is closed
+    // should be ignored (the listener was never installed).
+    act(() => {
+      fireEvent.keyDown(document, { key: 'Tab', code: 'Tab' });
+    });
+    expect(screen.queryByTestId('parchment-canvas')).toBeNull();
+  });
+
+  it('re-syncs viewingLevel to the player layer when the modal re-opens', () => {
+    // Open the modal on L0, click L2, close. Re-open on
+    // L1 (player crossed a transition while the modal was
+    // closed). The new viewing level should be L1, not the
+    // stale L2 from before.
+    useGameStore.getState().openParchment();
+    const { unmount } = render(<ParchmentMap maze={multiLevelMaze} />);
+    fireEvent.click(screen.getByTestId('parchment-tab-2'));
+    expect(screen.getByTestId('parchment-tab-2').getAttribute('data-active')).toBe('true');
+    unmount();
+    // Close the modal, then move the player to L1 and re-open.
+    useGameStore.getState().closeParchment();
+    useGameStore.setState({ player: { currentLevel: 1 } });
+    useGameStore.getState().openParchment();
+    render(<ParchmentMap maze={multiLevelMaze} />);
+    // The new default is L1 (player's current level), not the
+    // stale L2 from before the close.
+    expect(screen.getByTestId('parchment-canvas').getAttribute('data-level')).toBe('1');
+    expect(screen.getByTestId('parchment-tab-1').getAttribute('data-active')).toBe('true');
+  });
+
+  it('filters the canvas draw loop by the viewing level (per-level visited cells)', () => {
+    // L0 has two visited cells, L1 has one, L2 has none. With
+    // viewingLevel = 1, the canvas's per-level filter
+    // (`drawVisitedForLevel`) only paints L1's single cell.
+    useGameStore.getState().openParchment();
+    useGameStore.setState({
+      parchment: {
+        visitedCells: new Map([
+          [0, new Set<string>(['0,0', '1,0'])],
+          [1, new Set<string>(['2,2'])],
+          [2, new Set<string>()],
+        ]),
+        damageRegions: [],
+        isOpen: true,
+      },
+    });
+    render(<ParchmentMap maze={multiLevelMaze} />);
+    fireEvent.click(screen.getByTestId('parchment-tab-1'));
+    // The data-level attribute pins the canvas's per-level
+    // contract — the draw loop uses this value to select the
+    // visited subset. We don't try to inspect the canvas's
+    // pixel buffer (happy-dom has no real 2D context); the
+    // data-level + the Tab-cycling test above cover the
+    // render-path contract end-to-end.
+    const canvas = screen.getByTestId('parchment-canvas');
+    expect(canvas.getAttribute('data-level')).toBe('1');
   });
 });

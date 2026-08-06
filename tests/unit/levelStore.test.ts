@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useLevelStore, isBestRecord, sanitizeBestRecordMap } from '../../src/store/levelStore';
 import type { BestRecord } from '../../src/store/levelStore';
+import type { LevelCount } from '../../src/maze/types';
 
 function rec(over: Partial<BestRecord> = {}): BestRecord {
   return {
@@ -144,6 +145,49 @@ describe('levelStore', () => {
       expect(isBestRecord(rec({
         seed: { ...PROC_SEED, algorithm: 'fake-algorithm' as 'recursive-backtracker' },
       }))).toBe(false);
+    });
+
+    // P3-1: v2 seed codec. A best record whose `seed.levelCount`
+    // is in the 1..6 whitelist must pass isBestRecord; a bogus
+    // value (NaN / 0 / 7 / negative / non-integer) must drop the
+    // record. The whitelist is the same 1..6 list the seed codec
+    // uses; tightening or widening one without the other is a
+    // P3-1b-level change, not a P3-1a change.
+    describe('P3-1 v2 seed (levelCount field)', () => {
+      it('accepts a record whose seed carries levelCount=2 (v2 multi-layer best)', () => {
+        expect(isBestRecord(rec({
+          levelId: 'algo-v2-recursive-backtracker-15-2-0123456789abcdef',
+          seed: { ...PROC_SEED, levelCount: 2 },
+        }))).toBe(true);
+      });
+
+      it('accepts a record whose seed carries the upper-bound levelCount=6', () => {
+        expect(isBestRecord(rec({
+          levelId: 'algo-v2-recursive-backtracker-15-6-0123456789abcdef',
+          seed: { ...PROC_SEED, levelCount: 6 },
+        }))).toBe(true);
+      });
+
+      it.each([0, 7, 99, -1, 1.5, NaN] as const)(
+        'rejects a record whose seed carries out-of-range levelCount %s',
+        (bad) => {
+          expect(isBestRecord(rec({
+            seed: { ...PROC_SEED, levelCount: bad as LevelCount },
+          }))).toBe(false);
+        },
+      );
+
+      it('rejects a record whose seed carries a non-number levelCount', () => {
+        expect(isBestRecord(rec({
+          seed: { ...PROC_SEED, levelCount: '2' as unknown as LevelCount },
+        }))).toBe(false);
+      });
+
+      it('sanitizeBestRecordMap drops records whose levelCount is out of range', () => {
+        const good = rec({ levelId: 'good', seed: { ...PROC_SEED, levelCount: 2 } });
+        const bad = rec({ levelId: 'bad', seed: { ...PROC_SEED, levelCount: 99 as LevelCount } });
+        expect(sanitizeBestRecordMap({ good, bad })).toEqual({ map: { good }, dropped: ['bad'] });
+      });
     });
   });
 

@@ -50,8 +50,10 @@ describe('level JSON files', () => {
     const maze = await provider.load('teaching-04');
     expect(maze.id).toBe('teaching-04');
     expect(maze.size).toEqual({ width: 10, depth: 10 });
-    expect(maze.start).toEqual({ x: 0, z: 0 });
-    expect(maze.exit).toEqual({ x: 9, z: 9 });
+    // P3-1: validator defaults start / exit.level to 0 (see
+    // JsonMazeProvider's parseEntityLevel helper).
+    expect(maze.start).toMatchObject({ x: 0, z: 0, level: 0 });
+    expect(maze.exit).toMatchObject({ x: 9, z: 9, level: 0 });
   });
 
   it('teaching-04.json is solvable from start to exit', async () => {
@@ -69,8 +71,9 @@ describe('level JSON files', () => {
     const maze = await provider.load('teaching-01');
     expect(maze.id).toBe('teaching-01');
     expect(maze.size).toEqual({ width: 3, depth: 3 });
-    expect(maze.start).toEqual({ x: 0, z: 1 });
-    expect(maze.exit).toEqual({ x: 2, z: 1 });
+    // P3-1: see teaching-04 above. Validator defaults level=0.
+    expect(maze.start).toMatchObject({ x: 0, z: 1, level: 0 });
+    expect(maze.exit).toMatchObject({ x: 2, z: 1, level: 0 });
   });
 
   it('teaching-01.json is solvable from start to exit', async () => {

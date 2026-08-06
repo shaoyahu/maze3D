@@ -119,4 +119,82 @@ describe('HUD', () => {
       expect(second.getAttribute('data-hit-count')).toBe('2');
     });
   });
+
+  // P3-1: §6.1 — LevelIndicator. The component subscribes to
+  // `useGameStore(s => s.player?.currentLevel ?? 0)` and renders
+  // the 1-indexed chip ("L1" for level 0, "L2" for level 1, …).
+  // The 0.2s opacity flash on level change is exercised by
+  // mutating the store and asserting the new chip appears.
+  describe('LevelIndicator (P3-1)', () => {
+    it('renders the L1 chip when the player is on layer 0 (the default)', () => {
+      useGameStore.setState({ player: { currentLevel: 0 } });
+      render(<HUD />);
+      const chip = screen.getByTestId('hud-level-indicator');
+      expect(chip).toBeInTheDocument();
+      expect(chip.textContent).toBe('L1');
+      expect(chip.getAttribute('data-level')).toBe('0');
+    });
+
+    it('renders the L{N+1} chip for every layer the player can be on (L1..L6)', () => {
+      for (let level = 0; level < 6; level++) {
+        useGameStore.setState({ player: { currentLevel: level } });
+        const { unmount } = render(<HUD />);
+        const chip = screen.getByTestId('hud-level-indicator');
+        expect(chip.textContent).toBe(`L${level + 1}`);
+        expect(chip.getAttribute('data-level')).toBe(`${level}`);
+        unmount();
+      }
+    });
+
+    it('falls back to L1 when `player` is null (pre-startLevel)', () => {
+      // The selector `s.player?.currentLevel ?? 0` collapses a
+      // null player to layer 0 → L1. We don't render the
+      // component in this state in practice (no level is
+      // active), but the HUD is mounted on the menu screen too
+      // — and the chip must not crash on render.
+      useGameStore.setState({ player: null });
+      expect(() => render(<HUD />)).not.toThrow();
+      const chip = screen.getByTestId('hud-level-indicator');
+      expect(chip.textContent).toBe('L1');
+    });
+
+    it('updates the chip when the player crosses a vertical transition', () => {
+      useGameStore.setState({ player: { currentLevel: 0 } });
+      const { rerender } = render(<HUD />);
+      expect(screen.getByTestId('hud-level-indicator').textContent).toBe('L1');
+      // The engine pushes the new layer through the bridge; the
+      // store mirror flips to match. HUD re-renders with the
+      // new chip in the same frame.
+      act(() => {
+        useGameStore.setState({ player: { currentLevel: 2 } });
+      });
+      rerender(<HUD />);
+      expect(screen.getByTestId('hud-level-indicator').textContent).toBe('L3');
+      expect(screen.getByTestId('hud-level-indicator').getAttribute('data-level')).toBe('2');
+    });
+
+    it('exposes the full "Level N" string as aria-label for screen readers', () => {
+      // The visible text is the compact "L{N}" form, but the
+      // aria-label / title use the full "Level N" string so
+      // screen-reader / hover-tooltip users get the long form.
+      // We don't assert the exact wording (locale-dependent)
+      // — only that the full form is structurally different
+      // from the short form (i.e. NOT the same string).
+      useGameStore.setState({ player: { currentLevel: 1 } });
+      render(<HUD />);
+      const chip = screen.getByTestId('hud-level-indicator');
+      const aria = chip.getAttribute('aria-label') ?? '';
+      const title = chip.getAttribute('title') ?? '';
+      const visible = chip.textContent ?? '';
+      // Both must be non-empty (real i18n key, not the raw
+      // "{level}" placeholder), and distinct from the visible
+      // short form.
+      expect(aria.length).toBeGreaterThan(0);
+      expect(title.length).toBeGreaterThan(0);
+      expect(aria).not.toBe(visible);
+      expect(title).not.toBe(visible);
+      // Sanity: the visible chip is the short form.
+      expect(visible).toBe('L2');
+    });
+  });
 });

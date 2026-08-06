@@ -150,7 +150,8 @@ describe('EditorViewport (P2-4b #11)', () => {
     useEditorStore.setState({ tool: 'start' });
     render(<EditorViewport />);
     fireEvent.click(screen.getByTestId('cell-2-1'));
-    expect(useEditorStore.getState().level.start).toEqual({ x: 2, z: 1 });
+    // P3-1: editor store now writes start.level alongside x/z.
+    expect(useEditorStore.getState().level.start).toEqual({ x: 2, z: 1, level: 0 });
   });
 
   it('start tool on a wall cell auto-carves the wall and moves the start there', () => {
@@ -161,7 +162,8 @@ describe('EditorViewport (P2-4b #11)', () => {
     render(<EditorViewport />);
     fireEvent.click(screen.getByTestId('cell-1-1')); // wall in fixture
     const lvl = useEditorStore.getState().level;
-    expect(lvl.start).toEqual({ x: 1, z: 1 });
+    // P3-1: editor store writes start.level = 0 alongside x/z.
+    expect(lvl.start).toEqual({ x: 1, z: 1, level: 0 });
     expect(lvl.walls[1]![1]).toBe(0);
   });
 
@@ -169,7 +171,8 @@ describe('EditorViewport (P2-4b #11)', () => {
     useEditorStore.setState({ tool: 'exit' });
     render(<EditorViewport />);
     fireEvent.click(screen.getByTestId('cell-2-2'));
-    expect(useEditorStore.getState().level.exit).toEqual({ x: 2, z: 2 });
+    // P3-1: editor store now writes exit.level alongside x/z.
+    expect(useEditorStore.getState().level.exit).toEqual({ x: 2, z: 2, level: 0 });
   });
 
   it('clicking a cell with the pickup tool adds a pickup to that cell', () => {

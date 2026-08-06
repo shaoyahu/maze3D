@@ -146,4 +146,31 @@ describe('injectEnemySpawns', () => {
       expect(s.path[0]).toEqual({ x: s.x, z: s.z });
     }
   });
+
+  // P3-1 (D5 fix): the spawner accepts an optional `levelCount` and
+  // round-robins each accepted spawn across N layers. The contract
+  // matches the engine's `Enemy.level` pinning (types.ts:464-468) and
+  // the Game.startLevel / gameStore.startLevel callers (which pass
+  // `maze.levelCount ?? 1`).
+  describe('multi-level layer distribution (P3-1 D5)', () => {
+    it('distributes 3 enemies across 3 levels as 0, 1, 2 (round-robin)', () => {
+      const spawns = injectEnemySpawns(openMaze, 3, { levelCount: 3 });
+      expect(spawns).toHaveLength(3);
+      expect(spawns.map((s) => s.level)).toEqual([0, 1, 2]);
+    });
+
+    it('leaves `level` undefined when options is omitted (single-layer back-compat)', () => {
+      const spawns = injectEnemySpawns(openMaze, 3);
+      for (const s of spawns) {
+        expect(s.level).toBeUndefined();
+      }
+    });
+
+    it('cycles through levels modulo levelCount when count > levelCount', () => {
+      const spawns = injectEnemySpawns(openMaze, 6, { levelCount: 2 });
+      expect(spawns).toHaveLength(6);
+      // Round-robin across [0, 1] for 6 spawns → 0,1,0,1,0,1
+      expect(spawns.map((s) => s.level)).toEqual([0, 1, 0, 1, 0, 1]);
+    });
+  });
 });

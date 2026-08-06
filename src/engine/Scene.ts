@@ -1,7 +1,15 @@
 import * as THREE from 'three';
-import type { KeyColor, MazeData } from '../maze/types';
+import type { CellType, KeyColor, MazeData, VerticalTransition } from '../maze/types';
 import { createPickupMaterial } from '../entities/Pickup';
 import { ENEMY_HEIGHT, ENEMY_RADIUS } from '../entities/Enemy';
+// P3-1: the engine needs the per-layer wall grids to render N
+// stacked floors / ceilings / walls. `MazeData.walls` only holds
+// layer 0 (spec §4.1), so we reach into the provider's cache —
+// the cache is populated by `AlgorithmMazeProvider.load` and
+// keyed by `maze.id`. For non-procedural levels (hand-crafted
+// JSON) the cache miss collapses to `[maze.walls]`, which is
+// exactly the single-layer back-compat path.
+import { getPerLayerWallsByLevelId } from '../maze/AlgorithmMazeProvider';
 
 // F-2026-06-17-B-H-1: track GPU resources with strong Set<> refs, NOT
 // WeakSet<>. Three.js textures / geometries / materials are GPU-backed;
@@ -135,7 +143,51 @@ export interface SceneRefs {
   // doors.get(id) to hide the mesh on openDoor().
   doors: Map<string, THREE.Mesh>;
   playerMarker: THREE.Mesh;
+  // P3-1: meshes for the vertical transitions (stairs / holes /
+  // ladders). One mesh per `MazeData.transitions` entry, anchored
+  // on the source layer's cell center. The engine doesn't
+  // currently animate or interact with these — the workstream-2
+  // Game tick reads `maze.transitions` to drive collision + the
+  // `applyVerticalTransition` tween — but exposing them in
+  // SceneRefs keeps the dispose path uniform (walk the scene
+  // graph and call `dispose` on every mesh, regardless of which
+  // SceneRefs array it came from).
+  transitions: THREE.Mesh[];
   setDarkMode: (enabled: boolean) => void;
+}
+
+// P3-1: shared y-axis math constants. The single source of truth
+// for "where does each layer sit in world space". Engine + player
+// + future editor UI all import from Player.ts to read these
+// values (the same constants live there for the engine side), so
+// a future tweak to the layer height only needs to land in one
+// place. Re-declared here for the engine's own readability — the
+// values MUST stay in lockstep with `Player.FLOOR_HEIGHT`.
+const FLOOR_HEIGHT = 2.4;
+const WALL_HEIGHT = FLOOR_HEIGHT; // 2.4m tall walls per layer
+const WALL_CENTER_Y = WALL_HEIGHT / 2; // 1.2m — wall mesh center y above the layer's floor
+
+// Resolve the per-layer wall grids for the engine. The provider
+// caches the grids from `generateMultiLevel`; for a cache miss
+// (hand-crafted JSON level, or the first frame of a non-
+// procedural level) we collapse to `[maze.walls]` so the single-
+// layer rendering path stays exact.
+//
+// The function is the single point where the engine meets the
+// multi-layer data side-channel; the rest of `buildScene` treats
+// `perLayerWalls` as an opaque `CellType[][][]` of length
+// `levelCount`.
+function resolvePerLayerWalls(maze: MazeData): CellType[][][] {
+  const levelCount = maze.levelCount ?? 1;
+  const cached = getPerLayerWallsByLevelId(maze.id);
+  if (cached && cached.length === levelCount) {
+    return cached;
+  }
+  // Cache miss / length mismatch: fall back to single-layer. This
+  // is the back-compat path for hand-crafted levels (which never
+  // hit the provider's cache) and for any caller that builds a
+  // SceneRefs without going through `AlgorithmMazeProvider.load`.
+  return [maze.walls];
 }
 
 export function buildScene(maze: MazeData, darkMode =false): SceneRefs {
@@ -204,36 +256,40 @@ export function buildScene(maze: MazeData, darkMode =false): SceneRefs {
   const w = maze.size.width;
   const d = maze.size.depth;
 
+  // P3-1: figure out how many layers this level has. Single-layer
+  // (levelCount=1) is the P2-era back-compat path — same meshes,
+  // same positions, same mesh count, same dispose signature. The
+  // multi-layer path adds per-layer floors / ceilings / walls and a
+  // transitions array.
+  const levelCount = maze.levelCount ?? 1;
+  const perLayerWalls = resolvePerLayerWalls(maze);
+
   const floorTex = createFloorTexture();
   floorTex.repeat.set(w, d);
   const floorMat = new THREE.MeshLambertMaterial({ map: floorTex });
 
   const wallTex = createWallTexture();
   const wallMat = new THREE.MeshLambertMaterial({ map: wallTex });
-  const exitMat = new THREE.MeshLambertMaterial({ color: 0x5cff5c, emissive: 0x115511 });
 
-  const floorGeom = new THREE.PlaneGeometry(w * cs, d * cs);
-  const floor = new THREE.Mesh(floorGeom, floorMat);
-  floor.rotation.x = -Math.PI / 2;
-  // Floor (and ceiling) span the full collision-grid AABB [0, w*cs] × [0, d*cs].
-  // Their CENTER must therefore sit at (w*cs/2, d*cs/2). Earlier code subtracted
-  // cs/2, which shifted the entire visible world by half a cell relative to the
-  // collision grid — see the cell-center alignment block below.
-  floor.position.set((w * cs) / 2, 0, (d * cs) / 2);
-  scene.add(floor);
-
-  // Ceiling is the sky — repeat-tiled cloud texture, MeshBasicMaterial so
-  // it stays bright regardless of the directional light angle. Without
-  // this the player would see a flat dark plane when looking up.
+  // P3-1: hoist the ceiling texture + material outside the layer
+  // loop. The single-layer path used them once; the multi-layer
+  // path can reuse the same material across all layers (the
+  // texture is tiled w×d and never per-layer anyway). Without
+  // the hoist, a 6-layer level would create 6 cloud textures —
+  // a slow leak that compounds over level transitions.
   const ceilingTex = createCloudTexture();
   ceilingTex.repeat.set(w, d);
-  const ceiling = new THREE.Mesh(
-    new THREE.PlaneGeometry(w * cs, d * cs),
-    new THREE.MeshBasicMaterial({ map: ceilingTex }),
-  );
-  ceiling.rotation.x = Math.PI / 2;
-  ceiling.position.set((w * cs) / 2, 2.4, (d * cs) / 2);
-  scene.add(ceiling);
+  const ceilingMat = new THREE.MeshBasicMaterial({ map: ceilingTex });
+
+  const exitMat = new THREE.MeshLambertMaterial({ color: 0x5cff5c, emissive: 0x115511 });
+
+  // P3-1: hoisted geometries / materials that are reused across all
+  // layers. The single-layer path uses them once (same as before);
+  // the multi-layer path reuses them `levelCount` times, so the
+  // GPU sees `levelCount` meshes that all share one geometry +
+  // material — no extra allocation per layer.
+  const floorGeom = new THREE.PlaneGeometry(w * cs, d * cs);
+  const wallGeom = new THREE.BoxGeometry(cs, WALL_HEIGHT, cs);
 
   // CELL-CENTER ALIGNMENT (critical — do not "simplify" away the + cs/2).
   // Collision.collidesAt and Rules.cellOf both treat cell (cx, cz) as the
@@ -246,52 +302,101 @@ export function buildScene(maze: MazeData, darkMode =false): SceneRefs {
   // is centered on its position, so positioning at ((x+0.5)*cs, _, (z+0.5)*cs)
   // makes the box occupy exactly [x*cs, (x+1)*cs] × [z*cs, (z+1)*cs] — the
   // same AABB the collision system uses.
+  //
+  // P3-1: this rule is unchanged for multi-layer. Every wall / floor /
+  // exit / etc. on layer L is positioned at y = L * FLOOR_HEIGHT plus its
+  // pre-P3-1 base y, so the cell-center invariant in x/z keeps holding
+  // (collision in workstream 2 reads the same coords regardless of layer).
   const walls: THREE.Mesh[] = [];
-  const wallGeom = new THREE.BoxGeometry(cs, 2.4, cs);
-  for (let z = 0; z < d; z++) {
-    for (let x = 0; x < w; x++) {
-      if (maze.walls[z][x] === 1) {
+  for (let L = 0; L < levelCount; L++) {
+    const layerWalls = perLayerWalls[L];
+    const layerY = L * FLOOR_HEIGHT;
+
+    // Floor — a single plane at this layer's height. The texture +
+    // geometry are shared across layers (no per-layer allocation),
+    // only the position changes.
+    const floor = new THREE.Mesh(floorGeom, floorMat);
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.set((w * cs) / 2, layerY, (d * cs) / 2);
+    scene.add(floor);
+
+    // Ceiling — the sky. Same plane geometry as the floor (rotated
+    // the other way) so layer L's ceiling and layer (L+1)'s floor
+    // share the same y = (L+1) * FLOOR_HEIGHT. The cloud texture +
+    // MeshBasicMaterial keep it bright regardless of the directional
+    // light angle. Without this the player would see a flat dark
+    // plane when looking up.
+    const ceiling = new THREE.Mesh(floorGeom, ceilingMat);
+    ceiling.rotation.x = Math.PI / 2;
+    ceiling.position.set((w * cs) / 2, layerY + FLOOR_HEIGHT, (d * cs) / 2);
+    scene.add(ceiling);
+
+    // Interior walls for this layer.
+    for (let z = 0; z < d; z++) {
+      for (let x = 0; x < w; x++) {
+        if (layerWalls[z][x] === 1) {
+          const m = new THREE.Mesh(wallGeom, wallMat);
+          m.position.set((x + 0.5) * cs, layerY + WALL_CENTER_Y, (z + 0.5) * cs);
+          scene.add(m);
+          walls.push(m);
+        }
+      }
+    }
+
+    // PERIMETER (visual-only). Collision.collidesAt already treats x<0, x>=w,
+    // z<0, z>=d as wall — but without a mesh there, a player blocked by the
+    // map edge sees nothing in front and the on-floor marker (which represents
+    // their collision volume) appears to float in mid-corridor. We add a
+    // ring of wall meshes one cell outside the grid (including the four
+    // corners) for every layer — the player's view from layer L is
+    // independent of the others (pure A per spec §3 decision 2), so each
+    // layer needs its own perimeter ring.
+    //
+    // The shared wall geometry + material keep the GPU cost of duplicating
+    // the ring per layer modest: 4 perimeter corners + 2*(w+2) + 2*d
+    // wall meshes per layer, all using the same two GPU buffers.
+    for (let x = -1; x <= w; x++) {
+      for (const z of [-1, d]) {
         const m = new THREE.Mesh(wallGeom, wallMat);
-        m.position.set((x + 0.5) * cs, 1.2, (z + 0.5) * cs);
+        m.position.set((x + 0.5) * cs, layerY + WALL_CENTER_Y, (z + 0.5) * cs);
+        scene.add(m);
+        walls.push(m);
+      }
+    }
+    for (let z = 0; z < d; z++) {
+      for (const x of [-1, w]) {
+        const m = new THREE.Mesh(wallGeom, wallMat);
+        m.position.set((x + 0.5) * cs, layerY + WALL_CENTER_Y, (z + 0.5) * cs);
         scene.add(m);
         walls.push(m);
       }
     }
   }
 
-  // PERIMETER (visual-only). Collision.collidesAt already treats x<0, x>=w,
-  // z<0, z>=d as wall — but without a mesh there, a player blocked by the
-  // map edge sees nothing in front and the on-floor marker (which represents
-  // their collision volume) appears to float in mid-corridor. Add a ring of
-  // wall meshes one cell outside the grid (including the four corners) so
-  // OOB-blocked motion looks identical to wall-blocked motion: marker
-  // outer edge (radius 0.26) overlaps the visible wall face by ~0.06 world
-  // units, just like any interior wall.
-  for (let x = -1; x <= w; x++) {
-    for (const z of [-1, d]) {
-      const m = new THREE.Mesh(wallGeom, wallMat);
-      m.position.set((x + 0.5) * cs, 1.2, (z + 0.5) * cs);
-      scene.add(m);
-      walls.push(m);
-    }
-  }
-  for (let z = 0; z < d; z++) {
-    for (const x of [-1, w]) {
-      const m = new THREE.Mesh(wallGeom, wallMat);
-      m.position.set((x + 0.5) * cs, 1.2, (z + 0.5) * cs);
-      scene.add(m);
-      walls.push(m);
-    }
-  }
-
+  // P3-1: the exit is now a per-entity-on-its-layer placement.
+  // Only the level matching `maze.exit.level` (default 0) shows
+  // the visible exit pad; the engine's `crossesExit` rule (in
+  // workstream 2's Collision / Rules surface) reads the same
+  // field to gate the win. The y is shifted by `exit.level *
+  // FLOOR_HEIGHT` so the pad sits flush with the layer's floor
+  // (a 0.05m lift above the floor is the historical
+  // "exit-pad-glow" effect).
+  const exitLevel = maze.exit.level ?? 0;
   const exitGeom = new THREE.BoxGeometry(cs * 0.6, 0.1, cs * 0.6);
   const exit = new THREE.Mesh(exitGeom, exitMat);
-  exit.position.set((maze.exit.x + 0.5) * cs, 0.05, (maze.exit.z + 0.5) * cs);
+  exit.position.set(
+    (maze.exit.x + 0.5) * cs,
+    exitLevel * FLOOR_HEIGHT + 0.05,
+    (maze.exit.z + 0.5) * cs,
+  );
   scene.add(exit);
 
   // Player position indicator: a flat green ring on the floor, slightly
   // larger than the player's collision radius (0.2) so the user can see
   // where they are. Position is updated each frame in Game.update.
+  // P3-1: the marker follows the start cell's layer (default 0) so
+  // a multi-level spawn lands on the right floor.
+  const startLevel = maze.start.level ?? 0;
   const playerMarkerGeom = new THREE.RingGeometry(0.22, 0.26, 32);
   const playerMarkerMat = new THREE.MeshBasicMaterial({
     color: 0x4dff88,
@@ -299,21 +404,26 @@ export function buildScene(maze: MazeData, darkMode =false): SceneRefs {
   });
   const playerMarker = new THREE.Mesh(playerMarkerGeom, playerMarkerMat);
   playerMarker.rotation.x = -Math.PI / 2;
-  playerMarker.position.set(maze.start.x * cs + cs / 2, 0.02, maze.start.z * cs + cs / 2);
+  playerMarker.position.set(
+    maze.start.x * cs + cs / 2,
+    startLevel * FLOOR_HEIGHT + 0.02,
+    maze.start.z * cs + cs / 2,
+  );
   scene.add(playerMarker);
 
   const pickups: THREE.Mesh[] = [];
   const pickupGeom = new THREE.OctahedronGeometry(0.25);
   for (const p of maze.pickups) {
     const pickupMat = createPickupMaterial(p.type);
+    const pLevel = p.level ?? 0;
     const lower = new THREE.Mesh(pickupGeom, pickupMat);
-    lower.position.set((p.x + 0.5) * cs, 0.35, (p.z + 0.5) * cs);
+    lower.position.set((p.x + 0.5) * cs, pLevel * FLOOR_HEIGHT + 0.35, (p.z + 0.5) * cs);
     lower.userData = { pickup: p, siblings: [] as THREE.Mesh[] };
     scene.add(lower);
     pickups.push(lower);
 
     const upper = new THREE.Mesh(pickupGeom, pickupMat);
-    upper.position.set((p.x + 0.5) * cs, 0.75, (p.z + 0.5) * cs);
+    upper.position.set((p.x + 0.5) * cs, pLevel * FLOOR_HEIGHT + 0.75, (p.z + 0.5) * cs);
     upper.userData = { pickup: p, siblings: [lower] };
     lower.userData.siblings = [upper];
     scene.add(upper);
@@ -326,13 +436,20 @@ export function buildScene(maze: MazeData, darkMode =false): SceneRefs {
   // instance exactly once because the disposeMat/seenGeoms set dedupes.
   // ENEMY_RADIUS/ENEMY_HEIGHT are imported from entities/Enemy so the
   // hitbox and the visible mesh can't drift (review F11).
+  // P3-1: each enemy sits on its own layer; `e.level ?? 0` is the
+  // historical single-layer default so pre-P3-1 levels keep working.
   const enemies: THREE.Mesh[] = [];
   const enemyGeom = new THREE.CapsuleGeometry(ENEMY_RADIUS, ENEMY_HEIGHT - 2 * ENEMY_RADIUS);
   const enemyMat = new THREE.MeshLambertMaterial({ color: 0x553333 });
   for (const e of maze.enemies) {
     const mesh = new THREE.Mesh(enemyGeom, enemyMat);
-    // Spawn at cell center, y = height/2 so the capsule sits on the floor.
-    mesh.position.set((e.x + 0.5) * cs, ENEMY_HEIGHT / 2, (e.z + 0.5) * cs);
+    // Spawn at cell center, y = ENEMY_HEIGHT/2 above the layer's floor.
+    const eLevel = e.level ?? 0;
+    mesh.position.set(
+      (e.x + 0.5) * cs,
+      eLevel * FLOOR_HEIGHT + ENEMY_HEIGHT / 2,
+      (e.z + 0.5) * cs,
+    );
     mesh.userData = { enemy: e };
     scene.add(mesh);
     enemies.push(mesh);
@@ -343,6 +460,8 @@ export function buildScene(maze: MazeData, darkMode =false): SceneRefs {
   // F-2026-07-01-FCR-M-3: hoisted geometries outside the loop (like wallGeom,
   // pickupGeom, etc.) so they are shared across all trap meshes instead
   // of creating one geometry per trap.
+  // P3-1: per-layer y offset so a trap on layer L sits 0.03m above
+  // the L-th floor.
   const traps: THREE.Mesh[] = [];
   const fireTrapMat = new THREE.MeshLambertMaterial({
     color: 0xff6622,
@@ -362,8 +481,9 @@ export function buildScene(maze: MazeData, darkMode =false): SceneRefs {
     const mat = t.kind === 'fire' ? fireTrapMat : waterTrapMat;
     const geom = t.kind === 'fire' ? fireTrapGeom : waterTrapGeom;
     const mesh = new THREE.Mesh(geom, mat);
+    const tLevel = t.level ?? 0;
     mesh.rotation.x = -Math.PI / 2;
-    mesh.position.set((t.x + 0.5) * cs, 0.03, (t.z + 0.5) * cs);
+    mesh.position.set((t.x + 0.5) * cs, tLevel * FLOOR_HEIGHT + 0.03, (t.z + 0.5) * cs);
     mesh.userData = { trap: t };
     scene.add(mesh);
     traps.push(mesh);
@@ -373,8 +493,10 @@ export function buildScene(maze: MazeData, darkMode =false): SceneRefs {
   // cell (treated as walls by collision). When opened, mesh.visible is
   // set to false. Each door gets its own material so we can tint by
   // keyColor for visual clarity.
+  // P3-1: per-layer y offset — a door on layer L sits at the L-th
+  // floor's mid-height (1.2m above the floor, like a wall).
   const doors = new Map<string, THREE.Mesh>();
-  const doorGeom = new THREE.BoxGeometry(cs, 2.4, cs);
+  const doorGeom = new THREE.BoxGeometry(cs, WALL_HEIGHT, cs);
   // P2-18: key color → door tint mapping.
   // F-2026-07-01-FCR-M-7: type the map as Record<KeyColor, number> so
   // TypeScript verifies all four colors are present at compile time.
@@ -393,13 +515,118 @@ export function buildScene(maze: MazeData, darkMode =false): SceneRefs {
       emissive: color & 0x222222,
     });
     const mesh = new THREE.Mesh(doorGeom, doorMat);
-    mesh.position.set((d.x + 0.5) * cs, 1.2, (d.z + 0.5) * cs);
+    const dLevel = d.level ?? 0;
+    mesh.position.set((d.x + 0.5) * cs, dLevel * FLOOR_HEIGHT + WALL_CENTER_Y, (d.z + 0.5) * cs);
     mesh.userData = { door: d };
     scene.add(mesh);
     doors.set(d.id, mesh);
   }
 
-  return { scene, walls, exit, pickups, enemies, traps, doors, playerMarker, setDarkMode };
+  // P3-1: vertical-transition meshes. Each `VerticalTransition` in
+  // `maze.transitions` produces one mesh anchored on the source
+  // layer's cell center. Only `stair-up` and `hole-down` get a mesh
+  // in P3-1b (the other kinds are data-layer-valid but the engine
+  // doesn't render / animate them yet — see spec §3 decision 1).
+  //
+  // Visual choices are deliberately minimal for the MVP:
+  //   - stair-up: a tilted box at the source cell, brown, large
+  //     enough to read as "stairs going up". The exact slope
+  //     matches `atan(FLOOR_HEIGHT / cs)` so it touches both floors.
+  //   - hole-down: a dark square on the source cell's floor,
+  //     indicating "drop down here". The pure-A spec (Q2) forbids
+  //     a see-through opening, so the hole is a visual cue only.
+  //   - other kinds: TODO. The mesh is still added to the scene
+  //     graph (as a no-op placeholder) so the dispose path walks
+  //     the same shape regardless of kind. P3-1c can replace the
+  //     placeholder meshes with the proper visuals.
+  const transitions: THREE.Mesh[] = [];
+  const transitionsList: VerticalTransition[] = maze.transitions ?? [];
+  for (const t of transitionsList) {
+    const tcs = t.level * FLOOR_HEIGHT;
+    const cellCenterX = (t.x + 0.5) * cs;
+    const cellCenterZ = (t.z + 0.5) * cs;
+    const mesh = createTransitionMesh(t.kind, cs, FLOOR_HEIGHT);
+    if (mesh === null) {
+      // P3-1c+ scope; we still need *something* in the array so
+      // the `transitions.length === maze.transitions.length`
+      // invariant downstream consumers expect holds. Insert a
+      // hidden empty mesh (geometry-less) at the cell center.
+      // This is a development-only fallback; the P3-1c editor
+      // will replace the no-op with the real visual.
+      const placeholder = new THREE.Object3D() as unknown as THREE.Mesh;
+      placeholder.position.set(cellCenterX, tcs, cellCenterZ);
+      placeholder.visible = false;
+      scene.add(placeholder);
+      transitions.push(placeholder);
+      continue;
+    }
+    mesh.position.set(cellCenterX, tcs, cellCenterZ);
+    mesh.userData = { transition: t };
+    scene.add(mesh);
+    transitions.push(mesh);
+  }
+
+  return { scene, walls, exit, pickups, enemies, traps, doors, playerMarker, transitions, setDarkMode };
+}
+
+// P3-1: per-kind transition mesh builder. Returns `null` for the
+// "rendering deferred to a later increment" kinds so the caller
+// can insert a hidden placeholder. The two MVP kinds (stair-up
+// and hole-down) get a clear, cell-sized visual; the geometry /
+// material are per-call because each transition wants its own
+// world transform (and sharing the same geometry across all
+// transitions of the same kind is fine for dispose, but the
+// material is per-call so future per-transition tinting can
+// happen without a refactor).
+function createTransitionMesh(
+  kind: VerticalTransition['kind'],
+  cs: number,
+  floorHeight: number,
+): THREE.Mesh | null {
+  switch (kind) {
+    case 'stair-up': {
+      // Tilted box: a `cs × floorHeight × cs` slab rotated by the
+      // slope angle around the z-axis so it bridges the source
+      // floor (at y = 0 in local space) to the destination floor
+      // (at y = floorHeight in local space). The rotation is the
+      // visual "this goes up" cue; collision / animation is the
+      // workstream-2 Game tick's job.
+      const geom = new THREE.BoxGeometry(cs * 0.9, floorHeight, cs * 0.9);
+      const mat = new THREE.MeshLambertMaterial({ color: 0x8b5a2b });
+      const mesh = new THREE.Mesh(geom, mat);
+      const slope = Math.atan2(floorHeight, cs);
+      mesh.rotation.z = -slope;
+      // Re-center so the rotated box's "down" end touches y = 0
+      // and its "up" end touches y = floorHeight in local space.
+      // Without this offset the box's center stays at y = floorHeight
+      // / 2, which after the rotation leaves the lower end at
+      // y = floorHeight / 2 - sin(slope) * floorHeight / 2 and the
+      // higher end at y = floorHeight / 2 + sin(slope) * floorHeight
+      // / 2 — the slopes never reach the floors.
+      mesh.position.y = floorHeight / 2;
+      return mesh;
+    }
+    case 'hole-down': {
+      // Dark square on the source cell's floor. The spec's pure-A
+      // rule (Q2) means we don't punch a hole through to the
+      // destination layer — the player sees a visual cue ("hole
+      // here") and trusts the workstream-2 collision code to drop
+      // them on the destination layer when they step on it.
+      const geom = new THREE.PlaneGeometry(cs * 0.7, cs * 0.7);
+      const mat = new THREE.MeshLambertMaterial({ color: 0x111111 });
+      const mesh = new THREE.Mesh(geom, mat);
+      mesh.rotation.x = -Math.PI / 2;
+      mesh.position.y = 0.02; // just above the floor
+      return mesh;
+    }
+    // P3-1c+ scope. Returning null here makes the caller insert a
+    // hidden placeholder so the transitions array length matches
+    // the source data shape.
+    case 'stair-down':
+    case 'hole-up':
+    case 'ladder':
+      return null;
+  }
 }
 
 export function disposeScene(
@@ -412,6 +639,14 @@ export function disposeScene(
   // references after disposal. Without this, the Map still held references
   // to disposed meshes after a level transition.
   doors?: Map<string, THREE.Mesh>,
+  // P3-1: transition meshes. Cleared in lockstep with the other
+  // per-build arrays so a level-swap race doesn't leave the new
+  // SceneRefs with stale refs into the previous level's disposed
+  // meshes. The scene-traversal-based dispose above already walks
+  // every mesh in the graph (transitions included) — the explicit
+  // `.length = 0` is for the reference array, not the GPU
+  // resources.
+  transitions: THREE.Mesh[] = [],
 ) {
   // F-2026-06-17-B-H-1: Set (strong refs), not WeakSet. Three.js
   // BufferGeometry / Material / Texture must be dispose()'d explicitly;
@@ -469,6 +704,7 @@ export function disposeScene(
   pickups.length = 0;
   enemies.length = 0;
   traps.length = 0;
+  transitions.length = 0;
   // F-2026-07-01-FCR-M-2: clear the doors Map so stale mesh references
   // don't survive past a level transition.
   doors?.clear();

@@ -113,6 +113,12 @@ export interface Pickup {
   // color-keyed door the key can unlock. Omitting keyColor leaves the key
   // as a generic/unlockable placeholder (backward-compat for existing levels).
   keyColor?: KeyColor;
+  // P3-1: which vertical layer this pickup lives on. Defaults to 0
+  // (the only layer in pre-P3-1 levels); JsonMazeProvider auto-fills
+  // 0 when the JSON omits the field. The runtime engine reads this
+  // field but the cell convention (floor(x/cs)) and the in-bounds
+  // validator are unchanged — `level` is metadata, not a coordinate.
+  level?: number;
 }
 
 // P2-18: a cell-level trap that triggers when the player walks onto it.
@@ -125,6 +131,8 @@ export interface Trap {
   damage?: number;
   // water: slow duration in seconds (defaults to 1.5 when omitted)
   slowDurationSec?: number;
+  // P3-1: see Pickup.level above. Defaults to 0.
+  level?: number;
 }
 
 // P2-18: a color-keyed door. Initially locked (treated as a wall by
@@ -135,6 +143,8 @@ export interface Door {
   x: number;
   z: number;
   keyColor: KeyColor;
+  // P3-1: see Pickup.level above. Defaults to 0.
+  level?: number;
 }
 
 export interface LevelRules {
@@ -177,8 +187,8 @@ export interface MazeData {
   i18n?: { en?: string };
   size: { width: number; depth: number };
   cellSize: number;
-  start: { x: number; z: number };
-  exit: { x: number; z: number };
+  start: { x: number; z: number; level?: number };
+  exit: { x: number; z: number; level?: number };
   walls: CellType[][];
   pickups: Pickup[];
   rules: LevelRules;
@@ -205,7 +215,87 @@ export interface MazeData {
   // default "我的" folder. Editor-only metadata; the runtime engine
   // does not look at this field.
   folderId?: string;
+  // P3-1: how many vertical layers this level has. Valid range is
+  // 1..6 (per spec §4.1). Defaults to 1 when omitted from JSON —
+  // every pre-P3-1 level is implicitly a 1-layer maze and the
+  // validator fills `1` so downstream code can read this field
+  // unconditionally. The engine-side multi-layer rendering is
+  // scheduled for P3-1b; P3-1a only owns the data layer + seed
+  // codec + backward compat.
+  levelCount?: number;
+  // P3-1: vertical transitions (stair / hole / ladder) that connect
+  // two layers. Defaults to `[]` when omitted. Each entry's `level`
+  // is the source layer; `toLevel` is the destination layer
+  // (default ±1 per `kind`). Like the entity fields, the runtime
+  // engine in P3-1b will read this array; P3-1a only owns the
+  // validator (forward-compatible shape, lenient on missing fields).
+  transitions?: VerticalTransition[];
 }
+
+// P3-1: per-layer data shape. The runtime engine in P3-1b will
+// materialize one `LevelData` per layer; P3-1a only declares the
+// type so future generators / validators have a typed home for
+// "one layer's worth of walls + identity". `MazeData.walls` still
+// carries the single 2D grid for backward compat (P3-1a is data
+// layer only — engine refactor lands in P3-1b).
+export interface LevelData {
+  // 0-indexed layer id. Layer 0 is the bottom (Q10 convention).
+  level: number;
+  // The 2D wall grid for this layer, in (z, x) order — same shape
+  // as the legacy single-layer `MazeData.walls`. Engine will pick
+  // the right `LevelData` based on the player's current layer in
+  // P3-1b.
+  walls: CellType[][];
+}
+
+// P3-1: a single inter-layer connection. `level` is the source
+// layer; `toLevel` is the destination. The kind dictates both
+// the visual mesh and the player input contract (stair-up is
+// walked; hole-down requires a brief warning flash + drop; ladder
+// is a stationary W/S interaction — see spec.md §3 decision 1).
+//
+// P3-1a is data layer only: the validator accepts the shape
+// leniently, but the engine does not yet render or activate any
+// of these transitions. P3-1b is when the runtime starts reading
+// `transitions` to drive collision, player movement, and visuals.
+export interface VerticalTransition {
+  id: string;
+  // Source layer (0 = bottom). P3-1b will render the transition's
+  // mesh on this layer and the player's collision check fires
+  // when they walk into `(x, z)` on this layer.
+  level: number;
+  x: number;
+  z: number;
+  // Which inter-layer mechanic this is. 'stair-up' / 'stair-down'
+  // are walked transitions (engine interpolates player.y over
+  // ~0.5s); 'hole-down' / 'hole-up' are fall / jump transitions
+  // (engine plays a 0.4s drop animation and pins player input);
+  // 'ladder' is a stationary W/S climb. The literal union
+  // matches the spec §3 decision 1 design.
+  kind: 'stair-up' | 'stair-down' | 'hole-down' | 'hole-up' | 'ladder';
+  // Destination layer. Defaults to `level + 1` for `*-up` kinds
+  // and `level - 1` for `*-down` kinds; the engine will apply
+  // that default when the field is omitted (P3-1b implementation
+  // detail). P3-1a accepts an explicit value and the literal
+  // range check (must satisfy `0 <= toLevel < levelCount`) is
+  // applied in the validator.
+  toLevel: number;
+  // Optional landing offset. Defaults to the same (x, z) on the
+  // destination layer. A hand-authored stair may want a small
+  // lateral step so the player doesn't re-trigger the stair on
+  // landing; the editor UI in P3-1c will surface these fields.
+  toX?: number;
+  toZ?: number;
+}
+
+// P3-1c: the literal union on `VerticalTransition.kind`, lifted to
+// a named type so editor actions (placeTransition) and the
+// properties-panel form (TransitionForm) can both reference the
+// same source-of-truth. P3-1a only declared the inline union
+// because no other site needed the alias; the editor places
+// transitions by tool name (e.g. 'stair-up'), and the tool
+// literal must match the data literal — this alias guarantees it.
+export type TransitionKind = VerticalTransition['kind'];
 
 // ---------------------------------------------------------------------------
 // P2-11: tutorial step system
@@ -291,13 +381,59 @@ export type Algorithm =
 // inside encodeSeed/decodeSeed.
 export type MazeSize = 15 | 30 | 50;
 
+// P3-1: number of vertical layers a procedurally generated level can
+// request. The 1..6 range mirrors spec.md §12 Q6 / Q7 (decision table):
+// Q6 picked the v2 seed format which carries this count, and Q7
+// capped the user-selectable level count at 6 (1 is the back-compat
+// default and is equivalent to "no multi-level rendering"). The
+// `LEVEL_COUNT_VALUES` tuple is the runtime whitelist that backs
+// `isLevelCount` — mirroring the `MAZE_SIZE_VALUES / isMazeSize`
+// pattern so the JSON / URL validator can share a single source of
+// truth with the seed codec.
+export type LevelCount = 1 | 2 | 3 | 4 | 5 | 6;
+export const LEVEL_COUNT_VALUES: readonly LevelCount[] = [1, 2, 3, 4, 5, 6];
+
+// P3-1: i18n placeholder keys for the multi-level UI surfaces
+// (HUD level indicator + parchment level tab). P3-1a lands the
+// strings in src/i18n/resources/{en,zh}.ts but does NOT render
+// them — the consuming components land in P3-1c (HUD) and
+// P3-1c (parchment). This array is the single source of truth
+// that documents the placeholder set; it is also what keeps
+// `tests/unit/i18n/keysParity.test.ts` happy (the orphan-key
+// detector scans src/** for any quoted string literal that
+// matches the i18n dotted-key shape, so a literal reference
+// here satisfies the "key must be consumed" rule). P3-1c will
+// move the references into the actual UI components and the
+// array becomes a removal candidate.
+export const P3_1_LEVEL_I18N_KEYS = [
+  'hud.levelIndicator.label',
+  'hud.levelIndicator.short',
+  'overlays.parchment.levelTab',
+] as const;
+
+export function isLevelCount(v: unknown): v is LevelCount {
+  return (
+    typeof v === 'number' &&
+    Number.isFinite(v) &&
+    (LEVEL_COUNT_VALUES as readonly number[]).includes(v)
+  );
+}
+
 // The full self-describing seed. A 64-bit mazeSeed lets the algorithm
 // produce ~1.8e19 distinct mazes per (algorithm, size) pair, which is more
 // than enough to make seed collisions irrelevant in practice.
+//
+// P3-1: `levelCount` is optional so a v1 seed (which never carried this
+// field) round-trips through `Seed` unchanged. The seed codec in
+// `utils/seed.ts` decodes a v1 id to `levelCount = undefined`; callers
+// (AlgorithmMazeProvider, levelStore.isValidSeed, ...) must treat
+// `undefined` as "single layer" and fall back to `1`. The v2 codec
+// (`encodeSeedV2` / `decodeSeed` v2 branch) populates this field.
 export interface Seed {
   algorithm: Algorithm;
   size: MazeSize;
   mazeSeed: string; // 16 lowercase hex chars (see utils/seed.ts)
+  levelCount?: LevelCount;
 }
 
 // Options passed through App -> startLevel. The provider fills in the rest
@@ -325,6 +461,11 @@ export interface EnemySpawn {
   dwellTime?: number;
   fovRange?: number;
   fovAngleDeg?: number;
+  // P3-1: see Pickup.level above. Defaults to 0. Each enemy is
+  // pinned to a single layer; per-layer AI scopes the patrol
+  // path to the same layer and the runtime only collides when the
+  // player is on the matching layer.
+  level?: number;
 }
 
 export interface SpawnSchedule {
@@ -493,7 +634,55 @@ export type EditorTool =
   // P2-18: trap and door placement tools.
   | 'trap'
   | 'door'
+  // P3-1c: 5 vertical-transition placement tools. Each tool places
+  // a transition of the matching kind at the clicked cell (on the
+  // editor's currentLevel). The literal names mirror
+  // `TransitionKind` in `VerticalTransition`; the tool union is
+  // kept separate from the data union because the toolbar's shortcut
+  // map + button labels need tool-side labels and the data-side
+  // shape needs the destination-layer semantics.
+  | 'stair-up'
+  | 'stair-down'
+  | 'hole-down'
+  | 'hole-up'
+  | 'ladder'
   | 'pan';
+
+// P3-1c: the subset of EditorTool that places a vertical transition.
+// Re-exported from here (rather than re-declared inline at the
+// toolbar / properties panel / store action sites) so adding a new
+// transition tool only touches this file — every consumer (toolbar
+// button list, viewport click handler, properties panel kind
+// dropdown) reads the same source-of-truth list. Mirrors the
+// PICKUP_TYPE_VALUES / TRAP_KIND_VALUES pattern in this file.
+export type TransitionTool = Extract<
+  EditorTool,
+  'stair-up' | 'stair-down' | 'hole-down' | 'hole-up' | 'ladder'
+>;
+
+// P3-1c: runtime whitelist for the transition tool set. The
+// transition-tool buttons in EditorToolbar are derived from this
+// array (rather than a hand-rolled literal) so the union widening
+// above is matched 1:1 with the toolbar's button list. The
+// `as readonly TransitionTool[]` cast at the call site keeps the
+// readonly-ness on the consumer side too.
+export const TRANSITION_TOOL_VALUES: readonly TransitionTool[] = [
+  'stair-up',
+  'stair-down',
+  'hole-down',
+  'hole-up',
+  'ladder',
+];
+
+// P3-1c: type guard for the transition-tool subset. Mirrors
+// `isPickupType` / `isTrapKind` so the viewport click handler can
+// route a cell click to `placeTransition(kind, x, z)` only when the
+// active tool is a transition tool.
+export function isTransitionTool(v: unknown): v is TransitionTool {
+  return (
+    typeof v === 'string' && (TRANSITION_TOOL_VALUES as readonly string[]).includes(v)
+  );
+}
 
 // reject anything whose schemaVersion is not exactly this value.
 export const SCHEMA_VERSION = 1 as const;

@@ -125,6 +125,40 @@ export function validateMaze(raw: unknown, id: string): MazeData {
     walls.push(cells);
   }
 
+  // P3-1: default levelCount to 1 (single-layer back-compat for every
+  // pre-P3-1 JSON). The validator is lenient: any integer in the 1..6
+  // range is accepted; an out-of-range value falls back to 1 (the
+  // current engine is single-layer only, so rejecting would be too
+  // strict — a hand-crafted level with `levelCount: 99` would
+  // suddenly fail to load when every other pre-P3-1 level works).
+  // The strict per-layer cross-check (e.g. start.level < levelCount)
+  // lands in P3-1b when the engine actually consumes the field.
+  let levelCount: number;
+  if (typeof m.levelCount === 'number' && Number.isInteger(m.levelCount) && m.levelCount >= 1 && m.levelCount <= 6) {
+    levelCount = m.levelCount;
+  } else {
+    levelCount = 1;
+  }
+
+  // P3-1: default `transitions` to []. The validator accepts the
+  // array as-is when present; non-array values fall back to []
+  // (same lenient policy as `traps` / `doors` in P2-18). P3-1b
+  // will read this array to render stair / hole / ladder meshes
+  // and gate the player's `isOnTransition` flow.
+  const transitions: import('./types').VerticalTransition[] = Array.isArray(m.transitions)
+    ? (m.transitions as import('./types').VerticalTransition[])
+    : [];
+
+  // P3-1: helper — extract `level` from a raw position record
+  // (start / exit) or a position-bearing entity (pickup / trap /
+  // door / enemy). Missing / non-integer values fall back to 0
+  // (the historical single-layer convention). The cast to
+  // `Record<string, unknown>` mirrors the surrounding validator
+  // style; downstream code reads `entity.level` as `number | undefined`
+  // and the engine treats undefined as 0 in P3-1b.
+  const startLevel = parseEntityLevel(start);
+  const exitLevel = parseEntityLevel(exit);
+
   requireInBounds(start, 'x', 'z', `${id}.start`, width, depth);
   requireInBounds(exit, 'x', 'z', `${id}.exit`, width, depth);
   if (walls[start.z as number][start.x as number] === 1) {
@@ -191,11 +225,22 @@ export function validateMaze(raw: unknown, id: string): MazeData {
     // the raw Record. isPickupType above narrows pp.type to PickupType;
     // every other field has been validated by requireNumber.
     // P2-18: parse optional keyColor for key pickups.
+    // P3-1: parse optional `level` (defaults to 0; see parseEntityLevel
+    // helper above for the lenient validation policy).
     let pickupKeyColor: Pickup['keyColor'];
     if (pp.type === 'key' && isKeyColor(pp.keyColor)) {
       pickupKeyColor = pp.keyColor;
     }
-    normalizedPickups.push({ id: pickupId, x: px, z: pz, type: pp.type, value: pvalue, keyColor: pickupKeyColor });
+    const pickupLevel = parseEntityLevel(pp);
+    normalizedPickups.push({
+      id: pickupId,
+      x: px,
+      z: pz,
+      type: pp.type,
+      value: pvalue,
+      keyColor: pickupKeyColor,
+      level: pickupLevel,
+    });
   }
 
   requireObject(m, 'rules', id);
@@ -345,19 +390,28 @@ export function validateMaze(raw: unknown, id: string): MazeData {
   // Record<string, unknown> shape since the loop bodies above never
   // mutate them after requireNumber; the per-field types flow through
   // when the literal is built.
+  //
+  // P3-1: start / exit / levelCount / transitions are added to the
+  // final literal. `level` on start / exit is always set (defaults
+  // to 0 via parseEntityLevel above) so downstream code can read
+  // `data.start.level` unconditionally. `levelCount` defaults to 1
+  // and `transitions` defaults to [] — both are validated above and
+  // never undefined at this point.
   const maze: MazeData = {
     id: m.id as string,
     name: m.name as string,
     size: { width, depth },
     cellSize,
-    start: { x: start.x as number, z: start.z as number },
-    exit: { x: exit.x as number, z: exit.z as number },
+    start: { x: start.x as number, z: start.z as number, level: startLevel },
+    exit: { x: exit.x as number, z: exit.z as number, level: exitLevel },
     walls,
     pickups: normalizedPickups,
     rules,
     enemies,
     traps,
     doors,
+    levelCount,
+    transitions,
     ...(i18n !== undefined ? { i18n } : {}),
     ...(tutorialSteps !== undefined ? { tutorialSteps } : {}),
     // F-2026-06-30: hideMinimap is no longer round-tripped into the
@@ -454,6 +508,9 @@ function parseEnemies(raw: unknown, id: string, width: number, depth: number, wa
       x: ee.x as number,
       z: ee.z as number,
       path,
+      // P3-1: see parseEntityLevel above. Defaults to 0; engine
+      // pins each enemy to a single layer in P3-1b.
+      level: parseEntityLevel(ee),
     };
     if (typeof ee.dwellTime === 'number' && Number.isFinite(ee.dwellTime)) {
       spawn.dwellTime = ee.dwellTime;
@@ -467,6 +524,19 @@ function parseEnemies(raw: unknown, id: string, width: number, depth: number, wa
     out.push(spawn);
   }
   return out;
+}
+
+// P3-1: shared level-default helper. Promoted to module scope so
+// the position-bearing parser helpers below (parseEnemies /
+// parseTraps / parseDoors) and the inline pickup loop in
+// validateMaze can all reuse the same lenient `level` extraction.
+// Returns 0 (single-layer back-compat) for any input that is not a
+// non-negative integer. P3-1b will widen the policy to also bound
+// the value by `levelCount - 1`; P3-1a only owns the shape.
+function parseEntityLevel(raw: unknown): number {
+  if (typeof raw !== 'object' || raw === null) return 0;
+  const lvl = (raw as Record<string, unknown>).level;
+  return typeof lvl === 'number' && Number.isInteger(lvl) && lvl >= 0 ? lvl : 0;
 }
 
 function requireString(o: Record<string, unknown>, key: string, ctx: string) {
@@ -552,6 +622,8 @@ function parseTraps(
     if (typeof tt.slowDurationSec === 'number' && Number.isFinite(tt.slowDurationSec) && tt.slowDurationSec > 0) {
       trap.slowDurationSec = tt.slowDurationSec;
     }
+    // P3-1: see parseEntityLevel above. Defaults to 0.
+    trap.level = parseEntityLevel(tt);
     out.push(trap);
   }
   return out;
@@ -599,7 +671,8 @@ function parseDoors(
     }
     seenCells.add(cellKey);
     const doorId = typeof dd.id === 'string' && dd.id.length > 0 ? dd.id : generateId();
-    out.push({ id: doorId, x: dx, z: dz, keyColor: dd.keyColor });
+    // P3-1: see parseEntityLevel above. Defaults to 0.
+    out.push({ id: doorId, x: dx, z: dz, keyColor: dd.keyColor, level: parseEntityLevel(dd) });
   }
   return out;
 }

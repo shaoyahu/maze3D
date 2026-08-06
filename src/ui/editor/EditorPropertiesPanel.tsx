@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { useEditorStore } from '../../store/editorStore';
-import type { MazeData, PickupType, VictoryType, MinimapMode, MapOpenBehavior, ParchmentLifecycle, TrapKind, KeyColor } from '../../maze/types';
+import type { MazeData, PickupType, VictoryType, MinimapMode, MapOpenBehavior, ParchmentLifecycle, TrapKind, KeyColor, TransitionKind } from '../../maze/types';
 import { isPickupType, isVictoryType, isTrapKind, isKeyColor, VICTORY_TYPE_VALUES, MINIMAP_MODE_VALUES, MAP_OPEN_BEHAVIOR_VALUES, PARCHMENT_LIFECYCLE_VALUES, TRAP_KIND_VALUES, KEY_COLOR_VALUES } from '../../maze/types';
 import { Button } from '../components/Button';
 import { Dropdown, type DropdownOption } from '../components/Dropdown';
@@ -43,7 +43,7 @@ function Card({
   defaultCollapsed = false,
   children,
 }: {
-  variant: 'meta' | 'rules' | 'pickup' | 'enemy' | 'wall' | 'trap' | 'door';
+  variant: 'meta' | 'rules' | 'pickup' | 'enemy' | 'wall' | 'trap' | 'door' | 'transition';
   selected?: boolean;
   title: string;
   chip?: string;
@@ -1099,6 +1099,180 @@ function DoorFormImpl({ doorId }: { doorId: string }): React.ReactElement {
 
 const DoorForm = memo(DoorFormImpl);
 
+// P3-1c: vertical-transition property form. Renders when the
+// selected entity is a `transition` (kind: 'transition', id: <uuid>).
+// The form's editable fields are the four spec-defined properties of
+// `VerticalTransition`:
+//   - kind: stair-up / stair-down / hole-down / hole-up / ladder
+//   - toLevel: integer in [0, levelCount)
+//   - toX: optional integer (blank = same as source x)
+//   - toZ: optional integer (blank = same as source z)
+// The source cell (x / z) and source layer (level) are read-only —
+// the cell is fixed at placement time, and the layer is the one
+// the user was on when they placed the transition. The form's
+// `kind` dropdown drives `updateTransition` on every change; the
+// `toLevel` is clamped to the level range inside the action (the
+// store handles out-of-range input silently rather than throwing).
+function TransitionFormImpl({ transitionId }: { transitionId: string }): React.ReactElement {
+  const t = useT();
+  const transition = useEditorStore((s) =>
+    (s.level.transitions ?? []).find((tr) => tr.id === transitionId),
+  );
+  const level = useEditorStore((s) => s.level);
+  const updateTransition = useEditorStore((s) => s.updateTransition);
+  const deleteSelected = useEditorStore((s) => s.deleteSelected);
+
+  // Lazy initial state — the transition may be missing on first
+  // render (selection can survive across store updates that drop
+  // the entity via removeLevel / undo). useEffect below re-syncs
+  // when the transition re-appears.
+  const [kind, setKind] = useState<TransitionKind>(() => transition?.kind ?? 'stair-up');
+  const [toLevel, setToLevel] = useState<number>(() => transition?.toLevel ?? 0);
+  const [toXRaw, setToXRaw] = useState<string>(() =>
+    transition && transition.toX !== undefined ? String(transition.toX) : '',
+  );
+  const [toZRaw, setToZRaw] = useState<string>(() =>
+    transition && transition.toZ !== undefined ? String(transition.toZ) : '',
+  );
+
+  useEffect(() => {
+    if (transition) {
+      setKind(transition.kind);
+      setToLevel(transition.toLevel);
+      setToXRaw(transition.toX !== undefined ? String(transition.toX) : '');
+      setToZRaw(transition.toZ !== undefined ? String(transition.toZ) : '');
+    }
+  }, [transition?.id, transition?.kind, transition?.toLevel, transition?.toX, transition?.toZ]);
+
+  if (!transition) return <SelectionMissing kind="transition" />;
+
+  const levelCount = level.levelCount ?? 1;
+  const maxToLevel = Math.max(0, levelCount - 1);
+
+  // P3-1c: kind dropdown options — labels are tool names reused
+  // from the toolbar i18n key (the user has already seen these
+  // labels on the toolbar buttons, so the form reuses them for
+  // consistency).
+  const kindOptions: ReadonlyArray<{ value: TransitionKind; label: string; testId: string }> = [
+    { value: 'stair-up',   label: t('editor.toolbar.tool.stairUp'),   testId: 'stair-up'   },
+    { value: 'stair-down', label: t('editor.toolbar.tool.stairDown'), testId: 'stair-down' },
+    { value: 'hole-down',  label: t('editor.toolbar.tool.holeDown'),  testId: 'hole-down'  },
+    { value: 'hole-up',    label: t('editor.toolbar.tool.holeUp'),    testId: 'hole-up'    },
+    { value: 'ladder',     label: t('editor.toolbar.tool.ladder'),    testId: 'ladder'     },
+  ];
+
+  const commitToX = (raw: string): void => {
+    const trimmed = raw.trim();
+    if (trimmed === '') {
+      updateTransition(transition.id, { toX: undefined });
+      return;
+    }
+    const n = Number(trimmed);
+    if (!Number.isFinite(n)) return;
+    updateTransition(transition.id, { toX: Math.floor(n) });
+  };
+  const commitToZ = (raw: string): void => {
+    const trimmed = raw.trim();
+    if (trimmed === '') {
+      updateTransition(transition.id, { toZ: undefined });
+      return;
+    }
+    const n = Number(trimmed);
+    if (!Number.isFinite(n)) return;
+    updateTransition(transition.id, { toZ: Math.floor(n) });
+  };
+
+  return (
+    <div data-testid="transition-form" className="editor-properties__form">
+      <BackToLevel />
+      <Card
+        variant="transition"
+        selected
+        title={t('editor.properties.transitionCard')}
+        chip={transition.id.slice(0, 8)}
+      >
+        <div className="editor-properties__field">
+          <span className="editor-properties__field-label">{t('editor.properties.transition.source')}</span>
+          <div className="editor-properties__readonly">
+            L{transition.level + 1} · ({transition.x}, {transition.z})
+          </div>
+        </div>
+        <label className="editor-properties__field">
+          <span className="editor-properties__field-label">{t('editor.properties.transition.kind')}</span>
+          <Dropdown<TransitionKind>
+            testId="transition-kind"
+            ariaLabel={t('editor.properties.transition.kind')}
+            value={kind}
+            options={kindOptions.map((opt) => ({
+              value: opt.value,
+              label: opt.label,
+              codename: opt.testId,
+              desc: '',
+            }))}
+            onChange={(k) => {
+              setKind(k);
+              updateTransition(transition.id, { kind: k });
+            }}
+            optionTestId={(opt) => `transition-kind-${opt.value}`}
+          />
+        </label>
+        <label className="editor-properties__field" data-testid="transition-to-level">
+          <span className="editor-properties__field-label">
+            {t('editor.properties.transition.toLevel')}
+          </span>
+          <Stepper
+            value={toLevel}
+            onChange={(v) => {
+              const next = Math.max(0, Math.min(maxToLevel, Math.floor(v)));
+              setToLevel(next);
+              updateTransition(transition.id, { toLevel: next });
+            }}
+            min={0}
+            max={maxToLevel}
+            testId="transition-to-level-input"
+            unit={`/ ${maxToLevel + 1}`}
+            t={t}
+          />
+        </label>
+        <label className="editor-properties__field">
+          <span className="editor-properties__field-label">{t('editor.properties.transition.toX')}</span>
+          <input
+            className="editor-properties__name"
+            type="number"
+            value={toXRaw}
+            onChange={(e) => setToXRaw(e.target.value)}
+            onBlur={(e) => commitToX(e.target.value)}
+            placeholder={String(transition.x)}
+            data-testid="transition-to-x"
+          />
+        </label>
+        <label className="editor-properties__field">
+          <span className="editor-properties__field-label">{t('editor.properties.transition.toZ')}</span>
+          <input
+            className="editor-properties__name"
+            type="number"
+            value={toZRaw}
+            onChange={(e) => setToZRaw(e.target.value)}
+            onBlur={(e) => commitToZ(e.target.value)}
+            placeholder={String(transition.z)}
+            data-testid="transition-to-z"
+          />
+        </label>
+        {transition.toLevel === transition.level && (
+          <div className="editor-properties__warn" data-testid="transition-same-layer-warn">
+            {t('editor.properties.transition.sameLayerWarn')}
+          </div>
+        )}
+        <Button variant="danger" onClick={() => deleteSelected()} data-testid="delete-transition">
+          {t('editor.properties.deleteTransition')}
+        </Button>
+      </Card>
+    </div>
+  );
+}
+
+const TransitionForm = memo(TransitionFormImpl);
+
 type RenderBodyArgs = {
   selection: ReturnType<typeof useEditorStore.getState>['selection'];
   level: MazeData;
@@ -1126,6 +1300,10 @@ function renderBody({ selection, level }: RenderBodyArgs): React.ReactNode {
   if (selection.kind === 'door') {
     return <DoorForm doorId={selection.id} />;
   }
+  // P3-1c: transition property form.
+  if (selection.kind === 'transition') {
+    return <TransitionForm transitionId={selection.id} />;
+  }
   // F-2026-06-16-M-5: exhaustiveness check. If a new EditorSelection
   // variant is added (e.g. start-cell selection) without a branch
   // above, the `never` assignment fails to compile, catching the
@@ -1147,7 +1325,7 @@ export function EditorPropertiesPanel(): React.ReactElement {
   );
 }
 
-function SelectionMissing({ kind }: { kind: 'pickup' | 'enemy' | 'trap' | 'door' }): React.ReactElement {
+function SelectionMissing({ kind }: { kind: 'pickup' | 'enemy' | 'trap' | 'door' | 'transition' }): React.ReactElement {
   const t = useT();
   const thingKey = kind === 'pickup'
     ? 'editor.properties.selection.pickup'
@@ -1155,7 +1333,9 @@ function SelectionMissing({ kind }: { kind: 'pickup' | 'enemy' | 'trap' | 'door'
       ? 'editor.properties.selection.enemy'
       : kind === 'trap'
         ? 'editor.properties.selection.trap'
-        : 'editor.properties.selection.door';
+        : kind === 'door'
+          ? 'editor.properties.selection.door'
+          : 'editor.properties.selection.transition';
   return (
     <div className="editor-properties__empty">
       {t('editor.properties.selectionMissing', {

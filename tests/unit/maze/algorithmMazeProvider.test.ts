@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { encodeSeed, decodeSeed, fnv1a, mulberry32, parseHexSeed, InvalidSeedError } from '../../../src/utils/seed';
+import { encodeSeed, encodeSeedV2, decodeSeed, fnv1a, mulberry32, parseHexSeed, InvalidSeedError } from '../../../src/utils/seed';
 import {
   AlgorithmMazeProvider,
   filterPickupsAgainstSpawn,
+  generateMultiLevel,
 } from '../../../src/maze/AlgorithmMazeProvider';
 // P2-21 cleanup (DESIGN DEBT #7): the test's `ALGOS` list is derived
 // from the registry. Adding a new algorithm now flows in lockstep:
@@ -11,8 +12,8 @@ import {
 // places (levelStore, AlgorithmMazeProvider, LevelSelect) plus this
 // test — and the levelStore copy had already drifted (see CRITICAL #1
 // regression test in levelStore.test.ts).
-import { ALGORITHM_IDS, ALGORITHM_REGISTRY } from '../../../src/maze/algorithmRegistry';
-import type { Algorithm, MazeSize, Pickup } from '../../../src/maze/types';
+import { ALGORITHM_BY_ID, ALGORITHM_IDS, ALGORITHM_REGISTRY } from '../../../src/maze/algorithmRegistry';
+import type { Algorithm, LevelCount, MazeSize, Pickup } from '../../../src/maze/types';
 
 const ALGOS: readonly Algorithm[] = ALGORITHM_IDS;
 const SIZES: MazeSize[] = [15, 30, 50];
@@ -38,8 +39,15 @@ describe('AlgorithmMazeProvider', () => {
         expect(data.name).toContain(algorithm);
         expect(data.size.width).toBe(size);
         expect(data.size.depth).toBe(size);
-        expect(data.start).toEqual({ x: 0, z: 0 });
-        expect(data.exit).toEqual({ x: 2 * (Math.ceil(size / 2) - 1), z: 2 * (Math.ceil(size / 2) - 1) });
+        // P3-1: start / exit now carry a `level` field. The v1
+        // back-compat contract is "levelCount=1 ⇒ every entity
+        // on layer 0", so the default level is 0 in both cases.
+        expect(data.start).toMatchObject({ x: 0, z: 0, level: 0 });
+        expect(data.exit).toMatchObject({ x: 2 * (Math.ceil(size / 2) - 1), z: 2 * (Math.ceil(size / 2) - 1), level: 0 });
+        // P3-1: levelCount defaults to 1 and transitions is []
+        // for v1 ids (the historical single-layer shape).
+        expect(data.levelCount).toBe(1);
+        expect(data.transitions).toEqual([]);
         expect(data.walls).toHaveLength(size);
         for (const row of data.walls) {
           expect(row).toHaveLength(size);
@@ -168,5 +176,432 @@ describe('F-2026-06-17-D-M-1 pickup-spawn guard', () => {
 
   it('filterPickupsAgainstSpawn returns empty array unchanged', () => {
     expect(filterPickupsAgainstSpawn([], { x: 10, z: 10 }, { x: 0, z: 0 })).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// P3-1: multi-level procedural generator. P3-1a is the data-layer
+// landing zone — no engine, no UI. The smoke test below pins the
+// data shape (`levelCount`, `transitions.length`, start/exit
+// `level` field) so a future refactor that drops or mis-defaults
+// these fields surfaces here instead of at runtime. The engine-
+// level behavior (collision across N layers, reachability, etc.)
+// is P3-1b / P3-1c work and is intentionally out of scope here.
+// ---------------------------------------------------------------------------
+describe('generateMultiLevel (P3-1 data-layer smoke)', () => {
+  // levelCount=1 is the back-compat path: the result must be
+  // byte-for-byte equivalent to a v1 single-layer level. P3-1b
+  // will keep this contract — the engine reads `levelCount` and
+  // short-circuits to the v1 rendering path.
+  it('levelCount=1 produces a single-layer shape (transitions=[])', () => {
+    const { maze, perLayerWalls } = generateMultiLevel({
+      algorithm: 'recursive-backtracker',
+      size: 15,
+      levelCount: 1,
+      prng: mulberry32(fnv1a('0123456789abcdef')),
+      mazeSeed: '0123456789abcdef',
+    });
+    expect(maze.levelCount).toBe(1);
+    expect(maze.transitions).toEqual([]);
+    expect(maze.start.level).toBe(0);
+    expect(maze.exit.level).toBe(0);
+    expect(perLayerWalls).toHaveLength(1);
+    // P3-1: perLayerWalls[0] IS maze.walls (by reference) so the
+    // single-layer engine can keep reading `maze.walls` and
+    // the multi-layer engine can collapse to `[maze.walls]`.
+    expect(perLayerWalls[0]).toBe(maze.walls);
+    // P3-1: back-compat corner pinning. The 15×15 generator
+    // always opens the (0,0) and (14,14) cells (logicalSize-1
+    // corners in the thick-wall grid), and the back-compat
+    // promise is "behaves identically to the v1 single-layer
+    // level" — which is what every P2-era test pins.
+    expect(maze.start).toMatchObject({ x: 0, z: 0, level: 0 });
+    expect(maze.exit).toMatchObject({ x: 14, z: 14, level: 0 });
+  });
+
+  // levelCount=2: one inter-layer boundary, so exactly 1
+  // stair-up transition. Start and exit land on a random layer
+  // (each in [0, 1]) per the 70% / 30% rule. The 1 transition
+  // always connects layer 0 → layer 1 (the only boundary).
+  it('levelCount=2 produces exactly 1 stair-up transition (0→1)', () => {
+    const { maze, perLayerWalls } = generateMultiLevel({
+      algorithm: 'recursive-backtracker',
+      size: 15,
+      levelCount: 2,
+      prng: mulberry32(fnv1a('0123456789abcdef')),
+      mazeSeed: '0123456789abcdef',
+    });
+    expect(maze.levelCount).toBe(2);
+    expect(maze.transitions!).toHaveLength(1);
+    expect(maze.transitions![0]).toMatchObject({
+      level: 0,
+      kind: 'stair-up',
+      toLevel: 1,
+    });
+    // Start / exit are randomized across the 2 layers. We
+    // don't pin them to a specific layer — the 70% / 30% rule
+    // means either ordering is valid. The deeper invariants
+    // (non-wall, not equal/adjacent on same layer) are checked
+    // by the comprehensive test below.
+    expect([0, 1]).toContain(maze.start.level);
+    expect([0, 1]).toContain(maze.exit.level);
+    expect(perLayerWalls).toHaveLength(2);
+  });
+
+  // levelCount=3: 2 inter-layer boundaries, so exactly 2
+  // stair-up transitions (0→1 and 1→2). Start / exit can be on
+  // any layer 0..2.
+  it('levelCount=3 produces 2 transitions (0→1 and 1→2)', () => {
+    const { maze, perLayerWalls } = generateMultiLevel({
+      algorithm: 'recursive-backtracker',
+      size: 15,
+      levelCount: 3,
+      prng: mulberry32(fnv1a('0123456789abcdef')),
+      mazeSeed: '0123456789abcdef',
+    });
+    expect(maze.levelCount).toBe(3);
+    expect(maze.transitions!).toHaveLength(2);
+    // Boundaries are always 0→1 and 1→2 (one per inter-layer
+    // gap). Start / exit can land on any of the 3 layers.
+    const tLevels = maze.transitions!.map((t) => [t.level, t.toLevel]);
+    expect(tLevels).toEqual(
+      expect.arrayContaining([
+        [0, 1],
+        [1, 2],
+      ]),
+    );
+    expect([0, 1, 2]).toContain(maze.start.level);
+    expect([0, 1, 2]).toContain(maze.exit.level);
+    expect(perLayerWalls).toHaveLength(3);
+  });
+
+  // Determinism: same input → same output. The walls matrix,
+  // transitions, and start/exit cells must be byte-equal across
+  // two calls (use `.toEqual` deep equality — each call returns
+  // a fresh array from `entry.generate`, so reference equality
+  // is not the right check here). This is the cross-reload
+  // contract the URL → seed → MazeData round-trip relies on.
+  //
+  // Each call gets a FRESH PRNG seeded from the same hex — the
+  // PRNG is stateful (consumed by the first call), so re-using
+  // the same closure across calls would diverge. The function's
+  // contract is "caller hands me a PRNG that I'll consume in
+  // order"; the cross-reload equivalent is the caller creating
+  // a new PRNG from the same seed.
+  it('is deterministic: same opts produce identical MazeData', () => {
+    const baseOpts = {
+      algorithm: 'kruskal' as const,
+      size: 15,
+      levelCount: 3 as LevelCount,
+      mazeSeed: 'deadbeefcafebabe',
+    };
+    const a = generateMultiLevel({
+      ...baseOpts,
+      prng: mulberry32(fnv1a(baseOpts.mazeSeed)),
+    });
+    const b = generateMultiLevel({
+      ...baseOpts,
+      prng: mulberry32(fnv1a(baseOpts.mazeSeed)),
+    });
+    // Deep equality (each call returns a new array).
+    expect(a.maze.walls).toEqual(b.maze.walls);
+    expect(a.perLayerWalls).toEqual(b.perLayerWalls);
+    expect(a.maze.transitions!).toEqual(b.maze.transitions!);
+    expect(a.maze.start).toEqual(b.maze.start);
+    expect(a.maze.exit).toEqual(b.maze.exit);
+  });
+
+  // AlgorithmMazeProvider.load uses the v2 codec to recover
+  // levelCount. Pin the end-to-end shape so the v2 id → provider
+  // round-trip stays in lockstep with `generateMultiLevel`.
+  it('AlgorithmMazeProvider.load() routes a v2 id through generateMultiLevel', async () => {
+    const provider = new AlgorithmMazeProvider();
+    const id = encodeSeedV2(
+      { algorithm: 'recursive-backtracker', size: 15, mazeSeed: '0123456789abcdef' },
+      3,
+    );
+    const maze = await provider.load(id);
+    expect(maze.levelCount).toBe(3);
+    expect(maze.transitions!).toHaveLength(2);
+    expect([0, 1, 2]).toContain(maze.start.level);
+    expect([0, 1, 2]).toContain(maze.exit.level);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// P3-1b: comprehensive generateMultiLevel contract. The smoke tests above
+// pin a few specific shapes; this block enumerates the full set of
+// invariants the spec asks for (§5.5, §12 Q10, plus the task's "单测覆盖"
+// checklist) and runs them across every supported level count + a
+// representative algorithm mix.
+// ---------------------------------------------------------------------------
+describe('generateMultiLevel (P3-1b comprehensive contract)', () => {
+  // Helper: build a fresh options object with a freshly seeded PRNG
+  // (the PRNG is stateful, so each call needs its own — see the
+  // determinism test in the smoke suite for context).
+  function makeOpts(overrides: Partial<{
+    algorithm: Algorithm;
+    size: number;
+    levelCount: LevelCount;
+    mazeSeed: string;
+  }> = {}) {
+    const mazeSeed = overrides.mazeSeed ?? '0123456789abcdef';
+    return {
+      algorithm: overrides.algorithm ?? ('recursive-backtracker' as Algorithm),
+      size: overrides.size ?? 15,
+      levelCount: overrides.levelCount ?? (1 as LevelCount),
+      mazeSeed,
+      prng: mulberry32(fnv1a(mazeSeed)),
+    };
+  }
+
+  // 1. levelCount=1 is fully equivalent to the historical
+  //    `generateWalls` output: no transitions, start at the
+  //    historical (0,0) corner, exit at the (logicalSize-1)
+  //    corner, both on layer 0. This is the P3-1 spec §13 H3
+  //    back-compat promise and the only P2-era contract that
+  //    has to keep holding across the multi-level refactor.
+  it('levelCount=1 matches the historical single-layer shape exactly', () => {
+    const { maze, perLayerWalls } = generateMultiLevel(
+      makeOpts({ levelCount: 1, size: 15 }),
+    );
+    expect(maze.levelCount).toBe(1);
+    expect(maze.transitions).toEqual([]);
+    expect(maze.start).toEqual({ x: 0, z: 0, level: 0 });
+    // 15 → logicalSize 8 → corner (2*7, 2*7) = (14, 14)
+    expect(maze.exit).toEqual({ x: 14, z: 14, level: 0 });
+    // Walls match what the registry entry would have returned
+    // for a single 15×15 call.
+    const direct = ALGORITHM_BY_ID['recursive-backtracker'].generate(
+      15,
+      mulberry32(fnv1a('0123456789abcdef')),
+    );
+    expect(maze.walls).toEqual(direct);
+    // Single layer in the per-layer cache.
+    expect(perLayerWalls).toHaveLength(1);
+    // Back-compat: perLayerWalls[0] IS maze.walls (same array).
+    expect(perLayerWalls[0]).toBe(maze.walls);
+  });
+
+  // 2. The 4 supported multi-level counts (2 / 3 / 4 / 6 per
+  //    spec §12 Q7) all generate successfully. The 5-second
+  //    budget is the P3-1 spec §9 / §11.3 "user-acceptable load
+  //    time" cap; the all-15-algorithms × size-15 grid is the
+  //    tightest one a default-sized level will see.
+  it.each([2, 3, 4, 6] as const)(
+    'levelCount=%d generates within the 5-second budget for every algorithm',
+    (levelCount) => {
+      const t0 = performance.now();
+      for (const entry of ALGORITHM_REGISTRY) {
+        const { maze, perLayerWalls } = generateMultiLevel(
+          makeOpts({
+            algorithm: entry.id,
+            size: 15,
+            levelCount: levelCount as LevelCount,
+          }),
+        );
+        expect(maze.levelCount).toBe(levelCount);
+        expect(perLayerWalls).toHaveLength(levelCount);
+        // Stair-up transitions: one per inter-layer boundary.
+        // The MVP scope (P3-1b) only emits stair-up; the other
+        // kinds land in P3-1c.
+        expect(maze.transitions).toHaveLength(levelCount - 1);
+        for (const t of maze.transitions!) {
+          expect(t.kind).toBe('stair-up');
+          expect(t.toLevel).toBe(t.level + 1);
+        }
+      }
+      const elapsed = performance.now() - t0;
+      // 15 algorithms × 4 layer counts × size 15 → worst case
+      // is the O(N²) family (Aldous-Broder / Wilson's /
+      // Houston) at 6 levels. The 5s cap is the spec budget
+      // for a single level generation; we multiply by ~15×4 to
+      // cover the iteration, so a more realistic per-call cap
+      // is sub-second. The assertion stays loose at 5s to
+      // avoid CI jitter on slow runners.
+      expect(elapsed).toBeLessThan(5000);
+    },
+  );
+
+  // 3. Same seed → same maze. The cross-reload contract — a
+  //    player who shares a URL gets the same level, the
+  //    best-record tag matches, and the per-layer walls
+  //    (engine cache) align with the maze data.
+  it('same seed produces identical { maze, perLayerWalls } across calls', () => {
+    const a = generateMultiLevel(makeOpts({ levelCount: 3, mazeSeed: 'cafebabecafebabe' }));
+    const b = generateMultiLevel(makeOpts({ levelCount: 3, mazeSeed: 'cafebabecafebabe' }));
+    expect(a.maze.walls).toEqual(b.maze.walls);
+    expect(a.maze.transitions).toEqual(b.maze.transitions);
+    expect(a.maze.start).toEqual(b.maze.start);
+    expect(a.maze.exit).toEqual(b.maze.exit);
+    expect(a.perLayerWalls).toEqual(b.perLayerWalls);
+  });
+
+  // 4. Start and exit both land on non-wall cells. The
+  //    rejection-sampling pickOpenCell guarantees this, but
+  //    a regression to a non-validating pick (e.g. an empty
+  //    fallback that returned the first cell) would silently
+  //    ship unwalkable spawns — pin the invariant.
+  it('start and exit cells are non-wall across every layer count + algorithm', () => {
+    for (const entry of ALGORITHM_REGISTRY) {
+      for (const levelCount of [2, 3, 4, 6] as const) {
+        const { maze, perLayerWalls } = generateMultiLevel(
+          makeOpts({
+            algorithm: entry.id,
+            levelCount: levelCount as LevelCount,
+            mazeSeed: '0123456789abcdef',
+          }),
+        );
+        const startLayer = perLayerWalls[maze.start.level ?? 0];
+        const exitLayer = perLayerWalls[maze.exit.level ?? 0];
+        expect(
+          startLayer[maze.start.z][maze.start.x],
+          `${entry.id} levelCount=${levelCount} start on wall`,
+        ).toBe(0);
+        expect(
+          exitLayer[maze.exit.z][maze.exit.x],
+          `${entry.id} levelCount=${levelCount} exit on wall`,
+        ).toBe(0);
+      }
+    }
+  });
+
+  // 5. Start ≠ exit. The "same layer" branch also pins the
+  //    "not adjacent" rule (Q10), but a different-layer
+  //    placement is trivially not-equal at the cell level.
+  it('start cell never equals exit cell (same or different layer)', () => {
+    for (const entry of ALGORITHM_REGISTRY) {
+      for (const levelCount of [2, 3, 4, 6] as const) {
+        const { maze } = generateMultiLevel(
+          makeOpts({
+            algorithm: entry.id,
+            levelCount: levelCount as LevelCount,
+            mazeSeed: '0123456789abcdef',
+          }),
+        );
+        // Identity by (level, x, z). The level field makes
+        // "same cell on different layers" legal but the test
+        // is strictly about "same cell on the same layer".
+        const sameCellSameLayer =
+          maze.start.level === maze.exit.level &&
+          maze.start.x === maze.exit.x &&
+          maze.start.z === maze.exit.z;
+        expect(
+          sameCellSameLayer,
+          `${entry.id} levelCount=${levelCount} start === exit at (${maze.start.level},${maze.start.x},${maze.start.z})`,
+        ).toBe(false);
+      }
+    }
+  });
+
+  // 6. On the same layer, start and exit are not 4-adjacent.
+  //    Spec §12 Q10: "同层时 start cell ≠ exit cell 且不相邻".
+  //    We force the 30% same-layer case by reseeding the PRNG
+  //    past the layer-pick stage. Simpler: assert across many
+  //    seeds; ~30% of them will hit the same-layer case, and
+  //    those that do must satisfy the adjacency rule.
+  it('on the same layer, start and exit are not 4-adjacent (Q10)', () => {
+    // Run with multiple seeds so the 30% same-layer branch is
+    // exercised at least once. 16 seeds × 4 level counts gives
+    // 64 trials; ~30% → ~19 same-layer trials.
+    let sameLayerTrials = 0;
+    for (let seedIdx = 0; seedIdx < 16; seedIdx++) {
+      const hex = seedIdx.toString(16).padStart(16, '0');
+      for (const levelCount of [2, 3, 4, 6] as const) {
+        const { maze } = generateMultiLevel(
+          makeOpts({ levelCount, mazeSeed: hex, size: 15 }),
+        );
+        if (maze.start.level !== maze.exit.level) continue;
+        sameLayerTrials++;
+        const dx = Math.abs(maze.start.x - maze.exit.x);
+        const dz = Math.abs(maze.start.z - maze.exit.z);
+        // Not the same cell (covered by test #5) and not
+        // 4-adjacent (dx+dz === 1).
+        const isAdjacent = dx + dz === 1;
+        expect(
+          isAdjacent,
+          `seed=${hex} levelCount=${levelCount} start (${maze.start.x},${maze.start.z}) adjacent to exit (${maze.exit.x},${maze.exit.z})`,
+        ).toBe(false);
+      }
+    }
+    // Sanity: we did exercise the same-layer branch. If
+    // sameLayerTrials is 0, the test isn't actually validating
+    // anything; a future PRNG refactor that pins start/exit to
+    // different layers would silently weaken coverage.
+    expect(sameLayerTrials).toBeGreaterThan(0);
+  });
+
+  // 7. Every transition endpoint sits on a non-wall cell. A
+  //    regression to a non-validating pick (e.g. one that
+  //    accepts wall cells) would put the player's stair-up
+  //    mesh inside a wall — visually broken and collision-
+  //    blocking.
+  it('every transition endpoint (source AND dest) is a non-wall cell', () => {
+    for (const entry of ALGORITHM_REGISTRY) {
+      for (const levelCount of [2, 3, 4, 6] as const) {
+        const { maze, perLayerWalls } = generateMultiLevel(
+          makeOpts({
+            algorithm: entry.id,
+            levelCount: levelCount as LevelCount,
+            mazeSeed: '0123456789abcdef',
+          }),
+        );
+        expect(maze.transitions).toHaveLength(levelCount - 1);
+        for (const t of maze.transitions!) {
+          const src = perLayerWalls[t.level];
+          const dst = perLayerWalls[t.toLevel];
+          expect(
+            src[t.z][t.x],
+            `${entry.id} levelCount=${levelCount} transition ${t.id} source on wall at (${t.level},${t.x},${t.z})`,
+          ).toBe(0);
+          // toX / toZ default to the same (x, z) when omitted
+          // — we always set them in P3-1b's generator, so they
+          // are guaranteed present.
+          const destX = t.toX ?? t.x;
+          const destZ = t.toZ ?? t.z;
+          expect(
+            dst[destZ][destX],
+            `${entry.id} levelCount=${levelCount} transition ${t.id} dest on wall at (${t.toLevel},${destX},${destZ})`,
+          ).toBe(0);
+        }
+      }
+    }
+  });
+
+  // 8. The "each cell at most 1 transition" rule. A cell
+  //    is identified by (level, x, z) — the same (x, z) on
+  //    different layers is a different cell, so we don't
+  //    cross-couple. This covers the awkward case where
+  //    the layer i→i+1 transition's dest cell collides
+  //    with the layer (i+1)→(i+2) transition's source cell
+  //    — the reservation set must catch it.
+  it('no cell hosts more than one transition (across source + dest)', () => {
+    for (const entry of ALGORITHM_REGISTRY) {
+      for (const levelCount of [2, 3, 4, 6] as const) {
+        const { maze } = generateMultiLevel(
+          makeOpts({
+            algorithm: entry.id,
+            levelCount: levelCount as LevelCount,
+            mazeSeed: '0123456789abcdef',
+          }),
+        );
+        const seen = new Map<string, string>();
+        for (const t of maze.transitions!) {
+          const srcKey = `${t.level}:${t.x}:${t.z}`;
+          const dstKey = `${t.toLevel}:${t.toX ?? t.x}:${t.toZ ?? t.z}`;
+          for (const [key, label] of [
+            [srcKey, `source of ${t.id}`] as const,
+            [dstKey, `dest of ${t.id}`] as const,
+          ]) {
+            const existing = seen.get(key);
+            expect(
+              existing,
+              `${entry.id} levelCount=${levelCount} cell ${key} hosts two transitions: ${existing} and ${label}`,
+            ).toBeUndefined();
+            seen.set(key, label);
+          }
+        }
+      }
+    }
   });
 });

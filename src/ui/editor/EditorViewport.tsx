@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useEditorStore } from '../../store/editorStore';
-import type { EditorTool, EnemySpawn, MazeData, Pickup, PickupType, Trap, Door } from '../../maze/types';
+import type { EditorTool, EnemySpawn, MazeData, Pickup, PickupType, Trap, Door, VerticalTransition, TransitionKind } from '../../maze/types';
+import { isTransitionTool } from '../../maze/types';
 import type { EditorSelection } from '../../store/editorStore';
 import { EditorHelpDrawer } from './EditorHelpDrawer';
 import { useT } from '../../i18n';
@@ -18,6 +19,28 @@ import { TRAP_CSS_COLOR, KEY_COLOR_CSS } from '../../utils/colors';
 const ENEMY_COLOR = '#ff8a3d';
 const WALL_COLOR = '#1d1f27';
 const FLOOR_COLOR = '#e0e0ea';
+// P3-1c: per-kind transition glyph color. Each kind gets a distinct
+// hue so the user can tell at a glance which transition is which;
+// the kind label is also rendered inside the glyph (see
+// `TransitionGlyph`) so the textual mapping stays in sync.
+const TRANSITION_COLOR: Record<TransitionKind, string> = {
+  'stair-up': '#7ed957',
+  'stair-down': '#5fa8ff',
+  'hole-down': '#c95cff',
+  'hole-up': '#ff5252',
+  ladder: '#ffd84d',
+};
+// P3-1c: short single-character label for each transition kind.
+// The full label lives in the toolbar tool label + the properties
+// panel kind dropdown; the glyph shows a single-character tag so
+// the cell stays readable.
+const TRANSITION_GLYPH: Record<TransitionKind, string> = {
+  'stair-up': '↑',
+  'stair-down': '↓',
+  'hole-down': '⦵',
+  'hole-up': '⦴',
+  ladder: '║',
+};
 const CELL_SIZE = 24;
 // F-2026-06-18: widened the editor zoom range from [0.5, 3] to
 // [0.25, 5]. 50% was too coarse for wide overview shots (15×15 grids
@@ -34,23 +57,62 @@ interface CellLookup {
   // P2-18: trap and door cell lookups for selection + glyph rendering.
   trapByCell: Map<string, Trap>;
   doorByCell: Map<string, Door>;
+  // P3-1c: per-cell transition lookup, filtered to the editor's
+  // current layer. The viewport uses this to (a) drive the
+  // transition glyph render and (b) route select-tool clicks to
+  // the `transition` selection kind. The full
+  // `level.transitions` array still drives the always-visible
+  // ghosted-overlay rendering (see `allTransitions` below) so the
+  // user can see cross-layer connections even while editing a
+  // different layer.
+  transitionByCell: Map<string, VerticalTransition>;
 }
 
 function cellKey(x: number, z: number): string {
   return `${x},${z}`;
 }
 
-function buildLookups(level: { pickups: Pickup[]; enemies: EnemySpawn[]; traps: Trap[]; doors: Door[] }): CellLookup {
+function buildLookups(
+  level: { pickups: Pickup[]; enemies: EnemySpawn[]; traps: Trap[]; doors: Door[]; transitions?: VerticalTransition[] },
+  currentLevel: number,
+): CellLookup {
   const pickupByCell = new Map<string, Pickup>();
-  for (const p of level.pickups) pickupByCell.set(cellKey(p.x, p.z), p);
+  for (const p of level.pickups) {
+    // P3-1c: per-layer entity filter. Entities on other layers
+    // are not selectable / not pickable from this layer's tab.
+    // The walls grid is intentionally shared across layers in
+    // P3-1a (P3-1b will add per-layer walls) so we only filter
+    // entity-bearing props.
+    if ((p.level ?? 0) !== currentLevel) continue;
+    pickupByCell.set(cellKey(p.x, p.z), p);
+  }
   const enemyByCell = new Map<string, EnemySpawn>();
-  for (const e of level.enemies) enemyByCell.set(cellKey(e.x, e.z), e);
+  for (const e of level.enemies) {
+    if ((e.level ?? 0) !== currentLevel) continue;
+    enemyByCell.set(cellKey(e.x, e.z), e);
+  }
   // P2-18: trap and door cell lookups.
   const trapByCell = new Map<string, Trap>();
-  for (const t of level.traps) trapByCell.set(cellKey(t.x, t.z), t);
+  for (const t of level.traps) {
+    if ((t.level ?? 0) !== currentLevel) continue;
+    trapByCell.set(cellKey(t.x, t.z), t);
+  }
   const doorByCell = new Map<string, Door>();
-  for (const d of level.doors) doorByCell.set(cellKey(d.x, d.z), d);
-  return { pickupByCell, enemyByCell, trapByCell, doorByCell };
+  for (const d of level.doors) {
+    if ((d.level ?? 0) !== currentLevel) continue;
+    doorByCell.set(cellKey(d.x, d.z), d);
+  }
+  // P3-1c: per-layer transition lookup. Like the other entity
+  // maps, this is filtered to the editor's currentLevel — but
+  // the grid body renders the full `transitions` array as a
+  // ghosted overlay so the user can see the cross-layer
+  // structure even while on a different layer.
+  const transitionByCell = new Map<string, VerticalTransition>();
+  for (const tr of level.transitions ?? []) {
+    if (tr.level !== currentLevel) continue;
+    transitionByCell.set(cellKey(tr.x, tr.z), tr);
+  }
+  return { pickupByCell, enemyByCell, trapByCell, doorByCell, transitionByCell };
 }
 
 function pathPointsAttr(path: Array<{ x: number; z: number }>): string {
@@ -94,9 +156,21 @@ export function EditorViewport({ anyOverlayOpen = false }: EditorViewportProps):
   // P2-18: trap and door placement actions.
   const placeTrap = useEditorStore((s) => s.placeTrap);
   const placeDoor = useEditorStore((s) => s.placeDoor);
+  // P3-1c: transition placement. The toolbar's 5 new tools
+  // (stair-up / stair-down / hole-down / hole-up / ladder) all
+  // route through this single action; the `kind` is the active
+  // tool's literal. Per-level filtering of visible transitions
+  // lives below in `buildLookups` — see `transitionByCell`.
+  const placeTransition = useEditorStore((s) => s.placeTransition);
   const select = useEditorStore((s) => s.select);
   const clearSelection = useEditorStore((s) => s.clearSelection);
   const setTool = useEditorStore((s) => s.setTool);
+  // P3-1c: subscribe to the editor's currentLevel so a layer
+  // change re-renders the viewport. The viewport re-derives the
+  // per-layer entity filter from this; the level-tab bar in the
+  // left panel is a separate selector that re-renders the
+  // highlight on the same value.
+  const currentLevel = useEditorStore((s) => s.currentLevel);
 
   // F-P2-9: local UI state for the help-drawer toggle. Kept in the
   // viewport (rather than the editor store) because the drawer's
@@ -175,7 +249,10 @@ export function EditorViewport({ anyOverlayOpen = false }: EditorViewportProps):
   // L-2 gate can read them — see the F-P2-9 comment on the first
   // declaration.)
 
-  const { pickupByCell, enemyByCell, trapByCell, doorByCell } = useMemo(() => buildLookups(level), [level]);
+  const { pickupByCell, enemyByCell, trapByCell, doorByCell, transitionByCell } = useMemo(
+    () => buildLookups(level, currentLevel),
+    [level, currentLevel],
+  );
   const panStateRef = useRef<{ x: number; y: number } | null>(null);
 
   // F-2026-06-15-M-45: was an inline arrow rebuilt on every render, which
@@ -205,9 +282,14 @@ export function EditorViewport({ anyOverlayOpen = false }: EditorViewportProps):
         const d = doorByCell.get(cellKey(x, z));
         return d ? d.id === selection.id : false;
       }
+      // P3-1c: transition selection branch.
+      if (selection.kind === 'transition') {
+        const tr = transitionByCell.get(cellKey(x, z));
+        return tr ? tr.id === selection.id : false;
+      }
       return false;
     },
-    [selection, pickupByCell, enemyByCell, trapByCell, doorByCell],
+    [selection, pickupByCell, enemyByCell, trapByCell, doorByCell, transitionByCell],
   );
 
   const handleCellClick = (x: number, z: number): void => {
@@ -232,6 +314,20 @@ export function EditorViewport({ anyOverlayOpen = false }: EditorViewportProps):
       const door = doorByCell.get(cellKey(x, z));
       if (door) {
         select({ kind: 'door', id: door.id });
+        return;
+      }
+      // P3-1c: select a transition on the current level. Transitions
+      // on other levels are still rendered (so the user can see the
+      // cross-layer connection) but they don't pick-select — that
+      // would be confusing because the properties panel's editable
+      // fields are the same across all layers and clicking an L2
+      // transition while the L1 tab is active would surface a
+      // non-L1 transition's properties. A future P3-N could add
+      // "auto-switch to that layer on select" but it's a UX call
+      // the current spec doesn't make.
+      const transition = transitionByCell.get(cellKey(x, z));
+      if (transition) {
+        select({ kind: 'transition', id: transition.id });
         return;
       }
       if (level.walls[z]?.[x] === 1) {
@@ -259,6 +355,15 @@ export function EditorViewport({ anyOverlayOpen = false }: EditorViewportProps):
     // P2-18: trap and door placement.
     else if (tool === 'trap') placeTrap(x, z);
     else if (tool === 'door') placeDoor(x, z);
+    // P3-1c: 5 transition tools all route to the same `placeTransition`
+    // action with the tool literal as the `kind`. `isTransitionTool`
+    // narrows the union to `TransitionTool` so the cast below is
+    // type-checked; a future tool added to the toolbar without being
+    // registered here would fail to compile (the `never` check at
+    // the bottom of the chain still pins exhaustiveness).
+    else if (isTransitionTool(tool)) {
+      placeTransition(tool as TransitionKind, x, z);
+    }
     else {
       // F-2026-06-16-M-4: exhaustiveness check. If a new EditorTool
       // variant is added without a branch here, the `never` assignment
@@ -492,6 +597,7 @@ export function EditorViewport({ anyOverlayOpen = false }: EditorViewportProps):
         tool={tool}
         isCellSelected={isCellSelected}
         onCellClick={handleCellClick}
+        currentLevel={currentLevel}
       />
       </div>
 
@@ -672,6 +778,14 @@ interface GridBodyProps {
   tool: EditorTool;
   isCellSelected: (x: number, z: number) => boolean;
   onCellClick: (x: number, z: number) => void;
+  // P3-1c: layer context for the transition overlay. Transitions
+  // on the current layer render opaque (and are pickable via the
+  // select tool / selectable in the properties panel); transitions
+  // on other layers render as a half-opacity ghost with a layer
+  // tag, so the user can see the cross-layer structure even while
+  // editing a different layer. P3-1b will swap the ghost for the
+  // real inter-layer rendering once the engine supports it.
+  currentLevel: number;
 }
 const GridBody = memo(function GridBody({
   level,
@@ -679,6 +793,7 @@ const GridBody = memo(function GridBody({
   tool,
   isCellSelected,
   onCellClick,
+  currentLevel,
 }: GridBodyProps): React.ReactElement {
   const { width, depth } = level.size;
   const gridWidth = width * CELL_SIZE;
@@ -936,6 +1051,129 @@ const GridBody = memo(function GridBody({
           </div>
         );
       })}
+
+      {/* P3-1c: vertical-transition glyphs. Each transition's
+          source-layer dictates the rendering style:
+            - on the editor's current level → full opacity, the
+              cell-level glyph doubles as a click target for the
+              select tool (handled by the parent viewport's
+              handleCellClick) and the properties panel can edit
+              it;
+            - on any other level → half-opacity ghost with a
+              "L{n}" tag so the user can see the cross-layer
+              connection even while editing a different layer.
+          The ghost layer does NOT block the cell click (the cell
+          below it still owns the click; the ghost is `pointerEvents:
+          none`). The "current level" version is also
+          pointer-events:none because the cell is the click target;
+          the select tool's handleCellClick reads from
+          `transitionByCell` (built by the parent) and routes to
+          the `transition` selection kind. */}
+      {(level.transitions ?? []).map((tr) => {
+        const onCurrentLayer = tr.level === currentLevel;
+        const selected = selection?.kind === 'transition' && selection.id === tr.id;
+        return (
+          <div
+            key={tr.id}
+            data-testid={`transition-${tr.id}`}
+            data-transition-kind={tr.kind}
+            data-transition-level={tr.level}
+            data-transition-to-level={tr.toLevel}
+            style={{
+              position: 'absolute',
+              left: tr.x * CELL_SIZE,
+              top: tr.z * CELL_SIZE,
+              width: CELL_SIZE,
+              height: CELL_SIZE,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              pointerEvents: 'none',
+              outline: selected ? '2px solid var(--accent)' : 'none',
+              outlineOffset: '-2px',
+              zIndex: 2,
+              opacity: onCurrentLayer ? 1 : 0.4,
+            }}
+          >
+            <span
+              aria-hidden
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 18,
+                height: 18,
+                borderRadius: 4,
+                background: TRANSITION_COLOR[tr.kind],
+                border: '2px solid #0c0d12',
+                color: '#0c0d12',
+                fontSize: 12,
+                fontWeight: 700,
+                fontFamily: 'var(--font-mono)',
+              }}
+            >
+              {TRANSITION_GLYPH[tr.kind]}
+            </span>
+            {!onCurrentLayer && (
+              <span
+                aria-hidden
+                style={{
+                  position: 'absolute',
+                  top: 1,
+                  right: 1,
+                  fontSize: 8,
+                  fontFamily: 'var(--font-mono)',
+                  background: 'rgba(12,13,18,0.7)',
+                  color: '#fff',
+                  padding: '1px 3px',
+                  borderRadius: 2,
+                }}
+              >
+                L{tr.level + 1}
+              </span>
+            )}
+          </div>
+        );
+      })}
+
+      {/* P3-1c: cross-layer connection lines. Drawn last so they
+          sit above the entity glyphs; each transition's source cell
+          on its own layer has a thin colored line connecting it to
+          the toLevel's matching cell. The toLevel's cell is the
+          landing point (default: same x/z; the optional toX/toZ
+          are used here for a different landing coordinate). The
+          opacity follows the source-layer's render style — full
+          opacity for the current layer, ghosted otherwise. */}
+      <svg
+        data-testid="transition-lines"
+        width={gridWidth}
+        height={gridHeight}
+        style={{
+          position: 'absolute',
+          inset: 0,
+          pointerEvents: 'none',
+          zIndex: 2,
+        }}
+      >
+        {(level.transitions ?? []).map((tr) => {
+          const toX = tr.toX ?? tr.x;
+          const toZ = tr.toZ ?? tr.z;
+          return (
+            <line
+              key={`transition-line-${tr.id}`}
+              data-testid={`transition-line-${tr.id}`}
+              x1={tr.x * CELL_SIZE + CELL_SIZE / 2}
+              y1={tr.z * CELL_SIZE + CELL_SIZE / 2}
+              x2={toX * CELL_SIZE + CELL_SIZE / 2}
+              y2={toZ * CELL_SIZE + CELL_SIZE / 2}
+              stroke={TRANSITION_COLOR[tr.kind]}
+              strokeWidth={2}
+              strokeDasharray="4 3"
+              opacity={tr.level === currentLevel ? 0.9 : 0.35}
+            />
+          );
+        })}
+      </svg>
     </div>
   );
 });

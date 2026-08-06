@@ -10,8 +10,16 @@ function makeMaze(over: Partial<MazeData> = {}): MazeData {
     name: 'Test Level',
     size: { width: 3, depth: 3 },
     cellSize: 2,
-    start: { x: 0, z: 0 },
-    exit: { x: 2, z: 2 },
+    // P3-1: every P3-1 defaulted field is mirrored in the
+    // factory so `toEqual` against a `saveCustom` round-trip
+    // doesn't fail on the new defaults the validator fills in.
+    // A pre-P3-1 custom level (no `level` / `levelCount` /
+    // `transitions`) goes through the same default-fill and
+    // comes out byte-equivalent to this factory's output.
+    start: { x: 0, z: 0, level: 0 },
+    exit: { x: 2, z: 2, level: 0 },
+    levelCount: 1,
+    transitions: [],
     walls: [
       [0, 0, 0],
       [0, 1, 0],

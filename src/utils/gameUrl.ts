@@ -38,7 +38,7 @@ import {
   type StartLevelOptions,
   type VictoryType,
 } from '../maze/types';
-import { decodeSeed, encodeSeed } from './seed';
+import { decodeSeed, encodeSeed, encodeSeedV2 } from './seed';
 
 const SEED_QUERY = 'seed';
 const ID_QUERY = 'id';
@@ -157,7 +157,17 @@ export function parseGameSearchParams(
     return { ok: false, error: 'bad-seed' };
   }
   options.seed = decoded;
-  return { ok: true, parsed: { id: encodeSeed(decoded), options } };
+  // P3-1: preserve the v2 wire format on round-trip. A deep-link
+  // carrying a v2 id must come back out as a v2 id; otherwise
+  // refreshing the page would silently downgrade the level to
+  // 1 layer. `encodeSeed` (v1) only fires when the seed has no
+  // `levelCount` (i.e. it was a v1 id to begin with, or a v2 id
+  // with the back-compat `levelCount=1` value — which decodes
+  // identically so the codec-version swap is invisible).
+  const seedId = decoded.levelCount && decoded.levelCount > 1
+    ? encodeSeedV2(decoded, decoded.levelCount)
+    : encodeSeed(decoded);
+  return { ok: true, parsed: { id: seedId, options } };
 }
 
 // F-project-review-2026-06-14: reverse direction. Builds the ?seed=&mode=...
@@ -169,7 +179,18 @@ export function buildGameSearchParams(
   options?: StartLevelOptions,
 ): URLSearchParams {
   const params = new URLSearchParams();
-  const isProcedural = id.startsWith('algo-v1-');
+  // P3-1: P3-1a added the algo-v2-… seed format (carries a level
+  // count between `size` and the hex mazeSeed). v2 ids are still
+  // procedural — they round-trip through `?seed=…` the same way v1
+  // ids do — so the isProcedural gate has to accept both prefixes.
+  // A future v3 (or any other not-yet-defined prefix) intentionally
+  // falls through to the `?id=…` branch, which is the conservative
+  // choice: a hand-crafted level id cannot collide with a future seed
+  // format. `parseGameSearchParams` still rejects unknown seed
+  // prefixes via `decodeSeed`, so a deep-link carrying
+  // `?seed=algo-v3-…` lands in the `bad-seed` error path either way
+  // (see the new gameUrl.test.ts case 'tamper').
+  const isProcedural = id.startsWith('algo-v1-') || id.startsWith('algo-v2-');
   if (isProcedural) {
     params.set(SEED_QUERY, id);
   } else {
@@ -179,8 +200,21 @@ export function buildGameSearchParams(
 
   // Re-encode so the URL carries the canonical algorithm+size+seed in the
   // seed id (we'd rather trust encodeSeed than the caller's pre-built id).
+  // P3-1: route through encodeSeedV2 when the seed carries a level
+  // count, otherwise the URL silently downgrades a multi-layer
+  // level to 1 layer on every navigation. `encodeSeed` (v1) is
+  // still the right call for v1 ids and v2 ids that decode to
+  // levelCount=1 (the back-compat-1 case is byte-identical
+  // between the two encoders except for the wire prefix, and v1
+  // is the canonical name for it because every historical best
+  // record is on the v1 codec).
   if (isProcedural && options.seed) {
-    params.set(SEED_QUERY, encodeSeed(options.seed));
+    const seed = options.seed;
+    if (seed.levelCount && seed.levelCount > 1) {
+      params.set(SEED_QUERY, encodeSeedV2(seed, seed.levelCount));
+    } else {
+      params.set(SEED_QUERY, encodeSeed(seed));
+    }
   }
   if (options.mode) params.set(MODE_QUERY, options.mode);
   if (options.mode === 'survive' && typeof options.surviveSeconds === 'number') {

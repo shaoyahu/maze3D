@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   encodeSeed,
+  encodeSeedV2,
   decodeSeed,
   fallbackRandomHexSeed,
   fnv1a,
@@ -140,6 +141,21 @@ describe('encodeSeed / decodeSeed', () => {
     expect(() => decodeSeed('algo-v1-recursive-backtracker-99-0000000000000001')).toThrow(InvalidSeedError);
   });
 
+  // P3-1: v1 ids must continue to decode (levelCount stays
+  // undefined so the engine back-compat path in
+  // AlgorithmMazeProvider.load collapses it to 1).
+  it('decodes a v1 id without populating levelCount (back-compat contract)', () => {
+    const seed = {
+      algorithm: 'recursive-backtracker' as const,
+      size: 30 as const,
+      mazeSeed: '0123456789abcdef',
+    };
+    const id = encodeSeed(seed);
+    const decoded = decodeSeed(id);
+    expect(decoded).toEqual(seed);
+    expect(decoded.levelCount).toBeUndefined();
+  });
+
   // F-A-architecture-LOW-3: boundary round-trip. The existing
   // "roundtrips a seed" test only exercises size=30 + algorithm=rb +
   // a single seed. encode/decode carry algorithm / size / mazeSeed
@@ -169,6 +185,113 @@ describe('encodeSeed / decodeSeed', () => {
         }
       }
     }
+  });
+
+  // P3-1: v2 codec. The format is `algo-v2-{algorithm}-{size}-{levels}-{hex}`.
+  // encodeSeedV2 always emits v2; decodeSeed accepts both v1 and v2
+  // by trying v2 first (the v1 regex would otherwise greedily match
+  // the leading segments of a v2 id). levelCount=1 is a legal v2
+  // value but decodes back to the same single-layer semantics as v1.
+  describe('v2 multi-level seed (P3-1)', () => {
+    it('encodeSeedV2 emits the documented v2 wire format', () => {
+      const id = encodeSeedV2(
+        { algorithm: 'recursive-backtracker', size: 30, mazeSeed: '0123456789abcdef' },
+        2,
+      );
+      expect(id).toBe('algo-v2-recursive-backtracker-30-2-0123456789abcdef');
+    });
+
+    it('encodeSeedV2 round-trips every levelCount in 1..6', () => {
+      for (const levelCount of [1, 2, 3, 4, 5, 6] as const) {
+        const id = encodeSeedV2(
+          { algorithm: 'kruskal', size: 15, mazeSeed: '0000000000000001' },
+          levelCount,
+        );
+        expect(id).toMatch(/^algo-v2-kruskal-15-[1-6]-[0-9a-f]{16}$/);
+        const decoded = decodeSeed(id);
+        expect(decoded.levelCount).toBe(levelCount);
+        expect(decoded.algorithm).toBe('kruskal');
+        expect(decoded.size).toBe(15);
+        expect(decoded.mazeSeed).toBe('0000000000000001');
+      }
+    });
+
+    it('decodeSeed routes a v2 id through the v2 branch (levelCount populated)', () => {
+      const id = 'algo-v2-recursive-backtracker-30-3-fedcba9876543210';
+      const decoded = decodeSeed(id);
+      expect(decoded).toEqual({
+        algorithm: 'recursive-backtracker',
+        size: 30,
+        mazeSeed: 'fedcba9876543210',
+        levelCount: 3,
+      });
+    });
+
+    it('decodeSeed keeps the v1 prefix and continues to decode v1 ids', () => {
+      // Regression: the v1 path must still work after the v2
+      // branch landed. The P2-21 back-compat contract requires
+      // every existing v1 id (in best records + URLs) to keep
+      // decoding.
+      const v1 = 'algo-v1-recursive-backtracker-30-0123456789abcdef';
+      const decoded = decodeSeed(v1);
+      expect(decoded.algorithm).toBe('recursive-backtracker');
+      expect(decoded.size).toBe(30);
+      expect(decoded.mazeSeed).toBe('0123456789abcdef');
+      expect(decoded.levelCount).toBeUndefined();
+    });
+
+    it('encodeSeed still emits v1 even when the input seed carries levelCount', () => {
+      // P3-1 back-compat: encodeSeed is the v1 codec. Renaming
+      // the prefix to algo-v2- would break every existing best
+      // record, so the function deliberately stays on v1
+      // regardless of `seed.levelCount`. v2 callers must use
+      // encodeSeedV2 explicitly — see the comment on encodeSeed
+      // in src/utils/seed.ts for the rationale.
+      const id = encodeSeed({
+        algorithm: 'kruskal',
+        size: 15,
+        mazeSeed: '0000000000000001',
+        levelCount: 2,
+      });
+      expect(id).toBe('algo-v1-kruskal-15-0000000000000001');
+    });
+
+    it.each([0, 7, 99, -1, 1.5, 'abc'])(
+      'decodeSeed rejects v2 with out-of-range levelCount %s',
+      (bad) => {
+        const id = `algo-v2-recursive-backtracker-30-${bad}-0123456789abcdef`;
+        expect(() => decodeSeed(id)).toThrow(InvalidSeedError);
+      },
+    );
+
+    it('decodeSeed rejects v2 with an unknown algorithm', () => {
+      expect(() =>
+        decodeSeed('algo-v2-unknown-algorithm-30-2-0123456789abcdef'),
+      ).toThrow(InvalidSeedError);
+    });
+
+    it('decodeSeed rejects v2 with an unsupported size', () => {
+      expect(() =>
+        decodeSeed('algo-v2-recursive-backtracker-99-2-0123456789abcdef'),
+      ).toThrow(InvalidSeedError);
+    });
+
+    it('decodeSeed rejects v2 with a malformed hex mazeSeed', () => {
+      expect(() =>
+        decodeSeed('algo-v2-recursive-backtracker-30-2-not-hex-aaaaaa'),
+      ).toThrow(InvalidSeedError);
+    });
+
+    it('decodeSeed rejects a v2 id with too few / too many segments', () => {
+      // Five segments instead of v2's expected six (algo-v2-alg-size-levels-hex).
+      expect(() =>
+        decodeSeed('algo-v2-recursive-backtracker-30-0123456789abcdef'),
+      ).toThrow(InvalidSeedError);
+      // And a v1 id with an extra junk segment.
+      expect(() =>
+        decodeSeed('algo-v1-recursive-backtracker-30-2-0123456789abcdef'),
+      ).toThrow(InvalidSeedError);
+    });
   });
 });
 

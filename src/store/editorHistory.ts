@@ -19,7 +19,14 @@ export type EditorSelection =
   // P2-18: trap and door selection variants.
   | { kind: 'trap'; id: string }
   | { kind: 'door'; id: string }
-  | { kind: 'wall'; x: number; z: number };
+  | { kind: 'wall'; x: number; z: number }
+  // P3-1c: vertical transition (stair / hole / ladder) selection.
+  // The properties panel and `deleteSelected` route to the same
+  // shape as the per-entity variants — an id that uniquely keys
+  // the transition in `level.transitions`. Picked via the select
+  // tool on a transition glyph (or auto-selected right after
+  // placement, like pickups / traps / doors).
+  | { kind: 'transition'; id: string };
 
 export interface Snapshot {
   level: MazeData;

@@ -2,17 +2,20 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ENEMY_COUNT_DEFAULT,
   ENEMY_COUNT_MAX,
+  LEVEL_COUNT_VALUES,
   SPAWN_PROGRESSIVE_MAX_DEFAULT,
   SPAWN_SCHEDULE_DEFAULT,
   SURVIVE_SECONDS_DEFAULT,
   SURVIVE_SECONDS_MAX,
   SURVIVE_SECONDS_MIN,
   SURVIVE_SECONDS_VALUES,
+  isLevelCount,
   isLevelSource,
   isMazeSize,
   isSurviveSeconds,
   isVictoryType,
   type Algorithm,
+  type LevelCount,
   type LevelSource,
   type MazeData,
   type MazeSize,
@@ -21,7 +24,7 @@ import {
   type StartLevelOptions,
   type VictoryType,
 } from '../maze/types';
-import { encodeSeed, fallbackRandomHexSeed } from '../utils/seed';
+import { decodeSeed, encodeSeed, encodeSeedV2, fallbackRandomHexSeed } from '../utils/seed';
 import { formatTime } from '../utils/time';
 import { isStorageAvailable } from '../store/persist';
 import { useLevelStore } from '../store/levelStore';
@@ -79,6 +82,38 @@ const LAST_SEED_KEY = 'maze3d.lastSeed';
 const ALGORITHM_OPTIONS: ReadonlyArray<{ value: Algorithm; labelKey: string }> =
   ALGORITHM_REGISTRY.map((e) => ({ value: e.id, labelKey: e.labelKey }));
 
+// P3-1: 1..6 layer dropdown for the seed-input panel. The literal
+// union matches `LevelCount` in maze/types.ts so the `level-count-
+// select` testid can hand values back through `isLevelCount`. The
+// `LEVEL_COUNT_VALUES` tuple is the same source of truth the seed
+// codec + URL validator consult, keeping the dropdown locked in
+// step with `SEED_RE_V2` / `decodeSeed`.
+const LEVEL_COUNT_OPTIONS: ReadonlyArray<LevelCount> = LEVEL_COUNT_VALUES;
+
+// P3-1: try to parse a free-form seed-input field as a full v1/v2
+// id. Returns the parsed Seed (with `levelCount` populated for v2)
+// on success, or `null` for any input that isn't a full id. The
+// caller is responsible for the 16-hex fallback path — this helper
+// only covers the "user pasted a full id" case (handles both
+// `algo-v1-…` legacy ids and `algo-v2-…` multi-layer ids). The
+// check is intentionally strict: a 16-hex string is NOT a full id,
+// so `tryParseFullSeedId('0123456789abcdef')` returns null and
+// leaves the hex branch in the input's onChange to handle it.
+function tryParseFullSeedId(raw: string): Seed | null {
+  const lower = raw.toLowerCase().trim();
+  if (lower === '') return null;
+  // Cheap pre-filter: a full id always starts with `algo-v`. Skip
+  // `decodeSeed` for the common case (user is mid-typing a hex
+  // value) so the heavy regex + VALID_ALGORITHMS lookup don't run
+  // on every keystroke.
+  if (!lower.startsWith('algo-')) return null;
+  try {
+    return decodeSeed(lower);
+  } catch {
+    return null;
+  }
+}
+
 function randomHexSeed(): string {
   if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
     const bytes = new Uint8Array(8);
@@ -110,6 +145,12 @@ interface ValidationContext {
   // 'random' path (which still uses algorithmForMode(mode) so the
   // mode→algorithm default mapping is preserved).
   selectedAlgorithm: Algorithm;
+  // P3-1: layer count for the seed-input path. `random` mode
+  // intentionally stays single-layer for now (the spec places the
+  // level count dropdown next to the algorithm dropdown, which is
+  // only visible in seed mode). `levelCount === 1` keeps the v1
+  // codec so existing best records / URLs round-trip unchanged.
+  levelCount: LevelCount;
 }
 
 function validateSelection(ctx: ValidationContext): Validation {
@@ -146,8 +187,23 @@ function validateSelection(ctx: ValidationContext): Validation {
       algorithm: ctx.selectedAlgorithm,
       size: ctx.selectedSize,
       mazeSeed: ctx.seedInput,
+      // P3-1: levelCount is only meaningful on the seed path —
+      // surface it on the Seed so the downstream provider / URL
+      // codec can see it. `validateSelection` is the single funnel
+      // that decides v1 vs v2 encoding (see below).
+      levelCount: ctx.levelCount,
     };
-    return { valid: true, id: encodeSeed(seed), options: buildOptions(ctx, seed) };
+    // P3-1: v1 back-compat for levelCount === 1. Renaming the
+    // existing v1 prefix to algo-v2- would break every existing
+    // best record (levelId is the encoded seed string verbatim),
+    // so single-layer seeds keep encoding as v1. Multi-layer
+    // (levelCount >= 2) is the v2 codec's only new caller; v2
+    // carries the level count between `size` and the hex
+    // mazeSeed per spec §3 decision 3.
+    const id = ctx.levelCount > 1
+      ? encodeSeedV2(seed, ctx.levelCount)
+      : encodeSeed(seed);
+    return { valid: true, id, options: buildOptions(ctx, seed) };
   }
   return { valid: false, reason: 'unknown source' };
 }
@@ -300,6 +356,13 @@ export function LevelSelect({
   const [selectedAlgorithm, setSelectedAlgorithm] = useState<Algorithm>(
     () => algorithmForMode('time-trial'),
   );
+  // P3-1: layer count pick for the seed-input path. Default 1 keeps
+  // the UX back-compat: every existing single-layer flow keeps
+  // producing v1 ids. Pasting a full v2 id into the seed field
+  // (handled in handleSeedInputChange below) is the only path that
+  // bumps this to a higher value via UI; the dropdown is the
+  // explicit "I want N layers" entry point.
+  const [levelCount, setLevelCount] = useState<LevelCount>(1);
 
   const customLevels = useLevelStore((s) => s.customLevels);
   const bestByLevel = useLevelStore((s) => s.bestByLevel);
@@ -338,6 +401,23 @@ export function LevelSelect({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
 
+  // H3 fix (architect review): teaching levels are single-layer by
+  // design — JsonMazeProvider serves the JSON directly, and the
+  // teaching JSONs have no `transitions` array. If a stale
+  // `levelCount > 1` value from a prior visit to the seed / random
+  // rail leaked into a teaching start, the engine would render
+  // N copies of the same single-layer walls and the player would be
+  // trapped on L0 with no transition to climb to L1. Forcing the
+  // state back to `1` whenever the user lands on the teaching rail
+  // is the UI-side guard that keeps the seed / options payload
+  // (which the game side consumes) honest regardless of how the
+  // user got there.
+  useEffect(() => {
+    if (levelSource === 'teaching' && levelCount !== 1) {
+      setLevelCount(1);
+    }
+  }, [levelSource, levelCount]);
+
   const sublevelOptions: LevelDef[] = useMemo(() => {
     if (levelSource === 'teaching') return available;
     if (levelSource === 'custom') return customDefs.map((d) => ({ id: d.id, name: d.name, data: d.data }));
@@ -363,6 +443,7 @@ export function LevelSelect({
     seedInput,
     randomSeed,
     selectedAlgorithm,
+    levelCount,
   });
   const startDisabled = !validation.valid;
 
@@ -693,6 +774,58 @@ export function LevelSelect({
             </div>
           )}
 
+          {/* H3 fix (architect review): the layer count dropdown is
+              rendered in a sibling section so it stays visible in
+              `teaching` (with `disabled` + hint), `random`, and
+              `seed` — but NOT in `custom`, where the user-defined
+              JSON already pins `levelCount`. The teaching-side
+              `disabled` + hint is the UI guard that keeps a stale
+              `levelCount > 1` from a prior seed-rail visit from
+              leaking into a teaching start; the `useEffect` above
+              additionally snaps the state back to `1` whenever the
+              user lands on the teaching rail. */}
+          {levelSource !== 'custom' && (
+            <section
+              data-testid="level-count-section"
+              className="console-proc__panel"
+              style={{ display: 'flex', flexDirection: 'column' }}
+            >
+              <div className="console-proc__seed-label">{t('levels.algorithm.levelCount')}</div>
+              <Dropdown<LevelCount>
+                testId="level-count-select"
+                className="console-select"
+                ariaLabel={t('levels.algorithm.levelCount')}
+                value={levelCount}
+                disabled={levelSource === 'teaching'}
+                options={LEVEL_COUNT_OPTIONS.map((n) => ({
+                  value: n,
+                  label: t(`levels.algorithm.levelCount.option${n}`),
+                }))}
+                onChange={(v) => {
+                  // H3 fix: defensive no-op while teaching is active.
+                  // The `disabled` prop already blocks the trigger in
+                  // the UI, but the useEffect above keeps `levelCount`
+                  // snapped to 1 on the teaching rail — the guard
+                  // here is the third line of defense in case a
+                  // future code path ever threads levelCount through
+                  // a route the disabled prop doesn't cover.
+                  if (levelSource === 'teaching') return;
+                  if (isLevelCount(v)) setLevelCount(v);
+                }}
+                optionTestId={(opt) => `level-count-${opt.value}`}
+              />
+              {levelSource === 'teaching' && (
+                <div
+                  data-testid="level-count-disabled-hint"
+                  className="console-proc__seed-hint"
+                  style={{ marginTop: 6 }}
+                >
+                  {t('levels.algorithm.levelCount.disabledForTeaching')}
+                </div>
+              )}
+            </section>
+          )}
+
           {showProceduralFields ? (
             <div
               className="console-proc"
@@ -952,6 +1085,15 @@ export function LevelSelect({
                     onChange={(v) => setSelectedAlgorithm(v)}
                     optionTestId={(opt) => `algorithm-${opt.value}`}
                   />
+                  {/* P3-1: layer count dropdown was moved out of the
+                      seed-input panel in H3 fix. The dropdown now
+                      lives in a sibling section visible across
+                      teaching / random / seed (not custom), with a
+                      teaching-side `disabled` + hint to make the
+                      single-layer teaching constraint visible. The
+                      spec §6.4 "next to the algorithm dropdown"
+                      placement is kept for the seed-input panel
+                      only via the sibling section's visual order. */}
                   <div className="console-stepper" style={{ maxWidth: 360 }}>
                     <span className="console-stepper__unit" style={{ borderLeft: 'none', borderRight: '1px solid var(--border)' }}>0x</span>
                     <input
@@ -959,7 +1101,31 @@ export function LevelSelect({
                       aria-label="seed"
                       value={seedInput}
                       onChange={(e) => {
-                        const stripped = e.target.value
+                        const raw = e.target.value;
+                        // P3-1: pasting a full algo-v1-… or
+                        // algo-v2-… id (handy for users copying
+                        // a URL from a friend) is parsed by
+                        // `tryParseFullSeedId` and the result
+                        // is split back into the algorithm +
+                        // size + levelCount dropdowns plus the
+                        // 16-hex seed input. Partial hex input
+                        // falls through to the existing
+                        // 16-char-strip filter so the field
+                        // still works as a plain hex editor.
+                        const parsed = tryParseFullSeedId(raw);
+                        if (parsed) {
+                          if (isMazeSize(parsed.size)) setSelectedSize(parsed.size);
+                          // `parsed.algorithm` is `Algorithm`
+                          // because decodeSeed already validated
+                          // it against VALID_ALGORITHMS, so the
+                          // cast is the same one the seed path
+                          // uses when re-encoding.
+                          setSelectedAlgorithm(parsed.algorithm);
+                          setLevelCount(parsed.levelCount ?? 1);
+                          setSeedInput(parsed.mazeSeed);
+                          return;
+                        }
+                        const stripped = raw
                           .toLowerCase()
                           .replace(/[^0-9a-f]/g, '')
                           .slice(0, 16);

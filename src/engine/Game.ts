@@ -15,6 +15,16 @@ import {
   maybeRecordDamage,
   type ParchmentState,
 } from './ParchmentState';
+// P3-1: per-layer wall lookup. `AlgorithmMazeProvider.load` caches
+// `perLayerWalls` (one CellType[][] per layer) keyed by maze.id;
+// the engine reads from the cache when a multi-level level is active.
+// For levelCount=1 (and for JsonMazeProvider multi-level levels that
+// haven't been threaded through this cache yet) the engine falls back
+// to `[maze.walls]`, which is the historical single-layer convention
+// (spec §4.1 back-compat decision). The cache lookup is therefore
+// an optimization, not a contract — every level the engine can play
+// today can play tomorrow.
+import { getPerLayerWallsByLevelId } from '../maze/AlgorithmMazeProvider';
 import type {
   EnemyAggression,
   InventorySlot,
@@ -23,6 +33,7 @@ import type {
   StartLevelOptions,
   TrapKind,
   VictoryType,
+  VerticalTransition,
   SurviveSeconds,
 } from '../maze/types';
 import { enemyChaseMultiplier, normalizeSurviveSeconds, SURVIVE_SECONDS_DEFAULT } from '../maze/types';
@@ -66,11 +77,32 @@ const _grid: WallGrid = {
   // OR clause fails and the wall-grid value (0 for a walkable door cell)
   // returns 0. This keeps WallGrid.get's return type as 0 | 1 without
   // widening the union.
-  get: (x, z) => (
-    __SCRATCH_currentMaze?.walls[z]?.[x] === 1
-    || __SCRATCH_closedDoorCells.has(`${x},${z}`)
-      ? 1 : 0
-  ),
+  //
+  // P3-1: the `level` argument selects which layer's wall grid to
+  // read. The lookup first tries the per-layer cache
+  // (`getPerLayerWallsByLevelId`) populated by AlgorithmMazeProvider.
+  // If the cache has no entry for this maze (e.g. JsonMazeProvider
+  // hand-crafted levels, levelCount=1, or the cache was cleared by
+  // a dispose), the closure falls back to the historical single-grid
+  // `maze.walls` field regardless of `level` — matching the pre-P3-1
+  // behavior for every teaching level and the single-layer case.
+  get: (x, z, level) => {
+    const maze = __SCRATCH_currentMaze;
+    if (!maze) return 0;
+    const id = maze.id;
+    const perLayer = getPerLayerWallsByLevelId(id);
+    // P3-1: `perLayer` is `CellType[][][]` (one 2D grid per layer).
+    // Index by `level` first; if the cache is shorter than `level`
+    // (e.g. a hand-authored level that under-declared its layers),
+    // treat the cell as out-of-bounds / wall — the conservative
+    // choice for collision.
+    const wallGrid = perLayer && perLayer[level] !== undefined
+      ? perLayer[level]
+      : maze.walls;
+    if (wallGrid === undefined) return 0;
+    return wallGrid[z]?.[x] === 1 || __SCRATCH_closedDoorCells.has(`${x},${z}`)
+      ? 1 : 0;
+  },
 };
 const _prevPos = { x: 0, z: 0 };
 
@@ -133,6 +165,16 @@ export interface GameBridge {
   // still tracks the state internally, but a level without the parchment
   // UI mode simply ignores the callback.
   onParchmentStateChange?: (state: ParchmentState) => void;
+  // P3-1: layer change push. Fired by Game.update() when the player
+  // finishes a vertical transition and `playerLevel` flips. The
+  // listener (gameStore, minimap auto-switcher, HUD LevelIndicator)
+  // uses the new layer to update the visible minimap / level chip
+  // without polling. The push happens exactly once per transition
+  // (at completion), not on the start frame — see update() for the
+  // exact call site. Optional — the engine still tracks the layer
+  // internally, and a level without multi-level UI simply ignores
+  // the callback.
+  onLevelChange?: (level: number) => void;
 }
 
 // P2-11: events emitted by the engine to drive the tutorial store. The
@@ -160,12 +202,97 @@ export function clampFov(degrees: number): number {
   return degrees;
 }
 
+// P3-1: shared Y-axis math. `FLOOR_HEIGHT` is the vertical distance
+// between two stacked layers (matches the historical single-layer
+// ceiling height in `Scene.ts`). Layer L's floor sits at
+// `y = L * FLOOR_HEIGHT`; a player standing on layer L has their
+// feet at that y and their eyes (camera) at `y + 1.6`. The value
+// is a single source of truth across the engine + any future
+// physics — change it once and every layer's geometry / camera
+// follows. Pinned at 2.4 to match the existing single-layer
+// `ceiling = 2.4` math in Scene.ts.
+export const FLOOR_HEIGHT = 2.4;
+
+// P3-1: transition animation durations. `stair-up` / `stair-down` use
+// the same 0.5s smooth climb; `hole-down` / `hole-up` use a 0.4s
+// free-fall (spec §13 H1). The two durations are the only knobs
+// the engine exposes; per-frame work in update() uses them as
+// `t = elapsed / duration` for the y interpolation.
+export const STAIR_DURATION_SEC = 0.5;
+export const HOLE_DURATION_SEC = 0.4;
+
+// P3-1: per-layer wall lookup. The closure falls back to the
+// historical `maze.walls` field when no per-layer cache entry
+// exists (JsonMazeProvider levels, levelCount=1 procedural
+// levels, hand-crafted teaching JSON). The `level` argument is
+// honored only when a per-layer cache is present; the fallback
+// always returns the same wall grid regardless of level (single-
+// layer back-compat).
+
+// P3-1: map a transition `kind` to its animation duration. Single
+// source of truth — the per-frame y interpolation in
+// `tickActiveTransition` reads the value once at start time and
+// stores it on the active transition, so the runtime can change
+// the constant without affecting in-flight animations.
+//
+// 'ladder' is TODO for P3-1c; the MVP doesn't trigger ladder
+// transitions, but the function still returns a duration so a
+// hand-authored level with `kind: 'ladder'` doesn't break the
+// typecheck. The 0.5s value is a placeholder matching the stair
+// climb.
+function transitionDurationSec(kind: VerticalTransition['kind']): number {
+  switch (kind) {
+    case 'stair-up':
+    case 'stair-down':
+      return STAIR_DURATION_SEC;
+    case 'hole-down':
+    case 'hole-up':
+      return HOLE_DURATION_SEC;
+    case 'ladder':
+      // TODO P3-1c: ladder requires stationary W/S interaction,
+      // not a per-frame interpolation. For now the ladder is
+      // treated as a stair so a hand-authored level that uses it
+      // can still be loaded without a runtime crash.
+      return STAIR_DURATION_SEC;
+  }
+}
+
+// P3-1: linear interpolation. Module-level so the inline y math
+// inside `tickActiveTransition` doesn't allocate `{x, y}` objects
+// per frame. Pure function — same `t` always yields the same
+// interpolated value.
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
+}
+
+// P3-1: linear-search the transitions table for one whose source
+// cell matches the player's (x, z) on the current layer. Returns
+// `null` when the player is on a non-transition cell. The linear
+// scan is fine for the spec's per-level budget of 1-3 transitions
+// (multi-level mazes don't have a dense transition table); a
+// per-level index is unnecessary at this scale and would obscure
+// the per-frame logic.
+function findTransitionAt(
+  transitions: ReadonlyArray<VerticalTransition>,
+  playerLevel: number,
+  cellX: number,
+  cellZ: number,
+): VerticalTransition | null {
+  for (const t of transitions) {
+    if (t.level === playerLevel && t.x === cellX && t.z === cellZ) {
+      return t;
+    }
+  }
+  return null;
+}
+
 export class Game {
   private renderer?: THREE.WebGLRenderer;
   private camera?: THREE.PerspectiveCamera;
   private sceneRefs?: SceneRefs;
   private player?: PlayerState;
-  // F-2026-06-17-B-H-2: a flag flipped synchronously in dispose() and
+
+// F-2026-06-17-B-H-2: a flag flipped synchronously in dispose() and
   // checked at the top of update(). The Loop's own `stopped` flag cancels
   // pending rAF, but rAF callbacks already in flight (already dispatched
   // by the browser, scheduled to fire on the next frame) can still land
@@ -203,11 +330,99 @@ export class Game {
   getCurrentSurviveSeconds(): SurviveSeconds {
     return this.currentSurviveSeconds;
   }
+  // P3-1: read-only snapshot of the player's current layer (0..N-1
+  // where N is `maze.levelCount`). UI components — the HUD
+  // `LevelIndicator`, the minimap's "which layer is visible" logic —
+  // read this either through a subscription (gameStore) or a direct
+  // peek via the public accessor. The engine pushes an explicit
+  // `onLevelChange` event through the bridge when the value changes,
+  // but the accessor is the canonical fallback for code that only
+  // needs a one-shot read. The accessor returns 0 when no level is
+  // active (pre-init / post-dispose), matching the historical
+  // single-layer default.
+  getCurrentLevel(): number {
+    return this.playerLevel;
+  }
   // P2-4a: per-frame read of settingsStore.enemyAggression. Same
   // snapshot/live-split pattern as getCurrentDarkMode — see the
   // bridge comment for why live-reads make sense for difficulty.
   getCurrentEnemyAggression(): EnemyAggression {
     return this.bridge.getCurrentEnemyAggression();
+  }
+  // P3-1: start a vertical transition. Called from update() when the
+  // player walks into a stair / hole cell. Locks the input (so a
+  // subsequent WASD press doesn't move the player mid-climb), pins
+  // the player position at the transition cell, and captures the
+  // start / end y for the per-frame interpolation. The animation
+  // owns the player for its full duration — `update()` short-
+  // circuits at the top while `activeTransition !== null`, so a
+  // hand-crafted transition with a 0.5s duration will run for
+  // exactly 30 frames at 60fps with no input bleed-through.
+  //
+  // Self-loop transitions (level === toLevel) are NOT routed here —
+  // update() filters them out before calling. They are invalid by
+  // construction (a transition whose source and destination are
+  // the same cell on the same layer is a no-op), and the validator
+  // never produces them.
+  private startActiveTransition(t: VerticalTransition): void {
+    const cs = this.currentMaze?.cellSize ?? 2;
+    const startY = this.playerY;
+    const endY = t.toLevel * FLOOR_HEIGHT;
+    this.activeTransition = {
+      targetLevel: t.toLevel,
+      startY,
+      endY,
+      durationSec: transitionDurationSec(t.kind),
+      elapsed: 0,
+      x: t.x * cs + cs / 2,
+      z: t.z * cs + cs / 2,
+    };
+    // P3-1: lock the input for the transition duration. The flag is
+    // cleared in `tickActiveTransition` when the animation completes
+    // (or in `startLevel` when a new level resets the engine). The
+    // InputManager's `paused` flag was originally designed for the
+    // pause overlay, but the contract is identical here: zero out
+    // all keypress / mouse-look effects while the flag is set.
+    this.input?.setPaused(true);
+  }
+  // P3-1: per-frame y interpolation. Called from update() while a
+  // transition is active (and only then). Advances `elapsed`, lerps
+  // `playerY`, and clears `activeTransition` on completion. When the
+  // animation ends, `playerLevel` flips to the new layer (so the
+  // next frame's `_grid.get` reads the right wall grid) and the
+  // bridge fires `onLevelChange` so the UI can update its minimap
+  // / level chip. The pin at `(t.x, t.z)` keeps the player on the
+  // transition cell for the full duration — a stair-up in the
+  // middle of a corridor should NOT let the player drift sideways
+  // during the 0.5s climb.
+  private tickActiveTransition(dt: number): void {
+    const t = this.activeTransition;
+    if (!t) return;
+    t.elapsed += dt;
+    const u = Math.min(1, t.elapsed / t.durationSec);
+    this.playerY = lerp(t.startY, t.endY, u);
+    // P3-1: pin the player at the transition cell. The narrow
+    // type guard is needed because `this.player` is optional
+    // (pre-init) and TS strict-null-checks doesn't trust the
+    // outer guard at the top of update() across the call to
+    // this method.
+    const player = this.player;
+    if (player !== undefined) {
+      player.position.x = t.x;
+      player.position.z = t.z;
+    }
+    if (u >= 1) {
+      // P3-1: snap to the destination's y and flip the layer.
+      // `playerY = targetLevel * FLOOR_HEIGHT` is the value the
+      // player holds after the animation; the same y interpolation
+      // formula at u=1 would land slightly off the integer y due
+      // to floating point, so we re-assert the exact value.
+      this.playerLevel = t.targetLevel;
+      this.playerY = this.playerLevel * FLOOR_HEIGHT;
+      this.activeTransition = null;
+      this.input?.setPaused(false);
+      this.bridge.onLevelChange?.(this.playerLevel);
+    }
   }
   // F-2026-06-30: P2-16 — read-only snapshot of the parchment state.
   // Callers (gameStore, ParchmentMap component) use this when they
@@ -283,6 +498,44 @@ export class Game {
   // to closedDoorCells (coordinate strings) so _grid.get's has() check
   // matches the key space.
   private closedDoorCells = new Set<string>();
+  // P3-1: current layer. Set from `maze.start.level` in startLevel
+  // and updated when a vertical transition completes. The level
+  // is consumed by:
+  //   - the `_grid.get` closure (via __SCRATCH_currentLevel) for
+  //     per-layer wall lookups
+  //   - `crossesExit` (the exit may be on a different layer)
+  //   - the parchment recordVisit (per-level visitedCells in P3-1b)
+  //   - the bridge's `onLevelChange` push when a transition fires
+  // For levelCount=1 (the back-compat default) this stays at 0
+  // forever and the per-layer paths are never taken.
+  private playerLevel = 0;
+  // P3-1: current y position (in meters). Mirrors
+  // `playerLevel * FLOOR_HEIGHT` when idle, and is interpolated by
+  // `activeTransition` during stair / hole animations. The value
+  // is consumed by `updatePlayerCamera` (the camera sits at
+  // `y + 1.6`); for levelCount=1 it stays at 0 and the historical
+  // `camera.y = 1.6` behavior is preserved.
+  private playerY = 0;
+  // P3-1: per-level `VerticalTransition` table snapshot at
+  // startLevel. Empty for levelCount=1; non-empty only for
+  // procedurally generated or hand-authored multi-level levels.
+  private transitions: VerticalTransition[] = [];
+  // P3-1: an in-flight vertical transition. `null` when the player
+  // is on solid ground; populated when the player walks into a
+  // stair / hole cell. While non-null, the input is locked, the
+  // player position is pinned at the transition's (x, z), and
+  // `playerY` interpolates from `startY` to `endY` over `durationSec`.
+  // On completion (`elapsed >= durationSec`), `playerLevel` advances
+  // to `targetLevel` and the active transition is cleared.
+  private activeTransition: {
+    targetLevel: number;
+    startY: number;
+    endY: number;
+    durationSec: number;
+    elapsed: number;
+    x: number;
+    z: number;
+  } | null = null;
   private bridge: GameBridge;
 
   constructor(bridge: GameBridge) {
@@ -393,7 +646,7 @@ export class Game {
       ? options?.enemyCount
       : 0;
     const generated = this.currentMode === 'survive'
-      ? injectEnemySpawns(maze, requestedEnemyCount)
+      ? injectEnemySpawns(maze, requestedEnemyCount, { levelCount: maze.levelCount ?? 1 })
       : [];
     // F-2026-06-17-C-H-3: drop any previously-injected gen-* enemies
     // before merging the new batch. Without this, the retry / next-level
@@ -461,6 +714,26 @@ export class Game {
     );
     __SCRATCH_closedDoorCells = this.closedDoorCells;
     this.bridge.onParchmentStateChange?.(this.parchment);
+    // P3-1: snapshot the per-level transition table + the player's
+    // starting layer. The `transitions` array defaults to `[]` for
+    // every pre-P3-1 level (levelCount=1 → no transitions possible),
+    // so the per-frame transition check below is a no-op for every
+    // existing teaching / custom level. `playerLevel` follows
+    // `maze.start.level` so a hand-authored level can spawn the
+    // player mid-tower without an extra round-trip through the
+    // engine.
+    this.transitions = injectedMaze.transitions ?? [];
+    this.playerLevel = injectedMaze.start.level ?? 0;
+    // P3-1 D6: fire the bridge push on level start, not only on
+    // transition completion. A hand-authored maze with
+    // `start.level=2` jumps the player to layer 2 immediately,
+    // so the UI (HUD chip / minimap / parchment) must see the
+    // matching level in the same tick — otherwise the visual
+    // "L1" lags behind the actual floor. Mirrors the
+    // `tickActiveTransition` fire site below.
+    this.bridge.onLevelChange?.(this.playerLevel);
+    this.playerY = this.playerLevel * FLOOR_HEIGHT;
+    this.activeTransition = null;
     this.loop = new Loop((dt) => this.update(dt));
     this.loop.start();
   }
@@ -519,6 +792,21 @@ export class Game {
     if (this.destroyed) return;
     if (!this.renderer || !this.camera || !this.player || !this.sceneRefs || !this.currentMaze || !this.input) return;
     if (!this.bridge.isActiveLevel(this.currentMaze.id)) return;
+    // P3-1: in-flight vertical transition. The animation owns the
+    // player for its entire duration — input is locked, the
+    // player position is pinned at the transition cell, and
+    // `playerY` interpolates between two layers. The full per-frame
+    // work (mouse look, resolveMove, pickups, enemies, parchment,
+    // exit) is skipped while a transition runs; the only consumer
+    // is the y interpolation + the camera y override below. The
+    // render still happens (the world is visible behind the
+    // animation) so the player sees the climb / fall in real time.
+    if (this.activeTransition !== null) {
+      this.tickActiveTransition(dt);
+      this.camera.position.y = this.playerY + 1.6;
+      this.renderer.render(this.sceneRefs.scene, this.camera);
+      return;
+    }
     // F-2026-06-30: P2-16 — when the parchment map is open AND the
     // level's mapOpenBehavior is 'pause', skip the per-frame gameplay
     // tick. The render still happens (so the world stays visible
@@ -602,6 +890,7 @@ export class Game {
       { x: this.player.position.x, z: this.player.position.z, r: this.player.radius },
       { dx, dz },
       _grid,
+      this.playerLevel,
     );
     // Mutate in place to avoid a per-frame `{ x, z }` allocation.
     this.player.position.x = next.x;
@@ -611,11 +900,44 @@ export class Game {
     this.sceneRefs.playerMarker.position.x = next.x;
     this.sceneRefs.playerMarker.position.z = next.z;
 
+    // P3-1: post-move, check whether the player just walked onto a
+    // vertical transition cell. The check runs AFTER resolveMove so
+    // the player's (x, z) reflects the latest position. A self-loop
+    // transition (kind == toLevel) is silently skipped — these are
+    // invalid by construction and the validator never produces them
+    // (see isReachableMultiLevel tests for the rejection pattern).
+    // The transition trigger also requires the player to have a
+    // non-zero movement vector (so walking into the cell counts but
+    // spawning on the cell does NOT auto-trigger — the player can
+    // stand on a transition without being whisked away). The
+    // speed-tap is here as a defense-in-depth: a still player (W
+    // tapped for one frame) has ~0 velocity and `dx, dz` collapse
+    // to ~0; we still let the trigger fire, but the y interpolation
+    // will run on the next frame and the player will appear to
+    // "step into" the cell. That's the intended behavior.
+    if (this.transitions.length > 0) {
+      const cs = this.currentMaze.cellSize;
+      const cellX = Math.floor(this.player.position.x / cs);
+      const cellZ = Math.floor(this.player.position.z / cs);
+      const t = findTransitionAt(this.transitions, this.playerLevel, cellX, cellZ);
+      if (t && t.level !== t.toLevel) {
+        this.startActiveTransition(t);
+      }
+    }
+
     // Sync the camera to the collision-resolved player position. The camera
     // must NEVER sit at the pre-collision position; otherwise walking into a
     // wall leaves the camera one frame past it, rendering the world on the
     // far side of the wall.
     updatePlayerCamera(this.camera, this.player);
+    // P3-1: override the camera y to track the player's current
+    // layer. `updatePlayerCamera` (in Player.ts, workstream 1's
+    // territory) hardcodes `camera.y = 1.6`; for multi-level
+    // levels the camera must follow `playerY + 1.6` (eye height
+    // above feet). For levelCount=1, `playerY === 0` and this is
+    // a no-op that re-asserts the historical single-layer
+    // behavior.
+    this.camera.position.y = this.playerY + 1.6;
 
     // F-2026-06-30: P2-16 — record the player's current cell into
     // `parchment.visitedCells`. Only fires on a NEW cell (referential
@@ -628,7 +950,11 @@ export class Game {
       const cs = this.currentMaze.cellSize;
       const cellX = Math.floor(this.player.position.x / cs);
       const cellZ = Math.floor(this.player.position.z / cs);
-      const nextParchment = recordVisit(this.parchment, cellX, cellZ);
+      // P3-1: per-level visited cells. `recordVisit(state, level, x, z)`
+      // writes into the level-specific subset; for levelCount=1 the
+      // level is always 0 and the per-level map degenerates to the
+      // pre-P3-1 single-set behavior.
+      const nextParchment = recordVisit(this.parchment, this.playerLevel, cellX, cellZ);
       if (nextParchment !== this.parchment) {
         this.parchment = nextParchment;
         this.bridge.onParchmentStateChange?.(this.parchment);
@@ -653,12 +979,20 @@ export class Game {
     // F-H2: inline the contact check to avoid per-frame allocation of
     // an N-element `{x,z}[]` array. `hasEnemyContact` remains exported for
     // unit tests; the hot path in the engine reads enemy positions in place.
+    //
+    // P3-1: cross-layer enemies are skipped here too. The inline loop
+    // mirrors the same distance math as `hasEnemyContact`, but filters
+    // by `e.level === playerLevel` before the squared-distance check.
+    // A hand-authored level with enemies on multiple layers will only
+    // trigger contact from the player's current layer; enemies on
+    // other layers are silently ignored.
     if (this.enemies.length > 0) {
       const px = this.player.position.x;
       const pz = this.player.position.z;
       const sumR2 = (this.player.radius + ENEMY_RADIUS) * (this.player.radius + ENEMY_RADIUS);
       let contact = false;
       for (const e of this.enemies) {
+        if (e.level !== this.playerLevel) continue;
         const dx = e.position.x - px;
         const dz = e.position.z - pz;
         if (dx * dx + dz * dz < sumR2) {
@@ -684,6 +1018,7 @@ export class Game {
             const cellZ = Math.floor(this.player.position.z / cs);
             const nextParchment = maybeRecordDamage(
               this.parchment,
+              this.playerLevel,
               cellX,
               cellZ,
               0, // tick counter reserved for future animation
@@ -723,6 +1058,7 @@ export class Game {
           const forceType = trap.kind === 'fire' ? 'burn' : 'water';
           const nextParchment = maybeRecordDamage(
             this.parchment,
+            this.playerLevel,
             cellX,
             cellZ,
             0,
@@ -765,7 +1101,17 @@ export class Game {
       }
     }
 
-    if (crossesExit(_prevPos, this.player.position, this.currentMaze)) {
+    // P3-1: the exit may live on a different layer than the player.
+    // The base `crossesExit` (Rules.ts, not in this workstream's
+    // territory) only compares (x, z); we add a level guard at the
+    // call site so a hand-authored maze with the exit on L1 only
+    // fires when the player actually reaches L1. A levelCount=1
+    // maze has `exit.level === 0 === playerLevel`, so the guard
+    // always passes — back-compat preserved.
+    if (
+      this.playerLevel === (this.currentMaze.exit.level ?? 0)
+      && crossesExit(_prevPos, this.player.position, this.currentMaze)
+    ) {
       // In a tunneling-sampled exit, player.position may be past the exit
       // cell. Clamp to the exit cell center so the final frame and the
       // win overlay show the player standing in the exit, not overshooting.

@@ -140,9 +140,13 @@ describe('buildScene', () => {
     matSpy.mockClear();
     texSpy.mockClear();
     disposeScene(scene, walls, pickups);
-    // 5 unique geometries (floor, wall, ceiling, exit, pickup) and
-    // 5 unique materials, despite 11 meshes (7 walls share wallGeom/wallMat).
-    expect(geomSpy).toHaveBeenCalledTimes(6);
+    // P3-1: floor and ceiling now share a single PlaneGeometry
+    // (rotated differently per use), so the unique geometry count
+    // is 5: floor/ceiling, wall, exit, pickup, playerMarker.
+    // The materials count is 6: floor, wall, ceiling, exit,
+    // playerMarker, and the per-pickup-type material (the fixture
+    // has 1 pickup, so 1 material is created).
+    expect(geomSpy).toHaveBeenCalledTimes(5);
     expect(matSpy).toHaveBeenCalledTimes(6);
     // 3 textures (floor, wall, ceiling-cloud) bound to the floor, wall, and
     // ceiling materials.

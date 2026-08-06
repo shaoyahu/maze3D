@@ -24,6 +24,16 @@ const TOOL_HINT_KEYS: Record<EditorTool, string> = {
   // P2-18: trap and door tool hints.
   trap:   'editor.toolbar.hint.trap',
   door:   'editor.toolbar.hint.door',
+  // P3-1c: 5 vertical-transition tool hints. Each tool places a
+  // transition of the matching `kind` on the editor's currentLevel.
+  // The hint tells the user the action + the auto-derived destination
+  // (e.g. stair-up defaults toLevel = level+1; the properties panel
+  // is where they edit it).
+  'stair-up':   'editor.toolbar.hint.stairUp',
+  'stair-down': 'editor.toolbar.hint.stairDown',
+  'hole-down':  'editor.toolbar.hint.holeDown',
+  'hole-up':    'editor.toolbar.hint.holeUp',
+  ladder:       'editor.toolbar.hint.ladder',
   pan:    'editor.toolbar.hint.pan',
 };
 

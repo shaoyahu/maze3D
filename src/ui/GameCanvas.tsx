@@ -131,6 +131,15 @@ export function GameCanvas({ maze, options }: { maze: MazeData; options?: StartL
       // still and a single setter for any tick that grew visited or
       // damage.
       onParchmentStateChange: (state) => useGameStore.getState().setParchment(state),
+      // P3-1: engine → store layer push. Wired to the store's
+      // `setCurrentLevel` so the HUD's LevelIndicator, the
+      // minimap's auto-switcher, and the parchment's default
+      // viewing-level all observe the new layer on the same
+      // frame the transition completes. The engine only fires
+      // this when `playerLevel` actually flips (see
+      // `tickActiveTransition` in Game.ts), so a player standing
+      // still never churns the React tree.
+      onLevelChange: (level) => useGameStore.getState().setCurrentLevel(level),
     };
     const game = new Game(bridge);
     game.init(ref.current);

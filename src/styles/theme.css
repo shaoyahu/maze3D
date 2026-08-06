@@ -1207,6 +1207,88 @@
   /* 根目录下"无 parentId"的关卡,视觉上跟默认文件夹并列 */
 }
 
+/* ----- Editor level tabs (P3-1c) -----
+   一行 tab 按钮 + 右侧 +/- 加删层按钮。tab 跟 placement tools
+   风格保持一致(活动 tab 用 accent 边框/底色),但小一圈、贴近
+   left panel 边缘。 */
+
+.editor-leveltabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-elevated);
+  flex-shrink: 0;
+}
+
+.editor-leveltabs__tabs {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+
+.editor-leveltabs__tab {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  min-width: 32px;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.editor-leveltabs__tab:hover {
+  border-color: var(--border-strong);
+  color: var(--fg);
+}
+
+.editor-leveltabs__tab--active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.editor-leveltabs__actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.editor-leveltabs__btn {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg-muted);
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  line-height: 1;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.editor-leveltabs__btn:hover {
+  border-color: var(--border-strong);
+  color: var(--fg);
+}
+
+.editor-leveltabs__btn[data-disabled="true"] {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
 /* ----- Viewport chrome (footer readouts, minimap, zoom controls) ----- */
 
 .editor-viewport-shell {

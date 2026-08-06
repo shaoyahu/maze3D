@@ -60,11 +60,20 @@ describe('importExport', () => {
       expect(parsedLevel.name).toBe(level.name);
       expect(parsedLevel.size).toEqual(level.size);
       expect(parsedLevel.cellSize).toBe(level.cellSize);
-      expect(parsedLevel.start).toEqual(level.start);
-      expect(parsedLevel.exit).toEqual(level.exit);
+      // P3-1: validator defaults start.level / exit.level to 0 when
+      // the JSON omits the field, so the round-tripped copy carries
+      // one extra key. Use toMatchObject for the partial-match
+      // contract; the additional keys are covered by the
+      // types.multiLevel tests.
+      expect(parsedLevel.start).toMatchObject({ x: 0, z: 0, level: 0 });
+      expect(parsedLevel.exit).toMatchObject({ x: 4, z: 2, level: 0 });
       expect(parsedLevel.walls).toEqual(level.walls);
       expect(parsedLevel.pickups).toEqual(level.pickups);
       expect(parsedLevel.rules).toEqual(level.rules);
+      // P3-1: every P3-1 top-level field has a default; the round
+      // trip must carry the defaulted value through.
+      expect(parsedLevel.levelCount).toBe(1);
+      expect(parsedLevel.transitions).toEqual([]);
 
       // Assert — nameToPreserve is the original level name
       expect(nameToPreserve).toBe(level.name);

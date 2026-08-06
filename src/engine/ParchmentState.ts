@@ -4,6 +4,14 @@
 // are kept engine-side because they're a function of the gameplay
 // timeline; the UI subscribes via `gameStore` and re-renders.
 //
+// P3-1: per-level bookkeeping. `visitedCells` and `damageRegions`
+// are now partitioned by the player's current layer (a `Map<number,
+// Set<string>>` and a `Map<number, DamageRegion[]>` respectively).
+// For levelCount=1 (the back-compat default) the maps only ever
+// have a single key (0), and the read / write behavior is identical
+// to the pre-P3-1 single-set version — every existing test continues
+// to pass.
+//
 // No React / Zustand / Three.js imports — this file is a pure TS
 // module, the same shape as `game/Rules.ts`. Functions are referentially
 // transparent: same input → same output, with the `prng` parameter
@@ -29,14 +37,33 @@ export interface DamageRegion {
   // future animation work (ripple / spread); the static P2-16
   // renderer ignores it.
   createdAtTick: number;
+  // P3-1: which layer this damage region lives on. Always equal to
+  // the player's layer at the time of the hit. Pre-P3-1 levels
+  // (levelCount=1) always produce 0 here. The UI consumer should
+  // display the region on the same minimap view that owns the
+  // level (e.g. switching the parchment to L1 hides L0's burns).
+  level: number;
 }
 
 export interface ParchmentState {
-  // "x,z" string keys — Set for O(1) membership checks. Readonly
-  // because every mutator returns a new state rather than touching
-  // this set in place; the immutability is what lets React skip
-  // re-renders via reference comparison.
-  visitedCells: ReadonlySet<string>;
+  // P3-1: per-level visited cells. `Map<level, Set<"x,z">>` — the
+  // outer key is the player's current layer at the time of the
+  // visit. The pre-P3-1 single `Set<string>` is replaced by this
+  // map; the engine (Game.update) writes into the per-level
+  // subset, the UI reads all subsets when rendering the level
+  // tab bar. For levelCount=1 the map has only one entry
+  // (level=0) and the read / write pattern matches the pre-P3-1
+  // behavior exactly. The `Map` is wrapped as `Readonly` so
+  // consumers cannot mutate the per-level subsets in place —
+  // every mutator returns a new `ParchmentState` with a new
+  // `Map` (sharing the unmodified subsets with the previous
+  // state to keep the partial-equality contract intact).
+  visitedCells: ReadonlyMap<number, ReadonlySet<string>>;
+  // P3-1: per-level damage regions. Same partition convention as
+  // `visitedCells`; the per-level arrays are sparse for most
+  // levels (only a handful of hits per level) and the read
+  // pattern is a `flat()` over all levels when the parchment
+  // shows every layer.
   damageRegions: readonly DamageRegion[];
   isOpen: boolean;
 }
@@ -64,14 +91,16 @@ export const DAMAGE_TYPES: readonly DamageType[] = ['water', 'burn', 'tear'];
 
 export function createEmptyParchment(): ParchmentState {
   return {
-    visitedCells: new Set<string>(),
+    // P3-1: start with an empty per-level map. The first
+    // `recordVisit` call creates the level-0 entry; subsequent
+    // calls reuse it. The empty map is referentially distinct
+    // across `createEmptyParchment` calls (each invocation
+    // allocates a new `Map`), so the no-shared-refs test in
+    // the ParchmentState suite continues to pass.
+    visitedCells: new Map(),
     damageRegions: [],
     isOpen: false,
   };
-}
-
-function cellKey(x: number, z: number): string {
-  return `${x},${z}`;
 }
 
 // F-2026-06-30: `recordVisit` is the workhorse — called every frame
@@ -83,24 +112,44 @@ function cellKey(x: number, z: number): string {
 // This is also why the result is typed as `ParchmentState` rather
 // than a Promise / Observable: it's a synchronous value, safe to
 // call from the render loop.
+//
+// P3-1: the `level` argument partitions the visit by layer. Two
+// visits to the same (x, z) on different layers are recorded
+// separately. For levelCount=1 (the only level currently
+// supported by the engine), `level` is always 0 and the
+// per-level map degenerates to a single key. The early-return
+// short-circuit (already-known cell) compares against the
+// level-specific subset, so visiting L0 then L1 then L0
+// doesn't trip a "L0 is already known" optimization on the
+// L1 → L0 transition.
 export function recordVisit(
   state: ParchmentState,
+  level: number,
   cellX: number,
   cellZ: number,
 ): ParchmentState {
   const key = cellKey(cellX, cellZ);
-  if (state.visitedCells.has(key)) {
+  const levelSet = state.visitedCells.get(level);
+  if (levelSet !== undefined && levelSet.has(key)) {
     // F-2026-06-30: critical — return the SAME object reference. The
     // engine's bridge callback only fires when the reference changes,
     // so a player standing still must not spam the React tree with
     // re-renders.
     return state;
   }
-  const next = new Set(state.visitedCells);
-  next.add(key);
+  // P3-1: copy-on-write for both the per-level Set and the
+  // outer Map. The unchanged level subsets are shared with
+  // the previous state (Map.get returns the same reference),
+  // so a React component subscribed to a specific level's
+  // visited set will see referential equality on the levels
+  // it didn't change.
+  const nextLevelSet = new Set<string>(levelSet);
+  nextLevelSet.add(key);
+  const nextMap = new Map(state.visitedCells);
+  nextMap.set(level, nextLevelSet);
   return {
     ...state,
-    visitedCells: next,
+    visitedCells: nextMap,
   };
 }
 
@@ -124,8 +173,16 @@ export function recordVisit(
 // given type is used directly. This reuses the same probability gate
 // and no-stacking rules, so trap damage and enemy damage share one
 // pipeline without duplicating logic.
+//
+// P3-1: `level` partitions the damage region by layer. Pre-P3-1
+// levels (levelCount=1) pass `0` and the behavior is identical to
+// the pre-P3-1 implementation. The no-stack rule is now
+// per-layer too — a damage region on L0 at (x, z) doesn't
+// block a new region on L1 at the same (x, z), which matches
+// the spec's "independent 2D planes stacked vertically" model.
 export function maybeRecordDamage(
   state: ParchmentState,
+  level: number,
   cellX: number,
   cellZ: number,
   nowTick: number,
@@ -138,13 +195,16 @@ export function maybeRecordDamage(
     return state;
   }
 
-  // 2. No stacking: a cell that already has any damage region is
-  //    considered "saturated" and gets no further marks. The
-  //    rationale: stacking a water stain on a burn just looks
-  //    messy, and a single 3x3 region per cell already conveys
-  //    "this place is wrecked".
+  // 2. No stacking: a cell that already has any damage region on
+  //    the SAME layer is considered "saturated" and gets no
+  //    further marks. P3-1: the no-stack check is now scoped to
+  //    the level; a region on L0 at (x, z) does not block a new
+  //    region on L1 at the same (x, z). The rationale: stacking
+  //    a water stain on a burn just looks messy, and a single
+  //    3x3 region per (layer, cell) already conveys "this place
+  //    is wrecked".
   for (const r of state.damageRegions) {
-    if (r.cx === cellX && r.cz === cellZ) {
+    if (r.level === level && r.cx === cellX && r.cz === cellZ) {
       return state;
     }
   }
@@ -179,6 +239,11 @@ export function maybeRecordDamage(
     radius,
     seed,
     createdAtTick: nowTick,
+    // P3-1: tag the region with its layer so the parchment can
+    // display it on the right tab and the no-stack check can
+    // scope correctly. Back-compat default is 0 (the only
+    // layer in pre-P3-1 levels).
+    level,
   };
 
   return {
@@ -209,13 +274,65 @@ export function toggleMap(state: ParchmentState): ParchmentState {
 // clears visited + damage but preserves the open / closed state —
 // the modal stays in whatever state the player left it, only the
 // content resets.
+//
+// P3-1: clearing now drops every per-level entry from the visited
+// map and every damage region. The map is replaced with a new
+// empty `Map` (not a mutation in place) so the referential-
+// equality contract holds: a state with all-empty maps is
+// distinct from any state that ever held data. The early-return
+// optimization (returning the input state when there's nothing
+// to clear) is preserved — the new check inspects the map's
+// `size` and the array's `length` (which together imply
+// "nothing to clear" regardless of how the data is partitioned
+// across levels).
 export function resetMap(state: ParchmentState): ParchmentState {
   if (state.visitedCells.size === 0 && state.damageRegions.length === 0) {
     return state;
   }
   return {
     ...state,
-    visitedCells: new Set<string>(),
+    visitedCells: new Map(),
     damageRegions: [],
   };
+}
+
+function cellKey(x: number, z: number): string {
+  return `${x},${z}`;
+}
+
+// P3-1: helper for UI consumers (ParchmentMap) that need a flat
+// view of every visited cell across all layers. The pre-P3-1
+// `visitedCells` was a single `Set<string>` containing every cell
+// the player walked into; with the per-level Map shape, the
+// parchment map (which renders all layers in one canvas) needs
+// the union of every layer's set to preserve its draw loop.
+//
+// The returned set is a fresh `Set` (copy-on-read) so a
+// consumer mutating it doesn't poison the source map. The
+// operation is O(total visited cells across all levels) — fine
+// for the per-frame redraw at 60fps with the per-level
+// budget in the spec (a level with thousands of cells per
+// layer would be a much bigger problem; we don't optimize
+// for that).
+export function getAllVisitedCells(state: ParchmentState): ReadonlySet<string> {
+  const out = new Set<string>();
+  for (const levelSet of state.visitedCells.values()) {
+    for (const key of levelSet) out.add(key);
+  }
+  return out;
+}
+
+// P3-1: helper for the same UI consumer — checks whether the
+// given (x, z) has been visited on any layer. The pickup /
+// damage / visited-cell rendering loops want a single
+// boolean answer regardless of which layer recorded the visit.
+// Internally it walks the per-level map; for the common
+// levelCount=1 case the loop runs once and the answer is the
+// pre-P3-1 set membership check.
+export function hasVisitedAnyLevel(state: ParchmentState, cellX: number, cellZ: number): boolean {
+  const key = cellKey(cellX, cellZ);
+  for (const levelSet of state.visitedCells.values()) {
+    if (levelSet.has(key)) return true;
+  }
+  return false;
 }

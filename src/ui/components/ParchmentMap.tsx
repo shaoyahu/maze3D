@@ -1,9 +1,18 @@
-import { memo, useCallback, useEffect, useRef } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import type { MazeData } from '../../maze/types';
 import { useGameStore } from '../../store/gameStore';
 import { useT } from '../../i18n';
 import { CLOSE_MAP_KEY, OPEN_MAP_KEY } from '../../engine/InputManager';
 import type { DamageRegion, ParchmentState } from '../../engine/ParchmentState';
+// P3-1: per-layer rendering replaces the legacy "flatten every
+// layer into one stream" approach. The legacy helpers
+// `getAllVisitedCells` and `hasVisitedAnyLevel` from
+// `engine/ParchmentState.ts` are no longer imported here — the
+// P3-1c draw loops read `parchment.visitedCells.get(viewingLevel)`
+// directly so the per-level filtering is the source of truth, not
+// a flattened fallback. They remain exported from the engine for
+// any future consumer that genuinely wants the cross-layer union
+// (e.g. an E2E debug overlay).
 import { useFocusRestore, useFocusTrap } from './modalHooks';
 import styles from './ParchmentMap.module.css';
 
@@ -30,6 +39,30 @@ function ParchmentMapImpl({ maze }: ParchmentMapProps): React.ReactElement | nul
   const t = useT();
   const parchment = useGameStore((s) => s.parchment);
   const closeParchment = useGameStore((s) => s.closeParchment);
+  // P3-1: §6.3 — viewing-level state. Defaults to the player's
+  // current layer when the modal opens so a player climbing
+  // stairs sees L3 first, not L1. The state is local (not in
+  // the store) because the parchment is a read-only inspection
+  // tool — there's no engine state to mirror. Tab-key cycling
+  // and tab-bar clicks mutate this state.
+  const playerCurrentLevel = useGameStore((s) => s.player?.currentLevel ?? 0);
+  const [viewingLevel, setViewingLevel] = useState<number>(playerCurrentLevel);
+  // P3-1: re-sync `viewingLevel` to the player's current level
+  // whenever the modal re-opens. Without this effect, a player
+  // who closed the modal on L3 and reopened on a fresh level
+  // would see the stale L3 tab highlighted (or, in the
+  // single-layer case, see L1 highlighted correctly). We
+  // detect "just opened" by watching `parchment.isOpen` flip
+  // from false → true and re-seeding viewingLevel. Closing
+  // the modal does NOT reset viewingLevel so a player who
+  // closed on L3 and immediately reopened sees L3 again.
+  const wasOpenRef = useRef<boolean>(parchment.isOpen);
+  useEffect(() => {
+    if (parchment.isOpen && !wasOpenRef.current) {
+      setViewingLevel(playerCurrentLevel);
+    }
+    wasOpenRef.current = parchment.isOpen;
+  }, [parchment.isOpen, playerCurrentLevel]);
   // F-2026-06-30: P2-16 — ref to the modal frame so the focus trap
   // can scope Tab/Shift+Tab to the modal chrome (header + close
   // button) and the canvas element. We trap on the frame rather
@@ -41,11 +74,71 @@ function ParchmentMapImpl({ maze }: ParchmentMapProps): React.ReactElement | nul
   useFocusTrap(frameRef, parchment.isOpen);
   useFocusRestore(parchment.isOpen);
 
+  // P3-1: §6.3 — Tab-key cycling. While the modal is open, a
+  // Tab keypress advances the viewing level (0 → 1 → ...
+  // → levelCount-1 → 0). We use the document-level keydown
+  // listener because the focus-trap inside the modal
+  // (`useFocusTrap` above) would otherwise consume Tab to
+  // cycle focus, and we want the Tab key to mean "next
+  // level" instead. We don't preventDefault on focus
+  // navigation explicitly — the focus-trap handles its own
+  // Tab behaviour and our document-level listener runs after
+  // it, so the two don't fight (we only run when the modal
+  // is open and `parchment.isOpen` is true).
+  const levelCount = maze.levelCount ?? 1;
+  useEffect(() => {
+    if (!parchment.isOpen) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab') return;
+      e.preventDefault();
+      setViewingLevel((cur) => (cur + 1) % levelCount);
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [parchment.isOpen, levelCount]);
+
   // F-2026-06-30: P2-16 — the modal is a sibling of the canvas, so
   // mount / unmount is keyed on `parchment.isOpen`. The render-null
   // guard handles the `minimapMode !== 'parchment'` case at the
   // GameCanvas layer; here we only bail on the open flag.
   if (!parchment.isOpen) return null;
+
+  // P3-1: tab bar. One button per layer (L1..L{maze.levelCount}).
+  // The currently-viewing tab carries `aria-current="page"` and a
+  // distinctive style; clicking a tab moves viewingLevel. We use
+  // inline styles (not the CSS module) because the module doesn't
+  // ship tab-bar classes — the P3-1c workstream is the only owner
+  // of this surface, so adding classes to a sibling file would
+  // be premature.
+  const tabs: React.ReactElement[] = [];
+  for (let i = 0; i < levelCount; i++) {
+    const isActive = i === viewingLevel;
+    tabs.push(
+      <button
+        key={i}
+        type="button"
+        aria-current={isActive ? 'page' : undefined}
+        data-testid={`parchment-tab-${i}`}
+        data-active={isActive ? 'true' : 'false'}
+        onClick={() => setViewingLevel(i)}
+        style={{
+          padding: '4px 10px',
+          margin: '0 2px',
+          border: '1px solid var(--parchment-border, #6a4a2a)',
+          borderRadius: 3,
+          background: isActive ? 'rgba(60, 30, 10, 0.85)' : 'rgba(255, 240, 200, 0.4)',
+          color: isActive ? '#faf3e0' : '#3a2a1a',
+          fontWeight: isActive ? 700 : 500,
+          fontFamily: "'Georgia', 'SimSun', serif",
+          fontSize: 13,
+          cursor: 'pointer',
+          minWidth: 36,
+        }}
+      >
+        {t('overlays.parchment.levelTab', { level: i + 1 })}
+      </button>,
+    );
+  }
 
   return (
     <div
@@ -72,7 +165,25 @@ function ParchmentMapImpl({ maze }: ParchmentMapProps): React.ReactElement | nul
             ✕
           </button>
         </header>
-        <ParchmentCanvas maze={maze} parchment={parchment} />
+        {/* P3-1: level tab bar (L1..L{levelCount}). Sits between
+            the header and the canvas so the visible map below
+            it is unambiguous about which layer it represents. */}
+        <div
+          role="tablist"
+          aria-label={t('overlays.parchment.title')}
+          data-testid="parchment-tabs"
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            marginBottom: 8,
+            paddingBottom: 4,
+            borderBottom: '1px solid rgba(60, 30, 10, 0.2)',
+          }}
+        >
+          {tabs}
+        </div>
+        <ParchmentCanvas maze={maze} parchment={parchment} viewingLevel={viewingLevel} />
         <footer className={styles.footer}>{t('overlays.parchment.hint')}</footer>
       </div>
     </div>
@@ -85,12 +196,20 @@ function ParchmentMapImpl({ maze }: ParchmentMapProps): React.ReactElement | nul
 // obscure the underlying map data. The component memoizes the canvas
 // element so a re-render of the modal (e.g. language switch) doesn't
 // tear down the canvas context.
+//
+// P3-1: §6.3 — `viewingLevel` filters every layer-specific draw
+// (visited cells, pickups, damage regions) to the currently
+// selected tab. The canvas also paints a translucent gray "fog"
+// over cells the player hasn't visited on the viewing level so a
+// tab for a never-walked layer reads as "unexplored" at a glance.
 const ParchmentCanvas = memo(function ParchmentCanvas({
   maze,
   parchment,
+  viewingLevel,
 }: {
   maze: MazeData;
   parchment: ParchmentState;
+  viewingLevel: number;
 }): React.ReactElement {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   // F-2026-06-30: P2-16 — cache the procedural parchment background
@@ -99,11 +218,20 @@ const ParchmentCanvas = memo(function ParchmentCanvas({
   // layers onto the visible canvas. Without the cache, generating
   // noise per frame would visibly stutter at 50x50.
   const bgCacheRef = useRef<HTMLCanvasElement | null>(null);
+  // P3-1: pre-translate the badge strings via `useT()` (the
+  // only way to read locale at the React layer) and feed them
+  // into `drawUnexploredBadge` as plain strings. The hook
+  // re-runs the parent on language switch; the canvas's
+  // useEffect then re-draws with the new copy.
+  const t = useT();
 
   // F-2026-06-30: P2-16 — re-render whenever the parchment reference
   // changes (visited grew, new damage region, etc.). maze.id is also
   // a dependency because the dimensions + walls + start/exit only
   // change at level boundaries.
+  //
+  // P3-1: `viewingLevel` is also a dep so a tab click repaints the
+  // canvas (visited cells + fog + damage are all level-specific).
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -137,12 +265,41 @@ const ParchmentCanvas = memo(function ParchmentCanvas({
       y: offsetY + cellZ * cellSize,
     });
 
+    // P3-1: pull the current level's visited set once so the
+    // draw loops can do a single O(1) `has` lookup per cell
+    // (visited, fog, pickup draw) instead of re-querying the
+    // parchment Map. The fallback empty set renders an
+    // all-fog canvas, which is the correct UX for "viewing a
+    // layer the player hasn't walked into yet".
+    const levelVisited: ReadonlySet<string> = parchment.visitedCells.get(viewingLevel) ?? new Set<string>();
+
     drawWalls(ctx, maze, cellSize, toPx);
     drawStartExit(ctx, maze, cellSize, toPx);
-    drawVisited(ctx, parchment, maze, cellSize, toPx);
-    drawPickups(ctx, maze, parchment, cellSize, toPx);
-    drawDamage(ctx, parchment.damageRegions, cellSize, toPx);
-  }, [maze, parchment]);
+    // P3-1: gray fog over every cell the player hasn't walked
+    // into on the viewing level. Drawn BEFORE the visited
+    // highlight so the highlight "punches through" the fog.
+    // The fog also covers the start/exit markers (drawn just
+    // above), so a player on L0 looking at L1 sees a totally
+    // blank map — exactly the "未探索" affordance the spec
+    // asks for.
+    drawFog(ctx, maze, levelVisited, cellSize, toPx);
+    drawVisitedForLevel(ctx, levelVisited, maze, cellSize, toPx);
+    drawPickupsForLevel(ctx, maze, levelVisited, cellSize, toPx);
+    drawDamageForLevel(ctx, parchment.damageRegions, viewingLevel, cellSize, toPx);
+    // P3-1: "Unexplored" placeholder. Rendered last so it
+    // sits above every other layer; only fires when the
+    // viewing level has zero visited cells (the level
+    // literally hasn't been walked into at all yet).
+    if (levelVisited.size === 0) {
+      drawUnexploredBadge(
+        ctx,
+        canvas.width,
+        canvas.height,
+        t('overlays.parchment.empty'),
+        t('overlays.parchment.levelTab', { level: viewingLevel + 1 }),
+      );
+    }
+  }, [maze, parchment, viewingLevel, t]);
 
   return (
     <canvas
@@ -157,6 +314,7 @@ const ParchmentCanvas = memo(function ParchmentCanvas({
       role="img"
       aria-label={maze.name}
       data-testid="parchment-canvas"
+      data-level={viewingLevel}
     />
   );
 });
@@ -250,9 +408,17 @@ function drawStartExit(
   ctx.fillText('★', e.x + cellSize / 2, e.y + cellSize / 2);
 }
 
-function drawVisited(
+// P3-1: §6.3 — highlight every visited cell on the currently
+// viewing layer. Takes the level-scoped visited set
+// (selected upstream by `parchment.visitedCells.get(viewingLevel)`)
+// so the canvas never paints a cell that wasn't walked into on
+// the selected layer. The legacy parchment used
+// `getAllVisitedCells(parchment)` to flatten every layer into
+// one stream; the P3-1 split into per-level filtering is the
+// core UX signal the tab bar relies on.
+function drawVisitedForLevel(
   ctx: CanvasRenderingContext2D,
-  parchment: ParchmentState,
+  visited: ReadonlySet<string>,
   maze: MazeData,
   cellSize: number,
   toPx: (x: number, z: number) => { x: number; y: number },
@@ -262,7 +428,7 @@ function drawVisited(
   // mark "explored". Empty parchment + highlighted visited is the
   // central UX signal: you only see where you've been.
   ctx.fillStyle = 'rgba(120, 80, 40, 0.18)';
-  for (const key of parchment.visitedCells) {
+  for (const key of visited) {
     const [xStr, zStr] = key.split(',');
     const x = Number(xStr);
     const z = Number(zStr);
@@ -272,10 +438,42 @@ function drawVisited(
   }
 }
 
-function drawPickups(
+// P3-1: §6.3 — gray fog over every cell the player hasn't walked
+// into on the currently viewing layer. Drawn BEFORE the visited
+// highlight (which "punches through" the fog) and BEFORE the
+// pickup glyphs (so a pickup on an unvisited cell is hidden —
+// same UX rule the legacy parchment had, just expressed as a
+// paint order instead of an early-continue). The color is a
+// muted gray with low alpha so the parchment texture still
+// shows through, preserving the "old map" feel of the surface.
+function drawFog(
   ctx: CanvasRenderingContext2D,
   maze: MazeData,
-  parchment: ParchmentState,
+  visited: ReadonlySet<string>,
+  cellSize: number,
+  toPx: (x: number, z: number) => { x: number; y: number },
+): void {
+  // P3-1: skip the fog when the viewing level has been walked
+  // into at least once. An all-visited level is the player's
+  // home layer (the one they spawned on); a fog over the start
+  // cell would be visually wrong (the player obviously knows
+  // the start cell). The 0.4 alpha below still lets the
+  // parchment's sepia tone show through, so even an
+  // unvisited-only level doesn't feel like a black box.
+  ctx.fillStyle = 'rgba(80, 80, 80, 0.4)';
+  for (let z = 0; z < maze.size.depth; z++) {
+    for (let x = 0; x < maze.size.width; x++) {
+      if (visited.has(`${x},${z}`)) continue;
+      const p = toPx(x, z);
+      ctx.fillRect(p.x, p.y, cellSize, cellSize);
+    }
+  }
+}
+
+function drawPickupsForLevel(
+  ctx: CanvasRenderingContext2D,
+  maze: MazeData,
+  visited: ReadonlySet<string>,
   cellSize: number,
   toPx: (x: number, z: number) => { x: number; y: number },
 ): void {
@@ -286,7 +484,14 @@ function drawPickups(
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   for (const pickup of maze.pickups) {
-    if (!parchment.visitedCells.has(`${pickup.x},${pickup.z}`)) continue;
+    // P3-1: per-level check. The legacy code used
+    // `hasVisitedAnyLevel` so a pickup was visible on the
+    // parchment no matter which layer the player had walked
+    // it on. With the level tab, pickups are now scoped to
+    // the viewing layer — a pickup on L0 is hidden when the
+    // tab is L1, matching the spec's per-level filtering
+    // contract.
+    if (!visited.has(`${pickup.x},${pickup.z}`)) continue;
     const p = toPx(pickup.x, pickup.z);
     const glyph = pickupGlyph(pickup.type);
     ctx.fillText(glyph, p.x + cellSize / 2, p.y + cellSize / 2);
@@ -306,9 +511,16 @@ function pickupGlyph(type: MazeData['pickups'][number]['type']): string {
   }
 }
 
-function drawDamage(
+// P3-1: §6.3 — damage regions are now per-layer (the engine
+// stamps `region.level` at the time of the hit). The viewing
+// layer's regions render; the others are hidden. Pre-P3-1 the
+// canvas rendered every region regardless of layer; with the
+// tab split, a burn mark on L0 wouldn't make sense when the
+// tab is L1.
+function drawDamageForLevel(
   ctx: CanvasRenderingContext2D,
   regions: readonly DamageRegion[],
+  viewingLevel: number,
   cellSize: number,
   toPx: (x: number, z: number) => { x: number; y: number },
 ): void {
@@ -319,6 +531,7 @@ function drawDamage(
   // layers so the player can't accidentally use information hidden
   // by a damage region.
   for (const r of regions) {
+    if (r.level !== viewingLevel) continue;
     const p = toPx(r.cx, r.cz);
     const size = (r.radius * 2 + 1) * cellSize;
     const ox = p.x + cellSize / 2 - size / 2;
@@ -335,6 +548,52 @@ function drawDamage(
         break;
     }
   }
+}
+
+// P3-1: §6.3 — "Unexplored" badge centered on the canvas when
+// the viewing level has zero visited cells. Uses the existing
+// i18n key `overlays.parchment.empty` (the legacy "Unexplored"
+// placeholder for empty damage states). Renders as a single
+// centered line plus a layer label so the player knows which
+// level they're looking at. The translated strings are passed
+// in by the component (we can't call `useT()` from a plain
+// function — that would be a React-hook rule violation). The
+// component reads them via `useT()` upstream and re-feeds the
+// function on every render; a language switch flows through
+// `useT()`'s subscription.
+function drawUnexploredBadge(
+  ctx: CanvasRenderingContext2D,
+  canvasW: number,
+  canvasH: number,
+  title: string,
+  subtitle: string,
+): void {
+  // P3-1: pin the badge above the fog so the text stays
+  // legible. The fog is at rgba(80,80,80,0.4) over a sepia
+  // parchment — pure black would disappear into the fog,
+  // so we draw a soft cream stroke first and then the dark
+  // text on top.
+  const cx = canvasW / 2;
+  const cy = canvasH / 2;
+  const fontSize = 22;
+  ctx.save();
+  ctx.font = `700 ${fontSize}px 'Georgia', 'SimSun', serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  // Soft cream halo so the text reads on top of the fog.
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = 'rgba(255, 240, 200, 0.85)';
+  ctx.fillStyle = 'rgba(60, 30, 10, 0.95)';
+  ctx.strokeText(title, cx, cy - fontSize);
+  ctx.fillText(title, cx, cy - fontSize);
+  // Subtitle: "L{n+1}" so the player knows which level
+  // they're on. The same i18n key the tab bar uses, kept
+  // 1-indexed for the human label.
+  const subFont = 14;
+  ctx.font = `500 ${subFont}px 'Georgia', 'SimSun', serif`;
+  ctx.strokeText(subtitle, cx, cy + subFont);
+  ctx.fillText(subtitle, cx, cy + subFont);
+  ctx.restore();
 }
 
 function drawWaterStain(

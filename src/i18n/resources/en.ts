@@ -41,6 +41,13 @@ export const en: Translations = {
   // hud.*
   // ============================================================
   'hud.enemyCount': 'Enemies {current} / {max}',
+  // P3-1: level indicator. P3-1a only adds the placeholder
+  // strings — the actual HUD component lands in P3-1c. Two
+  // forms: `.label` for the full "Level N" string and `.short`
+  // for the compact "L{N}" badge the LevelSelect dropdown
+  // already uses for the maze size.
+  'hud.levelIndicator.label': 'Level {level}',
+  'hud.levelIndicator.short': 'L{level}',
 
   // ============================================================
   // overlays.*
@@ -211,6 +218,11 @@ export const en: Translations = {
   'overlays.parchment.title': 'Parchment Map',
   'overlays.parchment.hint': 'Press M or ESC to close',
   'overlays.parchment.empty': 'Unexplored',
+  // P3-1: parchment level-tab label (per spec §6.3). The full
+  // modal tab bar lands in P3-1c; the placeholder string is
+  // identical to the HUD's `levelIndicator.short` form so the
+  // two surfaces stay in lockstep ("L1 / L2 / …").
+  'overlays.parchment.levelTab': 'L{level}',
 
   'levels.panel.generator': 'Generator',
   'levels.panel.brief': 'Mission Briefing',
@@ -273,6 +285,31 @@ export const en: Translations = {
   'levels.algorithm.houston': "Houston's",
   'levels.algorithm.growingBinaryTree': 'Growing Binary Tree',
   'levels.algorithm.blobbyRecursiveDivision': 'Blobby Recursive Division',
+  // P3-1: level count dropdown (P3-1c LevelSelect). 1..6 layers
+  // mirrors the spec's LevelCount literal union. Default 1 keeps
+  // every existing single-layer URL / best record working without
+  // any user opt-in. The `optionN` suffix (no dot before the
+  // number) is intentional — the i18n orphan-key detector
+  // (`tests/unit/i18n/keysParity.test.ts`) requires every dotted
+  // segment to start with a letter, so `option.1` would fail the
+  // namespace convention check.
+  'levels.algorithm.levelCount': 'Layers',
+  'levels.algorithm.levelCount.option1': '1 layer',
+  'levels.algorithm.levelCount.option2': '2 layers',
+  'levels.algorithm.levelCount.option3': '3 layers',
+  'levels.algorithm.levelCount.option4': '4 layers',
+  'levels.algorithm.levelCount.option5': '5 layers',
+  'levels.algorithm.levelCount.option6': '6 layers',
+  // H3 fix (architect review): teaching levels are single-layer by
+  // design (JsonMazeProvider serves the JSON directly, and the
+  // teaching JSONs have no `transitions` array). Letting the user
+  // pick >1 layer on a teaching source would slip a
+  // `levelCount=N` into the seed options, which the engine then
+  // renders as N copies of the same single-layer walls (no
+  // transitions exist for the player to climb out). The hint
+  // surfaces why the levelCount field is locked when the user is
+  // on the teaching rail.
+  'levels.algorithm.levelCount.disabledForTeaching': 'Teaching levels are fixed at 1 layer',
 
   'levels.seedInput.useLast': '↻ Reuse last seed',
   'levels.action.hint': 'Press {enter} to start · {esc} to quit',
@@ -295,6 +332,16 @@ export const en: Translations = {
   // P2-18: trap and door toolbar hints.
   'editor.toolbar.hint.trap': 'Click a floor cell to place a trap · edit its type and params on the right',
   'editor.toolbar.hint.door': 'Click a floor cell to place a door · edit its key color on the right',
+  // P3-1c: 5 vertical-transition toolbar hints. Each hint pairs
+  // the action ("Click a floor cell to place a stair") with the
+  // auto-derived destination rule (stair-up → layer+1) and the
+  // reminder to edit toLevel via the properties panel. Same shape
+  // as the existing trap / door hints.
+  'editor.toolbar.hint.stairUp': 'Click a floor cell to place a stair up (default destination: layer + 1)',
+  'editor.toolbar.hint.stairDown': 'Click a floor cell to place a stair down (default destination: layer − 1)',
+  'editor.toolbar.hint.holeDown': 'Click a floor cell to place a hole down (default destination: layer − 1)',
+  'editor.toolbar.hint.holeUp': 'Click a floor cell to place a hole up (default destination: layer + 1)',
+  'editor.toolbar.hint.ladder': 'Click a floor cell to place a ladder (default destination: layer + 1)',
   'editor.toolbar.hint.pan': 'Right-click drag to pan',
 
   'editor.toolbar.autoSaved': 'Auto-saved at {time}',
@@ -345,6 +392,16 @@ export const en: Translations = {
   // P2-18: trap and door toolbar tools.
   'editor.toolbar.tool.trap': 'Trap',
   'editor.toolbar.tool.door': 'Door',
+  // P3-1c: 5 vertical-transition toolbar tools. Each tool's label
+  // doubles as the option label in the transition-form kind
+  // dropdown (the EditorPropertiesPanel TransitionForm reuses
+  // these keys directly), so the user sees the same label on the
+  // toolbar button and the dropdown row.
+  'editor.toolbar.tool.stairUp': 'Stair Up',
+  'editor.toolbar.tool.stairDown': 'Stair Down',
+  'editor.toolbar.tool.holeDown': 'Hole Down',
+  'editor.toolbar.tool.holeUp': 'Hole Up',
+  'editor.toolbar.tool.ladder': 'Ladder',
   'editor.toolbar.tool.pan': 'Pan',
   'editor.toolbar.undo': 'Undo',
   'editor.toolbar.redo': 'Redo',
@@ -367,6 +424,20 @@ export const en: Translations = {
   'editor.leftPanel.deleteFolderMessage': 'Delete "{name}"? All levels and subfolders inside it will be deleted too.',
   'editor.leftPanel.deleteLevelTitle': 'Delete level',
   'editor.leftPanel.deleteLevelMessage': 'Delete "{name}"? This cannot be undone.',
+  // P3-1c: per-level currentLevel switcher (L1..L6). The level
+  // tab bar sits at the top of the left panel; the user clicks
+  // a tab to switch which layer the viewport / properties panel
+  // are editing. Tabs past `levelCount` are rendered as disabled
+  // so the user can see the future "next slot" without being
+  // able to click it.
+  'editor.leftPanel.levelTab': 'L{level}',
+  'editor.leftPanel.levelTabAria': 'Layer {level}',
+  'editor.leftPanel.addLevel': 'Add layer',
+  'editor.leftPanel.removeLevel': 'Remove layer',
+  'editor.leftPanel.addLevelAria': 'Add a new layer (currently {count})',
+  'editor.leftPanel.removeLevelAria': 'Remove the top layer (currently {count})',
+  'editor.leftPanel.removeLevelTitle': 'Remove the top layer?',
+  'editor.leftPanel.removeLevelMessage': 'This will remove layer {count} and all entities placed on it (pickups / traps / doors / enemies / transitions). You can undo with ⌘Z.',
 
   // ============================================================
   // editor.status.*
@@ -467,6 +538,18 @@ export const en: Translations = {
   'editor.properties.field.keyColor': 'Key color',
   'editor.properties.doorMissingKey': '⚠ No matching-color key on this level — the player won\'t be able to open this door',
   'editor.properties.deleteDoor': 'Delete door',
+  // P3-1c: transition property form. The card title + per-field
+  // labels. The kind dropdown reuses the toolbar's
+  // `editor.toolbar.tool.*` labels for each transition kind
+  // (the user has already seen them on the toolbar buttons).
+  'editor.properties.transitionCard': 'Transition',
+  'editor.properties.transition.source': 'Source',
+  'editor.properties.transition.kind': 'Kind',
+  'editor.properties.transition.toLevel': 'Destination layer',
+  'editor.properties.transition.toX': 'Landing X (blank = same as source)',
+  'editor.properties.transition.toZ': 'Landing Z (blank = same as source)',
+  'editor.properties.transition.sameLayerWarn': '⚠ The destination layer is the same as the source — the player will move to itself. Set a real toLevel on the right.',
+  'editor.properties.deleteTransition': 'Delete transition',
 
   // P2-13.7: tutorial / HUD card i18n (was hard-coded Chinese in P2-11).
   'editor.properties.tutorialCard': 'Tutorial / HUD',
@@ -501,6 +584,8 @@ export const en: Translations = {
   // P2-18: trap and door selection labels.
   'editor.properties.selection.trap': 'trap',
   'editor.properties.selection.door': 'door',
+  // P3-1c: transition selection label.
+  'editor.properties.selection.transition': 'transition',
 
   'editor.properties.minusAria': 'Decrease',
   'editor.properties.plusAria': 'Increase',
@@ -571,6 +656,14 @@ export const en: Translations = {
   // (pickup / trap / door / enemy node) so the user doesn't silently
   // strand the entity on the resulting floor.
   'editor.lastError.eraseOnEntity': 'That cell has a pickup / trap / door / enemy — delete the entity before erasing',
+  // P3-1c: vertical-transition placement rejections. Each maps to
+  // a stable i18n key so the toolbar chip tells the user *why*
+  // the click was dropped (mirroring the placeWall /
+  // placePickup rejection channels).
+  'editor.lastError.transitionOnWall': 'Transitions can only be placed on floor cells (use the Carve tool first)',
+  'editor.lastError.transitionOnStart': 'Transitions cannot be placed on the start cell',
+  'editor.lastError.transitionOnExit': 'Transitions cannot be placed on the exit cell',
+  'editor.lastError.transitionDuplicate': 'That cell already has a transition on this layer (one per cell per layer)',
 
   // F-2026-06-17-E-M-7: design-rule issues rendered in the editor
   // warnings popup. Keys mirror the 8 ValidationIssue.messageKey values

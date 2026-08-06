@@ -197,6 +197,19 @@ function isValidSeed(raw: unknown): raw is Seed {
   if (typeof s.mazeSeed !== 'string' || !MAZE_SEED_RE.test(s.mazeSeed)) {
     return false;
   }
+  // P3-1: `levelCount` is optional on the Seed interface (a v1
+  // record never carried it). When present it must be a 1..6
+  // integer — the same whitelist the seed codec (utils/seed.ts)
+  // and the levelCount validator (maze/types.ts) use. A bogus
+  // value (NaN, negative, > 6, non-integer) drops the record
+  // the same way a malformed algorithm would, so a hand-crafted
+  // localStorage payload can't smuggle a `levelCount: 99` into
+  // the runtime store.
+  if (s.levelCount !== undefined) {
+    if (typeof s.levelCount !== 'number' || !Number.isInteger(s.levelCount) || s.levelCount < 1 || s.levelCount > 6) {
+      return false;
+    }
+  }
   return true;
 }
 

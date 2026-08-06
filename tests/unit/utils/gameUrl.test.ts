@@ -259,4 +259,102 @@ describe('buildGameSearchParams', () => {
     const expected = encodeSeed({ algorithm: 'kruskal', size: 15, mazeSeed: 'fedcba9876543210' });
     expect(built.get(GAME_URL_QUERY_KEYS.SEED_QUERY)).toBe(expected);
   });
+
+  // P3-1: v2 ids are still procedural. The isProcedural gate
+  // (line 172 pre-fix) only recognized `algo-v1-…`, so a v2 id
+  // would slip into the `?id=…` branch and bypass the seed
+  // round-trip — the URL would be wrong (the `?id=…` query
+  // survives a refresh, but the startLevel path would then
+  // hit a teaching-id lookup and surface a missing-level
+  // error). The fix widens the gate to accept both prefixes.
+  it('emits ?seed=… for a v2 procedural id (not ?id=…)', () => {
+    const v2Id = 'algo-v2-recursive-backtracker-15-3-0123456789abcdef';
+    const built = buildGameSearchParams(v2Id);
+    expect(built.get(GAME_URL_QUERY_KEYS.SEED_QUERY)).toBe(v2Id);
+    expect(built.get(GAME_URL_QUERY_KEYS.ID_QUERY)).toBeNull();
+  });
+
+  it('round-trips a v2 id through parseGameSearchParams (the deep-link entry point)', () => {
+    // The URL a user gets when they share a multi-level level.
+    // `parseGameSearchParams` must NOT route this to the
+    // `bad-seed` error path — `decodeSeed` already validates
+    // the v2 shape and returns levelCount=3. The `id` field
+    // on the parsed result is the v2 string verbatim so a
+    // follow-up `buildGameSearchParams` call round-trips it
+    // back to `?seed=…`.
+    const v2Id = 'algo-v2-recursive-backtracker-15-3-0123456789abcdef';
+    const parsed = parseGameSearchParams(
+      new URLSearchParams(`?${GAME_URL_QUERY_KEYS.SEED_QUERY}=${v2Id}`),
+    );
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) {
+      expect(parsed.parsed.id).toBe(v2Id);
+      expect(parsed.parsed.options.seed?.algorithm).toBe('recursive-backtracker');
+      expect(parsed.parsed.options.seed?.size).toBe(15);
+      expect(parsed.parsed.options.seed?.mazeSeed).toBe('0123456789abcdef');
+      // levelCount must survive the URL round-trip; otherwise the
+      // downstream provider has no way to know this is a 3-layer
+      // level and the engine would render 1 layer.
+      expect(parsed.parsed.options.seed?.levelCount).toBe(3);
+    }
+  });
+});
+
+describe('parseGameSearchParams tamper resistance (P3-1 isProcedural fix)', () => {
+  // F-2026-06-17 (P3-1a follow-up): a deep-link with a future
+  // unknown seed prefix must land in the `bad-seed` error path
+  // rather than be misclassified as a hand-crafted level id. The
+  // isProcedural gate pre-fix would have flagged `algo-v3-…` as
+  // a hand-crafted id (no `algo-v1-` prefix), and parseGameSearchParams
+  // would have returned `ok: true` with a bogus non-procedural id.
+  // The gameStore would then try to load a teaching level by that
+  // name, surface a missing-level error, and the URL would silently
+  // regress to a teaching default. Post-fix: `?seed=algo-v3-…` lands
+  // in `bad-seed`, and the `?id=algo-v3-…` path keeps the gate
+  // strict via the 256-char length cap on the `?id=` branch.
+  it('rejects ?seed=algo-v3-… (unknown seed prefix) as bad-seed', () => {
+    const r = parseGameSearchParams(
+      new URLSearchParams('?seed=algo-v3-recursive-backtracker-30-0123456789abcdef'),
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toBe('bad-seed');
+  });
+
+  it('rejects ?seed=algo-v99-future-… (any unknown prefix) as bad-seed', () => {
+    const r = parseGameSearchParams(
+      new URLSearchParams('?seed=algo-v99-anything-30-0123456789abcdef'),
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toBe('bad-seed');
+  });
+
+  it('still accepts ?seed=algo-v1-… (back-compat: v1 ids continue to parse)', () => {
+    const r = parseGameSearchParams(
+      new URLSearchParams(`?seed=${VALID_SEED_ID}`),
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.parsed.id).toBe(VALID_SEED_ID);
+      expect(r.parsed.options.seed?.algorithm).toBe('recursive-backtracker');
+    }
+  });
+
+  it('still accepts ?seed=algo-v2-… (P3-1: v2 ids continue to parse)', () => {
+    const v2Id = 'algo-v2-recursive-backtracker-15-3-0123456789abcdef';
+    const r = parseGameSearchParams(new URLSearchParams(`?seed=${v2Id}`));
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.parsed.id).toBe(v2Id);
+  });
+
+  it('round-trips a v2 id through build → parse (URL persistence preserves the level count)', () => {
+    const v2Id = 'algo-v2-kruskal-50-2-fedcba9876543210';
+    const built = buildGameSearchParams(v2Id, { mode: 'reach-exit' });
+    const parsed = parseGameSearchParams(built);
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) {
+      expect(parsed.parsed.id).toBe(v2Id);
+      expect(parsed.parsed.options.seed?.levelCount).toBe(2);
+      expect(parsed.parsed.options.mode).toBe('reach-exit');
+    }
+  });
 });

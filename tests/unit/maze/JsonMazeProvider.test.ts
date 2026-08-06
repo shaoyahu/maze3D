@@ -45,8 +45,15 @@ describe('JsonMazeProvider', () => {
       expect(data.id).toBe('level-test');
       expect(data.name).toBe('Test Level');
       expect(data.size).toEqual({ width: 5, depth: 3 });
-      expect(data.start).toEqual({ x: 0, z: 0 });
-      expect(data.exit).toEqual({ x: 4, z: 2 });
+      // P3-1: validator defaults start/exit.level to 0 when the
+      // JSON omits the field. Assert via toMatchObject so the new
+      // defaulted field is visible without the test having to
+      // hard-code every defaulted key.
+      expect(data.start).toMatchObject({ x: 0, z: 0, level: 0 });
+      expect(data.exit).toMatchObject({ x: 4, z: 2, level: 0 });
+      // P3-1: every P3-1 added top-level field has a default.
+      expect(data.levelCount).toBe(1);
+      expect(data.transitions).toEqual([]);
       expect(data.walls).toHaveLength(3);
       expect(data.walls[0]).toHaveLength(5);
       expect(data.pickups).toEqual([]);
@@ -179,8 +186,11 @@ describe('JsonMazeProvider', () => {
       const provider = new JsonMazeProvider({ 'level-test': level });
 
       const data = await provider.load('level-test');
-      expect(data.start).toEqual({ x: 2, z: 1 });
-      expect(data.exit).toEqual({ x: 3, z: 1 });
+      // P3-1: validator defaults start/exit.level to 0 — toMatchObject
+      // so the new defaulted field is acknowledged without rewriting
+      // the legacy x/z shape.
+      expect(data.start).toMatchObject({ x: 2, z: 1, level: 0 });
+      expect(data.exit).toMatchObject({ x: 3, z: 1, level: 0 });
     });
   });
 

@@ -147,6 +147,17 @@ export interface GameState {
   // maybeRecordDamage, so a fresh reference means a real change).
   setParchment: (state: ParchmentState) => void;
 
+  // P3-1: UI-side mirror of the player's current layer. The engine
+  // owns the authoritative value (`Game.playerLevel`) and pushes it
+  // through the bridge's `onLevelChange` callback in GameCanvas;
+  // `setCurrentLevel` writes it here so HUD's LevelIndicator,
+  // Minimap's auto-switcher, and ParchmentMap's default tab can
+  // subscribe via Zustand. `null` when no level is active
+  // (pre-startLevel / post-goToMenu); the consumers treat `null` as
+  // "no level" via `s.player?.currentLevel ?? 0`.
+  player: { currentLevel: number } | null;
+  setCurrentLevel: (level: number) => void;
+
   startLevel: (maze: MazeData, options?: StartLevelOptions) => void;
   pause: () => void;
   resume: () => void;
@@ -210,6 +221,24 @@ export const useGameStore = create<GameState>((set, get) => ({
   // first real value at startLevel() time.
   parchment: createEmptyParchment(),
 
+  // P3-1: no level is active at boot. The engine pushes the real
+  // value via `onLevelChange` once `startLevel` runs and the player
+  // is created. `null` collapses to `0` at every consumer via
+  // `s.player?.currentLevel ?? 0` so a level mounted before the
+  // bridge fires still renders the L1 chip instead of an empty badge.
+  player: null,
+
+  // P3-1: setter wired to `GameBridge.onLevelChange` in GameCanvas.
+  // The engine only calls it when `playerLevel` actually flips
+  // (transition completion in `tickActiveTransition`), so a static
+  // player standing on layer 0 doesn't churn the React tree. The
+  // setter is also no-op for an unchanged value (defensive — the
+  // engine's contract already guarantees this, but the guard makes
+  // a manual `setCurrentLevel(0)` during testing a no-op when the
+  // store already says 0).
+  setCurrentLevel: (level) =>
+    set((s) => (s.player?.currentLevel === level ? s : { player: { currentLevel: level } })),
+
   // F-2026-06-30: P2-16 — UI-driven parchment actions. Each forwards
   // to the engine via `setParchmentOpen` so the engine's per-tick
   // pause-while-open guard stays in sync. The set() call here keeps
@@ -227,6 +256,10 @@ export const useGameStore = create<GameState>((set, get) => ({
   // flag persists so a player who left the modal open doesn't get
   // it slammed shut on every level. Mirrors `resetMap` in
   // engine/ParchmentState.ts.
+  // P3-1: `visitedCells` is now a per-level Map; the reset
+  // mirrors `resetMap` and replaces it with a fresh empty Map so
+  // the referential equality contract holds (the engine's
+  // bridge callback only fires on reference change).
   resetParchment: () =>
     set((s) =>
       s.parchment.visitedCells.size === 0 && s.parchment.damageRegions.length === 0
@@ -234,7 +267,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         : {
             parchment: {
               ...s.parchment,
-              visitedCells: new Set<string>(),
+              visitedCells: new Map<number, ReadonlySet<string>>(),
               damageRegions: [],
             },
           },
@@ -261,7 +294,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       // return []` short-circuit, but the explicit branch is the
       // documented contract — same rationale as Game.startLevel.
       const injectedEnemies = mode === 'survive'
-        ? injectEnemySpawns(maze, requestedEnemyCount)
+        ? injectEnemySpawns(maze, requestedEnemyCount, { levelCount: maze.levelCount ?? 1 })
         : [];
       // F-2026-06-17-C-H-3: mirror Game.startLevel — drop any
       // previously-injected gen-* enemies before counting. Without
@@ -312,9 +345,20 @@ export const useGameStore = create<GameState>((set, get) => ({
         // the modal open keep it open across level boundaries.
         parchment: {
           ...s.parchment,
-          visitedCells: new Set<string>(),
+          visitedCells: new Map<number, ReadonlySet<string>>(),
           damageRegions: [],
         },
+        // P3-1: reset the layer mirror to 0 (the engine's
+        // start-level default for the player's start cell). The
+        // engine pushes the real value via `onLevelChange` shortly
+        // after startLevel() returns; the initial 0 here is the
+        // "good-enough" value for the brief window before the
+        // bridge fires. For a multi-level level where the start
+        // cell is on a non-zero layer, the bridge's push
+        // immediately overwrites this with the real layer so the
+        // HUD chip only briefly shows L1 before flipping to the
+        // correct layer.
+        player: { currentLevel: 0 },
       };
     }),
 
@@ -592,6 +636,13 @@ export const useGameStore = create<GameState>((set, get) => ({
       // `parchmentLifecycle: 'persist'` would override this in a
       // future death-increment; the engine hook isn't wired yet.
       parchment: createEmptyParchment(),
+      // P3-1: clear the layer mirror on menu exit. A stale layer
+      // would be wrong on the next level (the previous run might
+      // have ended on L2; the next reach-exit level may be a
+      // single-layer one). `null` is the "no level active" state
+      // — consumers fall back to 0 via the `?? 0` in their
+      // selector.
+      player: null,
       // P2-18: reset slow debuff on menu exit.
       slowUntil: 0,
       lastUnlockedDoorId: null,

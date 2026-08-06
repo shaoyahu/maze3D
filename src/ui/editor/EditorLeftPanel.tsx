@@ -23,6 +23,7 @@ import { useT } from '../../i18n';
 import { useSettingsStore } from '../../store/settingsStore';
 import { getDisplayName } from '../../utils/getDisplayName';
 import type { MazeData } from '../../maze/types';
+import { EditorLevelTabs } from './LevelTabs';
 
 // 节点按字母 / 中文 localeCompare 排序,name 相同的 fallback 到 id 字符串,
 // 保证稳定不跳。
@@ -317,6 +318,13 @@ export function EditorLeftPanel(): React.ReactElement {
           </ul>
         )}
       </div>
+
+      {/* P3-1c: level tab bar — switches the editor's currentLevel
+          (the layer the viewport + tools operate on). Pinned at the
+          bottom of the left panel so file-tree navigation and layer
+          navigation live in the same column. The bar only takes the
+          height it needs; the tree above keeps its flex:1 share. */}
+      <EditorLevelTabs />
     </aside>
   );
 }

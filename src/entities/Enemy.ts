@@ -41,6 +41,13 @@ export class Enemy {
   dwellTimer = 0;
   alertTimer = 0;
   heading: Vec2;
+  // P3-1: which layer this enemy patrols on. Defaults to 0 for every
+  // pre-P3-1 level (JsonMazeProvider / AlgorithmMazeProvider both
+  // back-fill the field on load / generation). Per spec §5.3 / H2, an
+  // enemy only collides with a player on the same layer; cross-layer
+  // pairs are silently skipped at the Collision layer (see
+  // playerVsEnemy / hasEnemyContact).
+  readonly level: number;
   // F2 (P0): wall-aware movement. The grid is captured at construction;
   // Enemy is recreated per level (see Game.startLevel) so the closure over
   // the active maze stays valid for the enemy's lifetime. The grid's `get`
@@ -78,6 +85,11 @@ export class Enemy {
     this.id = spawn.id;
     this.position = { x: spawn.x, z: spawn.z };
     this.path = spawn.path;
+    // P3-1: read the layer once at construction so the per-frame
+    // resolveMove can pass it to the wall lookup. `?? 0` is the
+    // single-layer back-compat — pre-P3-1 JSON without `level` is
+    // implicitly layer 0 (see JsonMazeProvider.parseEntityLevel).
+    this.level = spawn.level ?? 0;
     this.dwellTime = spawn.dwellTime ?? ENEMY_DWELL_TIME_DEFAULT;
     this.fovRange = spawn.fovRange ?? ENEMY_FOV_RANGE_DEFAULT;
     this.fovAngleDeg = spawn.fovAngleDeg ?? ENEMY_FOV_ANGLE_DEG_DEFAULT;
@@ -175,10 +187,16 @@ export class Enemy {
     // second of chase. We now reuse the same per-axis try-move the player
     // uses, which stops the enemy at the wall (and lets the unblocked
     // axis slide along it, matching the player's behavior).
+    //
+    // P3-1: the enemy's layer (`this.level`) is passed to resolveMove
+    // so wall lookups happen on the right grid. Pre-P3-1 enemies had
+    // no `level` field, so the property is `?? 0` for back-compat
+    // (every pre-P3-1 level is implicitly layer 0).
     const next = resolveMove(
       { x: this.position.x, z: this.position.z, r: ENEMY_RADIUS },
       { dx: (dx / dist) * step, dz: (dz / dist) * step },
       this.grid,
+      this.level ?? 0,
     );
     this.position.x = next.x;
     this.position.z = next.z;
@@ -191,6 +209,11 @@ export class Enemy {
     // patrol into an instant dwell at the spawn cell. With wall-aware
     // stepping, a blocked target is never "reached" and the enemy stays
     // in patrol/chase from its blocked position until the path clears.
+    // P3-1: enemies are pinned to a single layer (see `EnemySpawn.level`,
+    // spec §5.3 / H2). The Enemy instance's `level` is read at construction
+    // and passed to `resolveMove` so the wall lookup hits the correct
+    // layer. Pre-P3-1 enemies (no `level` field) read 0 — the
+    // single-layer back-compat path that all existing tests rely on.
     return Math.hypot(target.x - this.position.x, target.z - this.position.z) < ARRIVAL_EPSILON;
   }
 

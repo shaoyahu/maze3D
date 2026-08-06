@@ -44,6 +44,21 @@ const TOOLS: readonly ToolEntry[] = [
   // P2-18: trap and door tools.
   { tool: 'trap',   labelKey: 'editor.toolbar.tool.trap',   shortcut: 'T', icon: '🔥' },
   { tool: 'door',   labelKey: 'editor.toolbar.tool.door',   shortcut: 'D', icon: '🚪' },
+  // P3-1c: 5 vertical-transition tools. Icons stay ASCII-glyph for
+  // consistency with the rest of the toolbar (the existing pickup
+  // ⏱ / health ♥ / key ⚷ glyphs are text characters too). The
+  // shortcuts avoid collisions with the existing V/W/B/S/E/P/M/
+  // T/D/H alphabet — 1..5 map to the 5 transition tools and
+  // also mirror the level-tab numbering the user already sees in
+  // the left panel (L1..L6). Stair-up / -down use "up arrow" and
+  // "down arrow" glyphs to communicate the direction; the
+  // hole/ladder variants get distinct glyphs to set them apart
+  // visually.
+  { tool: 'stair-up',   labelKey: 'editor.toolbar.tool.stairUp',   shortcut: '1', icon: '↑' },
+  { tool: 'stair-down', labelKey: 'editor.toolbar.tool.stairDown', shortcut: '2', icon: '↓' },
+  { tool: 'hole-down',  labelKey: 'editor.toolbar.tool.holeDown',  shortcut: '3', icon: '⦵' },
+  { tool: 'hole-up',    labelKey: 'editor.toolbar.tool.holeUp',    shortcut: '4', icon: '⦴' },
+  { tool: 'ladder',     labelKey: 'editor.toolbar.tool.ladder',    shortcut: '5', icon: '║' },
   { tool: 'pan',    labelKey: 'editor.toolbar.tool.pan',    shortcut: 'H', icon: '✥' },
 ];
 

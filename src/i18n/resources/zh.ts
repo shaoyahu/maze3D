@@ -54,6 +54,11 @@ export const zh: Translations = {
   // hud.* — HUD 数值显示
   // ============================================================
   'hud.enemyCount': '敌人 {current} / {max}',
+  // P3-1: 层指示器。P3-1a 只占位 key（实际 HUD 组件由 P3-1c 接）。
+  // 两种形式：`.label` 是完整的「第 N 层」，`.short` 是 LevelSelect
+  // 下拉里那种紧凑「L{N}」徽章（与关卡尺寸风格一致）。
+  'hud.levelIndicator.label': '第 {level} 层',
+  'hud.levelIndicator.short': 'L{level}',
 
   // ============================================================
   // overlays.pause/win/gameOver — 暂停 / 通关 / 失败遮罩
@@ -215,6 +220,10 @@ export const zh: Translations = {
   'overlays.parchment.title': '羊皮纸地图',
   'overlays.parchment.hint': '按 M 或 ESC 关闭',
   'overlays.parchment.empty': '尚未探索',
+  // P3-1: 羊皮纸 modal 顶部 level tab 标签（spec §6.3）。完整
+  // tab bar 由 P3-1c 实现；占位字符串与 HUD 紧凑形式保持一致
+  // （「L1 / L2 / …」），两处样式不漂移。
+  'overlays.parchment.levelTab': 'L{level}',
 
   'levels.panel.generator': '生成器',
   'levels.panel.brief': '任务简报',
@@ -276,6 +285,23 @@ export const zh: Translations = {
   'levels.algorithm.houston': "Houston's",
   'levels.algorithm.growingBinaryTree': 'Growing Binary Tree',
   'levels.algorithm.blobbyRecursiveDivision': 'Blobby Recursive Division',
+  // P3-1: 层数下拉（P3-1c LevelSelect）。1..6 层与 spec 的
+  // LevelCount literal union 一一对应；默认 1 保持现有单层
+  // URL / 最佳成绩完全向后兼容。`optionN` 后缀（数字前无点号）
+  // 是 i18n 命名空间约定要求——所有 dotted 段必须以字母开头。
+  'levels.algorithm.levelCount': '层数',
+  'levels.algorithm.levelCount.option1': '1 层',
+  'levels.algorithm.levelCount.option2': '2 层',
+  'levels.algorithm.levelCount.option3': '3 层',
+  'levels.algorithm.levelCount.option4': '4 层',
+  'levels.algorithm.levelCount.option5': '5 层',
+  'levels.algorithm.levelCount.option6': '6 层',
+  // H3 fix (architect review): 教学关固定单层(JsonMazeProvider
+  // 直接服务 JSON,教学 JSON 无 transitions 数组)。在 teaching 源
+  // 上放可调的 levelCount 会把 N>1 渗到 seed options,引擎把同一
+  // 单层墙渲染 N 份(没有 transition 可上楼)。该 hint 解释为什么
+  // levelCount 控件在 teaching 路径下被锁定。
+  'levels.algorithm.levelCount.disabledForTeaching': '教学关卡固定 1 层',
 
   'levels.seedInput.useLast': '↻ 使用上次种子',
   'levels.action.hint': '按 {enter} 进入 · 按 {esc} 退出',
@@ -301,6 +327,14 @@ export const zh: Translations = {
   // P2-18: trap and door toolbar hints.
   'editor.toolbar.hint.trap': '点击格子放置陷阱 · 选中后在右侧编辑类型和参数',
   'editor.toolbar.hint.door': '点击格子放置门 · 选中后在右侧编辑钥匙颜色',
+  // P3-1c: 5 vertical-transition toolbar hints. 镜像 en.ts,中文文案
+  // 跟项目其他按钮一样"动作 + 默认目的地"的双段结构,跟现有的
+  // trap / door hint 保持同一形状。
+  'editor.toolbar.hint.stairUp': '点击格子放上行楼梯（默认目的地：本层 + 1）',
+  'editor.toolbar.hint.stairDown': '点击格子放下行楼梯（默认目的地：本层 − 1）',
+  'editor.toolbar.hint.holeDown': '点击格子放下行洞口（默认目的地：本层 − 1）',
+  'editor.toolbar.hint.holeUp': '点击格子放上行洞口（默认目的地：本层 + 1）',
+  'editor.toolbar.hint.ladder': '点击格子放梯子（默认目的地：本层 + 1）',
   'editor.toolbar.hint.pan': '右键拖动平移视图',
 
   'editor.toolbar.autoSaved': '已自动保存 {time}',
@@ -351,6 +385,15 @@ export const zh: Translations = {
   // P2-18: trap and door toolbar tools.
   'editor.toolbar.tool.trap': '陷阱',
   'editor.toolbar.tool.door': '门',
+  // P3-1c: 5 vertical-transition toolbar tools. 标签与 en.ts 保持
+  // 一一对应(逐字镜像),属性的 transitionCard.kind 下拉菜单复用
+  // 这几个 key —— 用户在工具栏按钮上看到的标签,跟属性面板里
+  // 下拉选项的标签是同一句。
+  'editor.toolbar.tool.stairUp': '上行楼梯',
+  'editor.toolbar.tool.stairDown': '下行楼梯',
+  'editor.toolbar.tool.holeDown': '下行洞口',
+  'editor.toolbar.tool.holeUp': '上行洞口',
+  'editor.toolbar.tool.ladder': '梯子',
   'editor.toolbar.tool.pan': '平移',
   'editor.toolbar.undo': '撤销',
   'editor.toolbar.redo': '重做',
@@ -374,6 +417,17 @@ export const zh: Translations = {
   'editor.leftPanel.deleteFolderMessage': '确定删除「{name}」?此文件夹内的所有关卡和子文件夹也会被删除。',
   'editor.leftPanel.deleteLevelTitle': '删除关卡',
   'editor.leftPanel.deleteLevelMessage': '确定删除「{name}」?此操作不可撤销。',
+  // P3-1c: 多层级(L1..L6)左侧 tab 栏文案。levelTab 用 {level} 模板
+  // 插值(1-indexed,跟用户习惯一致),addLevel / removeLevel 是顶部
+  // 一对"+" / "−"按钮的 label 和 aria。
+  'editor.leftPanel.levelTab': 'L{level}',
+  'editor.leftPanel.levelTabAria': '第 {level} 层',
+  'editor.leftPanel.addLevel': '加层',
+  'editor.leftPanel.removeLevel': '删层',
+  'editor.leftPanel.addLevelAria': '增加一层（当前 {count} 层）',
+  'editor.leftPanel.removeLevelAria': '删除最顶层（当前 {count} 层）',
+  'editor.leftPanel.removeLevelTitle': '删除最顶层?',
+  'editor.leftPanel.removeLevelMessage': '这会删除第 {count} 层以及这一层上的所有实体（拾取 / 陷阱 / 门 / 敌人 / 垂直连接）。可以用 ⌘Z 撤销。',
 
   // ============================================================
   // editor.status.* — 编辑器状态栏
@@ -473,6 +527,17 @@ export const zh: Translations = {
   'editor.properties.field.keyColor': '钥匙颜色',
   'editor.properties.doorMissingKey': '⚠ 关卡中没有对应颜色的钥匙，玩家将无法打开此门',
   'editor.properties.deleteDoor': '删除门',
+  // P3-1c: vertical-transition 属性面板(transition 卡片)。
+  // kind 下拉菜单直接复用 editor.toolbar.tool.* 的标签 —— 用户
+  // 在工具栏按钮上看到的文字跟下拉里的选项是同一句。
+  'editor.properties.transitionCard': '垂直连接',
+  'editor.properties.transition.source': '源',
+  'editor.properties.transition.kind': '类型',
+  'editor.properties.transition.toLevel': '目标层',
+  'editor.properties.transition.toX': '落点 X（留空 = 与源同 X）',
+  'editor.properties.transition.toZ': '落点 Z（留空 = 与源同 Z）',
+  'editor.properties.transition.sameLayerWarn': '⚠ 目标层和源层相同 — 玩家会原地踏步。请在右侧设置一个真正的 toLevel。',
+  'editor.properties.deleteTransition': '删除垂直连接',
 
   // P2-13.7: 教程 / HUD 卡片整体 i18n 化(原硬编码中文)。
   'editor.properties.tutorialCard': '教程 / HUD',
@@ -506,6 +571,8 @@ export const zh: Translations = {
   // P2-18: trap and door selection labels.
   'editor.properties.selection.trap': '陷阱',
   'editor.properties.selection.door': '门',
+  // P3-1c: transition selection label.
+  'editor.properties.selection.transition': '垂直连接',
 
   'editor.properties.minusAria': '减小',
   'editor.properties.plusAria': '增大',
@@ -576,6 +643,11 @@ export const zh: Translations = {
   // F-2026-07-01-FCR-M-3: 通道工具（擦除）若目标格子上有拾取物/陷阱/门/敌人（路径节点），
   // 拒绝并提示，避免用户擦掉墙后该实体孤立在地面而不知情。
   'editor.lastError.eraseOnEntity': '该格子上有拾取物 / 陷阱 / 门 / 敌人，无法擦除（请先删除实体）',
+  // P3-1c: vertical-transition 放置校验（与 en.ts 镜像,逐字翻译）
+  'editor.lastError.transitionOnWall': '垂直连接只能放在地面格子上（先用擦除工具挖通道）',
+  'editor.lastError.transitionOnStart': '垂直连接不能放在起点格子上',
+  'editor.lastError.transitionOnExit': '垂直连接不能放在出口格子上',
+  'editor.lastError.transitionDuplicate': '该格子上已有垂直连接（每格每层只能放一个）',
 
   // F-2026-06-17-E-M-7: 关卡检查 (validateDesign) 的全部问题文案。
   // 由 EditorStatusBar 渲染,跟随当前语言。`{id}` / `{value}` 是可选插值。

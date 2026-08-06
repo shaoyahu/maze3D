@@ -27,7 +27,10 @@ import type {
   ParchmentLifecycle,
   Trap,
   Door,
+  VerticalTransition,
+  TransitionKind,
 } from '../maze/types';
+import { LEVEL_COUNT_VALUES } from '../maze/types';
 import { isMinimapMode, isMapOpenBehavior, isParchmentLifecycle } from '../maze/types';
 import {
   pushHistory,
@@ -95,6 +98,13 @@ type LevelSlice = {
 
 interface EditorStoreState {
   level: MazeData;
+  // P3-1c: the editor's notion of "current layer". P3-1a added
+  // `levelCount` + `transitions` + per-entity `level` to the data
+  // model; P3-1b will wire the engine to this state. The editor
+  // viewport subscribes here so changing the layer is a single-line
+  // store mutation — the rest of the UI (left-panel tab bar,
+  // properties panel, status bar) re-renders automatically.
+  currentLevel: number;
   tool: EditorTool;
   // The EditorSelection union is exported from ./editorHistory
   // (re-exported above). We reference it by name here so the property
@@ -231,6 +241,32 @@ interface EditorStoreState {
   addEnemyNode: (enemyId: string, x: number, z: number) => void;
   removeEnemyNode: (enemyId: string, nodeIndex: number) => void;
 
+  // P3-1c: per-level currentLevel + add/remove layer actions. P3-1a
+  // declared `levelCount` as a 1..6 field; the editor surfaces it via
+  // a level-tab bar in EditorLeftPanel and lets the user add / remove
+  // layers from the top. `addLevel` clamps at the spec's 6-layer cap,
+  // `removeLevel` clamps at 1 (you cannot go below the bottom layer
+  // — the level is "at minimum 1 layer"). Both go through commitLevel
+  // so they land on the undo/redo stack like any other structural
+  // edit; the level-tab bar and the per-layer entity filters read
+  // `currentLevel` from the store so the viewport + properties panel
+  // re-render automatically.
+  setCurrentLevel: (level: number) => void;
+  addLevel: () => void;
+  removeLevel: () => void;
+
+  // P3-1c: vertical-transition placement + edit. The editor toolbar
+  // adds 5 new tools (stair-up / stair-down / hole-down / hole-up /
+  // ladder); clicking a cell with one of those tools active lands in
+  // `placeTransition` which appends a new transition to
+  // `level.transitions`. `updateTransition` patches a single
+  // transition's editable fields (kind / toLevel / toX / toZ); the
+  // properties panel calls it on every form change. The engine in
+  // P3-1b will read the resulting `transitions` array to drive
+  // inter-layer movement.
+  placeTransition: (kind: TransitionKind, x: number, z: number) => void;
+  updateTransition: (id: string, patch: Partial<VerticalTransition>) => void;
+
   // selection-driven delete (push history)
   deleteSelected: () => void;
   // F-N1: commit current level to history (called from path-node input blur)
@@ -299,8 +335,8 @@ function buildEmptyLevel(width: number, depth: number): MazeData {
     name: DEFAULT_NAME,
     size: { width, depth },
     cellSize: 2,
-    start: { x: 0, z: 0 },
-    exit: { x: width - 1, z: depth - 1 },
+    start: { x: 0, z: 0, level: 0 },
+    exit: { x: width - 1, z: depth - 1, level: 0 },
     walls,
     pickups: [],
     enemies: [],
@@ -517,6 +553,11 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
 
   return {
     level: initialLevel,
+    // P3-1c: a fresh editor session starts on the bottom layer (0).
+    // The level tab bar in EditorLeftPanel reads this to highlight
+    // L1; the viewport's per-layer entity filter reads this to
+    // decide which pickup / enemy / trap / door to render.
+    currentLevel: 0,
     tool: 'select',
     selection: null,
     camera: { ...DEFAULT_CAMERA },
@@ -541,8 +582,13 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
       // F-project-review-2026-06-13-D-5/D-18: switching to a fresh level
       // is a corrective action — clear the storageFull / lastDraftError
       // pair so the red banner disappears in the same render.
+      // P3-1c: also reset `currentLevel` to 0 so the level tab bar
+      // lands on L1 — a new level always starts single-layer
+      // (buildEmptyLevel emits levelCount=1) and pointing at a layer
+      // that doesn't exist would silently hide every entity.
       set({
         level,
+        currentLevel: 0,
         past: [],
         future: [],
         selection: null,
@@ -560,8 +606,18 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
       // F-project-review-2026-06-13-D-5/D-18: switching to a loaded
       // level is a corrective action — clear storageFull /
       // lastDraftError so the red banner disappears.
+      // P3-1c: clamp currentLevel into the loaded level's
+      // levelCount range. A level saved with levelCount=3 and
+      // then loaded into an editor that last had levelCount=6
+      // could otherwise land on a layer that doesn't exist in
+      // the new level — the level tab bar would render L4..L6 as
+      // enabled but the per-layer entity filter would silently
+      // hide every entity.
+      const count = maze.levelCount ?? 1;
+      const safeCurrent = count > 0 ? Math.min(get().currentLevel, count - 1) : 0;
       set({
         level: maze,
+        currentLevel: Math.max(0, safeCurrent),
         past: [],
         future: [],
         selection: null,
@@ -868,7 +924,7 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
           zi === z ? r.map((c, xi) => (xi === x ? 0 : c)) : r,
         );
       }
-      const nextLevel: MazeData = { ...level, start: { x, z }, walls: nextWalls };
+      const nextLevel: MazeData = { ...level, start: { x, z, level: level.start.level ?? 0 }, walls: nextWalls };
       set(commitLevel(get(), nextLevel));
     },
 
@@ -912,7 +968,7 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
           zi === z ? r.map((c, xi) => (xi === x ? 0 : c)) : r,
         );
       }
-      const nextLevel: MazeData = { ...level, exit: { x, z }, walls: nextWalls };
+      const nextLevel: MazeData = { ...level, exit: { x, z, level: level.exit.level ?? 0 }, walls: nextWalls };
       set(commitLevel(get(), nextLevel));
     },
 
@@ -1390,8 +1446,8 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
         enemies: filteredEnemies,
         traps: filteredTraps,
         doors: filteredDoors,
-        start: { x: startX, z: startZ },
-        exit: { x: exitX, z: exitZ },
+        start: { x: startX, z: startZ, level: 0 },
+        exit: { x: exitX, z: exitZ, level: 0 },
       };
       // F-2026-06-15-H-3.5: resizing wipes pickups/enemies from the level
       // (the all-walls grid above replaces them on next placement). The
@@ -1544,6 +1600,189 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
       set(commitLevel(get(), nextLevel));
     },
 
+    // P3-1c: switch the editor's "current layer" pointer. Used by the
+    // level tab bar in EditorLeftPanel — clicking L1 / L2 / … / L6
+    // just calls this; the viewport re-renders to show the new
+    // layer's entities. The input is clamped to the [0, levelCount)
+    // range so a future tab-bar glitch can't push the pointer past
+    // the end of the array (a negative currentLevel would silently
+    // hide every entity).
+    setCurrentLevel: (n) => {
+      const { level } = get();
+      const count = level.levelCount ?? 1;
+      if (count <= 0) return;
+      const clamped = Math.max(0, Math.min(count - 1, Math.floor(n)));
+      if (clamped === get().currentLevel) return;
+      set({ currentLevel: clamped, lastError: null, lastErrorKey: null });
+    },
+
+    // P3-1c: append a new top layer. Bumps levelCount by 1 (clamped
+    // at the spec's 6-layer cap) and pins currentLevel to the new
+    // top so the user lands on the layer they just created. The
+    // single 2D walls grid is intentionally NOT replicated per
+    // layer in P3-1a/b — P3-1a is data-only, the engine reuses one
+    // walls array, and the editor shows the same walls across layers
+    // (per-layer walls land in a later increment). Entities on
+    // existing layers are unaffected: the new top layer starts empty
+    // and the user drops walls / items / transitions on it via the
+    // regular tools.
+    addLevel: () => {
+      const { level } = get();
+      const current = level.levelCount ?? 1;
+      const maxLevel = LEVEL_COUNT_VALUES[LEVEL_COUNT_VALUES.length - 1] ?? 6;
+      if (current >= maxLevel) return;
+      const next = current + 1;
+      const nextLevel: MazeData = { ...level, levelCount: next };
+      // F-2026-06-12-B2: commit so undo/redo capture the structural
+      // change. dirty is re-derived from the new hash; the saved
+      // baseline (lastSavedHash) is unchanged so the new top layer
+      // shows as a fresh edit.
+      set({ ...commitLevel(get(), nextLevel), currentLevel: next - 1 });
+    },
+
+    // P3-1c: drop the top layer. Bumps levelCount by -1 and clamps
+    // currentLevel to the new top (the editor must not point at a
+    // deleted layer). The decrement is also clamped at 1 — the spec
+    // says levelCount is 1..6, so you can't remove the bottom layer.
+    // Entities on the removed layer are dropped: any pickup / trap /
+    // door / enemy / transition with `level === removedLevel` is
+    // filtered out so the level doesn't carry dead references that
+    // would trip the runtime validator. Goes through commitLevel so
+    // undo can restore the layer + its entities atomically.
+    removeLevel: () => {
+      const { level } = get();
+      const current = level.levelCount ?? 1;
+      if (current <= 1) return;
+      const removed = current - 1;
+      const filteredPickups = level.pickups.filter((p) => (p.level ?? 0) !== removed);
+      const filteredTraps = level.traps.filter((t) => (t.level ?? 0) !== removed);
+      const filteredDoors = level.doors.filter((d) => (d.level ?? 0) !== removed);
+      const filteredEnemies = level.enemies.filter((e) => (e.level ?? 0) !== removed);
+      const filteredTransitions = (level.transitions ?? []).filter(
+        (tr) => tr.level !== removed && tr.toLevel !== removed,
+      );
+      const nextLevel: MazeData = {
+        ...level,
+        levelCount: removed,
+        pickups: filteredPickups,
+        traps: filteredTraps,
+        doors: filteredDoors,
+        enemies: filteredEnemies,
+        transitions: filteredTransitions,
+      };
+      const nextCurrent = Math.min(get().currentLevel, removed - 1);
+      set({ ...commitLevel(get(), nextLevel), currentLevel: nextCurrent });
+    },
+
+    // P3-1c: place a vertical transition. Called from the viewport
+    // when the user picks a transition tool and clicks a cell. The
+    // `kind` argument is the tool literal (e.g. 'stair-up'). The
+    // transition's source layer is the editor's currentLevel; the
+    // destination defaults to the spec's per-kind rule (level + 1
+    // for *-up kinds, level - 1 for *-down kinds), clamped into the
+    // valid layer range so a click on the bottom layer with
+    // 'stair-down' / 'hole-down' still produces a valid transition
+    // (the user can edit the destination via the properties panel).
+    // Reject OOB cells, walls (transitions live on floor cells —
+    // same as pickups), and start / exit cells (so the level
+    // remains saveable). The same cell can hold at most one
+    // transition per source layer — a second click on the same
+    // (level, x, z) is a silent no-op (the same contract as
+    // placePickup / placeDoor for single-cell entities).
+    placeTransition: (kind, x, z) => {
+      const { level, currentLevel } = get();
+      if (!inBounds(x, z, level.size.width, level.size.depth)) return;
+      if (!isFloor(level, x, z)) {
+        set({ lastError: null, lastErrorKey: 'editor.lastError.transitionOnWall' });
+        return;
+      }
+      if (level.start.x === x && level.start.z === z) {
+        set({ lastError: null, lastErrorKey: 'editor.lastError.transitionOnStart' });
+        return;
+      }
+      if (level.exit.x === x && level.exit.z === z) {
+        set({ lastError: null, lastErrorKey: 'editor.lastError.transitionOnExit' });
+        return;
+      }
+      // Reject same-cell duplicates on the same source layer. A
+      // different layer (e.g. an L2 stair-up at the same x/z) is
+      // allowed — the player can stand on L1 and trigger one stair
+      // while an L2 stair at the same coordinates is a different
+      // cell for L2 purposes. The level-range check is handled by
+      // the properties panel after placement; the editor accepts
+      // any in-bounds (level, x, z) at click time.
+      const existing = (level.transitions ?? []).find(
+        (tr) => tr.level === currentLevel && tr.x === x && tr.z === z,
+      );
+      if (existing) {
+        set({ lastError: null, lastErrorKey: 'editor.lastError.transitionDuplicate' });
+        return;
+      }
+      const count = level.levelCount ?? 1;
+      // Default destination per spec §4.1: *-up kinds go to
+      // `level + 1`, *-down kinds go to `level - 1`. Clamp into
+      // the valid range — placing on the top layer with 'stair-up'
+      // pins the destination to the top layer itself, which the
+      // properties panel will surface as "destination is the same
+      // as the source — set a real toLevel" via the validation
+      // path. Ladder defaults to `level + 1` (matches stair-up
+      // intuition; users can override via the form).
+      const isUp = kind === 'stair-up' || kind === 'hole-up';
+      const desiredTo = currentLevel + (isUp ? 1 : -1);
+      const toLevel = Math.max(0, Math.min(count - 1, desiredTo));
+      const newTransition: VerticalTransition = {
+        id: generateId(),
+        kind,
+        level: currentLevel,
+        x,
+        z,
+        toLevel,
+      };
+      const nextLevel: MazeData = {
+        ...level,
+        transitions: [...(level.transitions ?? []), newTransition],
+      };
+      set({
+        ...commitLevel(get(), nextLevel, { kind: 'transition', id: newTransition.id }),
+        lastError: null,
+        lastErrorKey: null,
+      });
+    },
+
+    // P3-1c: patch a single transition's editable fields (kind /
+    // toLevel / toX / toZ). `x` / `z` / `level` / `id` are
+    // immutable — the cell is fixed at placement time, the layer
+    // is fixed by which level tab was active when placed, and the
+    // id is the primary key. The properties panel calls this on
+    // every form change; toLevel is clamped to [0, levelCount)
+    // so a hand-typed number outside the range doesn't reach the
+    // validator with a guaranteed-fail value.
+    updateTransition: (id, patch) => {
+      const { level } = get();
+      const count = level.levelCount ?? 1;
+      let touched = false;
+      const nextTransitions = (level.transitions ?? []).map((tr) => {
+        if (tr.id !== id) return tr;
+        touched = true;
+        const next: VerticalTransition = { ...tr };
+        if (patch.kind !== undefined) next.kind = patch.kind;
+        if (patch.toLevel !== undefined) {
+          next.toLevel = Math.max(0, Math.min(count - 1, Math.floor(patch.toLevel)));
+        }
+        if (patch.toX !== undefined) next.toX = patch.toX;
+        if (patch.toZ !== undefined) next.toZ = patch.toZ;
+        return next;
+      });
+      if (!touched) return;
+      const nextLevel: MazeData = { ...level, transitions: nextTransitions };
+      set({
+        level: nextLevel,
+        dirty: levelHash(nextLevel) !== get().lastSavedHash,
+        lastError: null,
+        lastErrorKey: null,
+      });
+    },
+
     // ---- selection-driven delete ----
     deleteSelected: () => {
       const { level, selection } = get();
@@ -1583,6 +1822,15 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
           zi === z ? r.map((c, xi) => (xi === x ? 0 : c)) : r,
         );
         nextLevel = { ...level, walls };
+      } else if (selection.kind === 'transition') {
+        // P3-1c: delete the selected vertical transition. The
+        // properties panel calls deleteSelected() (same as for
+        // walls / pickups) so this branch mirrors the existing
+        // shape — filter the array by id, no-op if the id is
+        // already gone.
+        const transitions = (level.transitions ?? []).filter((tr) => tr.id !== selection.id);
+        if (transitions.length === (level.transitions ?? []).length) return;
+        nextLevel = { ...level, transitions };
       } else {
         // F-L1: exhaustiveness check. If a new EditorSelection kind is
         // added without a branch here, the `never` assertion fails to
@@ -1770,8 +2018,13 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
       // F-project-review-2026-06-13-D-5/D-18: switching to an imported
       // level is a corrective action — clear storageFull /
       // lastDraftError so the red banner disappears.
+      // P3-1c: clamp currentLevel into the imported level's range
+      // (same rationale as loadLevel above).
+      const importCount = renamed.levelCount ?? 1;
+      const safeImportCurrent = importCount > 0 ? Math.min(get().currentLevel, importCount - 1) : 0;
       set({
         level: renamed,
+        currentLevel: Math.max(0, safeImportCurrent),
         past: [],
         future: [],
         selection: null,

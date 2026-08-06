@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useGameStore } from '../../../src/store/gameStore';
-import { createEmptyParchment } from '../../../src/engine/ParchmentState';
+import { createEmptyParchment, type DamageRegion } from '../../../src/engine/ParchmentState';
 import type { MazeData } from '../../../src/maze/types';
 
 // F-2026-06-30: P2-16 — gameStore's parchment surface (5 actions +
@@ -8,6 +8,12 @@ import type { MazeData } from '../../../src/maze/types';
 // authoritative source; the store's role is to mirror the engine's
 // pushes for the React tree and to expose UI-side setters that route
 // through the engine via the bridge.
+//
+// P3-1: the per-level Map shape (`visitedCells: Map<level, Set<cell>>`)
+// replaces the pre-P3-1 single Set. The test fixtures below use a
+// small helper (`seededParchment`) to build a ParchmentState with
+// one or two layers of pre-populated cells, mirroring the new
+// engine contract.
 
 const maze: MazeData = {
   id: 'parchment-test',
@@ -33,7 +39,35 @@ const maze: MazeData = {
   doors: [],
 };
 
-describe('gameStore parchment (P2-16)', () => {
+// P3-1: build a per-level visited map from a flat list of
+// (level, "x,z") entries. The flat shape keeps the test fixtures
+// readable; the helper expands them into the engine's Map<level,
+// Set<cell>> shape.
+function visitedFromTuples(tuples: Array<[number, string]>): Map<number, ReadonlySet<string>> {
+  const map = new Map<number, ReadonlySet<string>>();
+  for (const [level, key] of tuples) {
+    const existing = map.get(level);
+    const next = new Set<string>(existing);
+    next.add(key);
+    map.set(level, next);
+  }
+  return map;
+}
+
+function damageRegion(overrides: Partial<DamageRegion>): DamageRegion {
+  return {
+    type: 'water',
+    cx: 0,
+    cz: 0,
+    radius: 1,
+    seed: 0,
+    createdAtTick: 0,
+    level: 0,
+    ...overrides,
+  };
+}
+
+describe('gameStore parchment (P2-16 + P3-1 per-level)', () => {
   beforeEach(() => {
     // Reset every P2-16 field to the factory default. The store
     // shares its other fields with the rest of the suite; we only
@@ -78,17 +112,11 @@ describe('gameStore parchment (P2-16)', () => {
 
   it('resetParchment clears visited + damage but preserves isOpen', () => {
     const seeded = {
-      visitedCells: new Set(['0,0', '1,0']),
-      damageRegions: [
-        {
-          type: 'water' as const,
-          cx: 0,
-          cz: 0,
-          radius: 1,
-          seed: 42,
-          createdAtTick: 0,
-        },
-      ],
+      visitedCells: visitedFromTuples([
+        [0, '0,0'],
+        [0, '1,0'],
+      ]),
+      damageRegions: [damageRegion({ type: 'water', cx: 0, cz: 0, radius: 1, seed: 42 })],
       isOpen: true,
     };
     useGameStore.setState({ parchment: seeded });
@@ -102,7 +130,7 @@ describe('gameStore parchment (P2-16)', () => {
 
   it('setParchment replaces the whole state reference', () => {
     const next = {
-      visitedCells: new Set(['3,3']),
+      visitedCells: visitedFromTuples([[0, '3,3']]),
       damageRegions: [],
       isOpen: false,
     };
@@ -113,10 +141,11 @@ describe('gameStore parchment (P2-16)', () => {
   it('startLevel resets the parchment (visited + damage cleared)', () => {
     useGameStore.setState({
       parchment: {
-        visitedCells: new Set(['0,0', '1,0']),
-        damageRegions: [
-          { type: 'burn', cx: 0, cz: 0, radius: 1, seed: 0, createdAtTick: 0 },
-        ],
+        visitedCells: visitedFromTuples([
+          [0, '0,0'],
+          [0, '1,0'],
+        ]),
+        damageRegions: [damageRegion({ type: 'burn', cx: 0, cz: 0, radius: 1 })],
         isOpen: true,
       },
     });
@@ -132,10 +161,8 @@ describe('gameStore parchment (P2-16)', () => {
   it('goToMenu resets the parchment', () => {
     useGameStore.setState({
       parchment: {
-        visitedCells: new Set(['0,0']),
-        damageRegions: [
-          { type: 'tear', cx: 0, cz: 0, radius: 2, seed: 0, createdAtTick: 0 },
-        ],
+        visitedCells: visitedFromTuples([[0, '0,0']]),
+        damageRegions: [damageRegion({ type: 'tear', cx: 0, cz: 0, radius: 2 })],
         isOpen: false,
       },
     });
@@ -156,17 +183,20 @@ describe('gameStore parchment (P2-16)', () => {
     // a subscriber would render the parchment map.
     useGameStore.setState({
       parchment: {
-        visitedCells: new Set(['0,0', '1,0', '2,1']),
-        damageRegions: [
-          { type: 'water', cx: 1, cz: 1, radius: 1, seed: 7, createdAtTick: 42 },
-        ],
+        visitedCells: visitedFromTuples([
+          [0, '0,0'],
+          [0, '1,0'],
+          [0, '2,1'],
+        ]),
+        damageRegions: [damageRegion({ type: 'water', cx: 1, cz: 1, radius: 1, seed: 7, createdAtTick: 42 })],
         isOpen: true,
       },
     });
     // Read via getState to confirm the store accepted the new ref.
     const p = useGameStore.getState().parchment;
     expect(p.isOpen).toBe(true);
-    expect(p.visitedCells.size).toBe(3);
+    expect(p.visitedCells.size).toBe(1); // all three cells on layer 0
+    expect(p.visitedCells.get(0)?.size).toBe(3);
     expect(p.damageRegions).toHaveLength(1);
     // Subscribe and verify the new ref is delivered. The bridge in
     // GameCanvas reads via getState(), but a Zustand subscription is
@@ -178,12 +208,30 @@ describe('gameStore parchment (P2-16)', () => {
       seen.push(s.parchment.isOpen);
     });
     // One more push to force a notification.
-    useGameStore.getState().setParchment({
-      visitedCells: new Set(),
-      damageRegions: [],
-      isOpen: false,
-    });
+    useGameStore.getState().setParchment(createEmptyParchment());
     unsub();
     expect(seen).toContain(false);
+  });
+
+  // P3-1: per-level visited cells are preserved across `setParchment`
+  // pushes. A level-0 + level-1 push is read back as two distinct
+  // map entries; the per-layer subsets are independent.
+  it('preserves per-level visited cells on a direct setState', () => {
+    const seeded = {
+      visitedCells: visitedFromTuples([
+        [0, '0,0'],
+        [1, '2,2'],
+        [1, '3,3'],
+      ]),
+      damageRegions: [],
+      isOpen: false,
+    };
+    useGameStore.setState({ parchment: seeded });
+    const p = useGameStore.getState().parchment;
+    expect(p.visitedCells.size).toBe(2);
+    expect(p.visitedCells.get(0)?.has('0,0')).toBe(true);
+    expect(p.visitedCells.get(1)?.has('2,2')).toBe(true);
+    expect(p.visitedCells.get(1)?.has('3,3')).toBe(true);
+    expect(p.visitedCells.get(0)?.has('2,2')).toBe(false);
   });
 });

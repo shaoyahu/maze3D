@@ -3,7 +3,7 @@
 // consume mulberry32 + parseHexSeed; the rest of the app consumes encodeSeed/
 // decodeSeed for round-tripping a Seed through a single string id.
 
-import type { Algorithm, MazeSize, Seed } from '../maze/types';
+import type { Algorithm, LevelCount, MazeSize, Seed } from '../maze/types';
 // P2-21 cleanup (DESIGN DEBT #7): VALID_ALGORITHMS used to be a
 // parallel 15-item array. The levelStore mirror (CRITICAL #1) had
 // drifted to a stale 4-item copy, silently dropping best records for
@@ -74,13 +74,100 @@ export function parseHexSeed(s: string): bigint {
 
 const VALID_SIZES: readonly MazeSize[] = [15, 30, 50];
 
+// P3-1: the v1 seed id format. Encoding:
+//   algo-v1-{algorithm}-{size}-{mazeSeed}
+// Examples (4 of the 15 algorithms × 3 sizes, all single-layer):
+//   algo-v1-recursive-backtracker-15-0123456789abcdef
+//   algo-v1-kruskal-30-fedcba9876543210
+//   algo-v1-prim-50-deadbeefcafebabe
+//   algo-v1-wilsons-30-8000000000000000
+// Kept verbatim (P2-21 back-compat contract: renaming the v1 prefix
+// is a breaking change to existing best records).
 const SEED_RE = /^algo-v1-([a-z-]+)-(\d+)-([0-9a-f]{16})$/;
 
+// P3-1: the v2 seed id format adds a `levels` slot between `size`
+// and the hex mazeSeed. Encoding:
+//   algo-v2-{algorithm}-{size}-{levels}-{mazeSeed}
+// `levels` is a 1..6 integer (validated against LEVEL_COUNTS below).
+// Examples:
+//   algo-v2-recursive-backtracker-30-2-0123456789abcdef
+//   algo-v2-kruskal-30-1-fedcba9876543210      ← legal: levels=1 is
+//     allowed but decodes identically to v1 (the engine treats
+//     levelCount=1 as "single layer" regardless of codec version)
+//   algo-v2-houston-50-6-8000000000000000
+//
+// P3-1a is the data-layer landing zone; the engine / collision /
+// reachability work that actually renders N layers is P3-1b. The
+// codec is landed now so URL persistence + best-record round-trip
+// can start carrying the level count without waiting on engine
+// changes (the v2 id is opaque to v1 consumers — they fail the v1
+// regex and fall through to the v2 regex, which is the exact reason
+// we run both regexes in `decodeSeed`).
+const SEED_RE_V2 = /^algo-v2-([a-z-]+)-(\d+)-(\d+)-([0-9a-f]{16})$/;
+
+// P3-1: whitelist for the v2 `levels` slot. Mirrors `MAZE_SIZE_VALUES /
+// VALID_SIZES` so the seed codec + the levelStore + the JSON validator
+// all share one source of truth (types.ts is the canonical home;
+// seed.ts re-imports for the runtime check). 1..6 matches spec §12
+// Q7 (1 = back-compat default, 6 = upper cap).
+const VALID_LEVEL_COUNTS: readonly LevelCount[] = [1, 2, 3, 4, 5, 6];
+
 export function encodeSeed(seed: Seed): string {
+  // P2-21 back-compat: this function is the v1 codec. It is the
+  // canonical encoder for hand-crafted levels and single-layer
+  // procedural levels. Renaming the prefix to algo-v2- would
+  // break every existing best record (the `levelId` field in
+  // localStorage uses the encoded seed string verbatim), so we
+  // intentionally keep this on v1 even when the seed carries a
+  // `levelCount`. v2 callers must use `encodeSeedV2` explicitly
+  // — see the new function below.
   return `algo-v1-${seed.algorithm}-${seed.size}-${seed.mazeSeed}`;
 }
 
+// P3-1: explicit v2 encoder. Used by LevelSelect's "multi-level"
+// dropdown (P3-1c) and by tests. The shape is fixed at
+// `algo-v2-{algorithm}-{size}-{levels}-{hex}`; a missing or out-of-
+// range `levelCount` falls back to 1, which decodes back to the
+// same v1 single-layer semantics on the other side.
+export function encodeSeedV2(seed: Seed, levelCount: LevelCount): string {
+  return `algo-v2-${seed.algorithm}-${seed.size}-${levelCount}-${seed.mazeSeed}`;
+}
+
 export function decodeSeed(id: string): Seed {
+  // P3-1: try the v2 regex first because the v1 regex would
+  // greedily match the leading 4 segments of a v2 id (it has no
+  // anchor for "exactly 4 dashes-after-algo"). Concretely, a v2 id
+  // like `algo-v2-recursive-backtracker-30-2-0123456789abcdef`
+  // would parse with SEED_RE as algorithm="v2" (rejected) — the
+  // "v1" prefix is the only way v1 was ever valid, so we still
+  // keep it as a fast path. The v2 branch handles the new format.
+  // Both branches share the algorithm + size + mazeSeed validation
+  // and only differ in the optional `levels` slot.
+  const m2 = SEED_RE_V2.exec(id);
+  if (m2) {
+    const [, algorithm, sizeStr, levelsStr, mazeSeed] = m2;
+    if (!VALID_ALGORITHMS.includes(algorithm as Algorithm)) {
+      throw new InvalidSeedError(`decodeSeed: unknown algorithm ${JSON.stringify(algorithm)}`);
+    }
+    const size = Number(sizeStr);
+    if (!VALID_SIZES.includes(size as MazeSize)) {
+      throw new InvalidSeedError(`decodeSeed: unsupported size ${size}`);
+    }
+    const levels = Number(levelsStr);
+    if (!VALID_LEVEL_COUNTS.includes(levels as LevelCount)) {
+      throw new InvalidSeedError(`decodeSeed: unsupported levelCount ${levels} (expected 1..6)`);
+    }
+    return {
+      algorithm: algorithm as Algorithm,
+      size: size as MazeSize,
+      mazeSeed,
+      // v2 decoders always populate levelCount; v1 decoders leave
+      // it undefined so callers can use "undefined" as the
+      // historical single-layer signal. The cast is safe because
+      // VALID_LEVEL_COUNTS is the same literal union as LevelCount.
+      levelCount: levels as LevelCount,
+    };
+  }
   const m = SEED_RE.exec(id);
   if (!m) throw new InvalidSeedError(`decodeSeed: malformed id ${JSON.stringify(id)}`);
   const [, algorithm, sizeStr, mazeSeed] = m;
@@ -95,6 +182,10 @@ export function decodeSeed(id: string): Seed {
     algorithm: algorithm as Algorithm,
     size: size as MazeSize,
     mazeSeed,
+    // levelCount intentionally omitted: a v1 id by definition does
+    // not carry it. Callers that need a numeric value fall back to
+    // 1 (single layer) — see AlgorithmMazeProvider.load for the
+    // canonical `seed.levelCount ?? 1` pattern.
   };
 }
 

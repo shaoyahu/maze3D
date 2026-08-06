@@ -157,6 +157,129 @@ describe('Minimap', () => {
   });
 });
 
+// P3-1: §6.2 — the minimap auto-switches to the player's current
+// layer and renders that layer's visited cells. The store mirror
+// is `useGameStore(s => s.player?.currentLevel ?? 0)` (engine
+// pushes via `GameBridge.onLevelChange` → `setCurrentLevel` in
+// GameCanvas); the visited overlay is selected from
+// `parchment.visitedCells.get(currentLevel)`. The two subscriptions
+// are tested in isolation:
+//
+// 1. The `data-level` attribute on the root + the visited <g>
+//    reflects the current player level. A test that doesn't touch
+//    the store mounts with `player: null` (the menu-screen
+//    default) → falls back to layer 0 → renders L0's data.
+// 2. After `setState({ player: { currentLevel: 1 } })`, the
+//    minimap re-renders with the new level's visited set — the
+//    new L1 cells are highlighted, the old L0 cells are gone.
+describe('Minimap P3-1 auto-switch', () => {
+  beforeEach(() => {
+    // P3-1: reset the player mirror + the per-level visited
+    // map so each test starts from a clean state. The store
+    // default (player: null) means the selector collapses to
+    // layer 0 — the pre-P3-1 back-compat default.
+    useGameStore.setState({
+      player: null,
+      parchment: {
+        visitedCells: new Map(),
+        damageRegions: [],
+        isOpen: false,
+      },
+    });
+  });
+
+  it('renders with data-level="0" when the player mirror is null (back-compat default)', () => {
+    useGameStore.setState({ player: null });
+    const { container } = render(<Minimap maze={maze} gameRef={makeGameRef(1, 3)} />);
+    const root = container.querySelector('[data-testid="minimap"]');
+    expect(root).toBeTruthy();
+    expect(root?.getAttribute('data-level')).toBe('0');
+  });
+
+  it('renders the current level (L0) visited cells from the per-level map', () => {
+    // L0 has two visited cells; L1 has a different set. The
+    // overlay must show L0's cells only.
+    const l0 = new Set<string>(['1,1', '2,1']);
+    const l1 = new Set<string>(['0,0', '0,1']);
+    useGameStore.setState({
+      player: { currentLevel: 0 },
+      parchment: {
+        visitedCells: new Map([
+          [0, l0],
+          [1, l1],
+        ]),
+        damageRegions: [],
+        isOpen: false,
+      },
+    });
+    const { container } = render(<Minimap maze={maze} gameRef={makeGameRef(1, 3)} />);
+    const group = container.querySelector('[data-testid="minimap-visited"]');
+    expect(group).toBeTruthy();
+    expect(group?.getAttribute('data-level')).toBe('0');
+    const rects = group?.querySelectorAll('rect') ?? [];
+    const coords = Array.from(rects).map(
+      (r) => `${r.getAttribute('x')},${r.getAttribute('y')}`,
+    );
+    expect(coords.sort()).toEqual(['1,1', '2,1']);
+  });
+
+  it('auto-re-renders with L1 visited cells when the player crosses a transition', () => {
+    // L0 starts with one visited cell. Player walks into a
+    // stair, the engine pushes currentLevel = 1, the store
+    // mirror follows. The minimap must now show L1's cells
+    // (the pre-P3-1 single-layer L0 highlight is gone).
+    useGameStore.setState({
+      player: { currentLevel: 0 },
+      parchment: {
+        visitedCells: new Map([
+          [0, new Set<string>(['1,1'])],
+          [1, new Set<string>(['0,0', '1,0', '2,0'])],
+        ]),
+        damageRegions: [],
+        isOpen: false,
+      },
+    });
+    const { container, rerender } = render(
+      <Minimap maze={maze} gameRef={makeGameRef(1, 3)} />,
+    );
+    // Sanity: the L0 cell is visible.
+    let group = container.querySelector('[data-testid="minimap-visited"]');
+    let rects = group?.querySelectorAll('rect') ?? [];
+    expect(Array.from(rects).map((r) => `${r.getAttribute('x')},${r.getAttribute('y')}`)).toEqual([
+      '1,1',
+    ]);
+
+    // Engine pushes the new layer. In production this is the
+    // bridge's `onLevelChange` callback; in the test we set the
+    // store directly to mirror that flow.
+    act(() => {
+      useGameStore.setState({ player: { currentLevel: 1 } });
+    });
+    rerender(<Minimap maze={maze} gameRef={makeGameRef(1, 3)} />);
+
+    // Now L1's three cells are visible; L0's "1,1" is gone.
+    group = container.querySelector('[data-testid="minimap-visited"]');
+    expect(group?.getAttribute('data-level')).toBe('1');
+    rects = group?.querySelectorAll('rect') ?? [];
+    const l1Coords = Array.from(rects).map(
+      (r) => `${r.getAttribute('x')},${r.getAttribute('y')}`,
+    );
+    expect(l1Coords.sort()).toEqual(['0,0', '1,0', '2,0']);
+  });
+
+  it('renders an empty visited overlay when the level has no map entry yet', () => {
+    // Pre-walked case: a player jumps straight to L2 without
+    // visiting L0 or L1. The map for L2 is absent → empty
+    // overlay → no rects, but the component must not crash.
+    useGameStore.setState({ player: { currentLevel: 2 } });
+    const { container } = render(<Minimap maze={maze} gameRef={makeGameRef(1, 3)} />);
+    const group = container.querySelector('[data-testid="minimap-visited"]');
+    expect(group).toBeTruthy();
+    expect(group?.getAttribute('data-level')).toBe('2');
+    expect(group?.querySelectorAll('rect').length ?? 0).toBe(0);
+  });
+});
+
 // F-minimap-strictmode-regression (2026-06-14): the live game was
 // rendering a frozen player arrow and no view cone because React
 // <StrictMode> intentionally runs every effect twice in dev. The

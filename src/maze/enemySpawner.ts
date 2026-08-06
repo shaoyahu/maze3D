@@ -16,6 +16,16 @@ import type { EnemySpawn, MazeData } from './types';
 // callers MUST be explicit. `undefined` falls through `clampEnemyCount` to
 // `ENEMY_COUNT_DEFAULT` (3). Pass an explicit number for any other value.
 //
+// P3-1: `options.levelCount` distributes the spawned enemies across the
+// level's vertical layers. When `levelCount >= 2`, the i-th enemy gets
+// `level: i % levelCount` (round-robin), so a 6-enemy spawn on a 3-level
+// level pins 2 enemies to each layer. When omitted, or when
+// `levelCount <= 1`, the field is left undefined so the enemy renders on
+// the legacy single-layer contract (P2-era `EnemySpawn` shape). The
+// distribution is deterministic and the function is otherwise pure — same
+// `(maze, count, options)` input → same output. See `Enemy.level` in
+// types.ts for the engine-side consumer contract.
+//
 // F-A-L1 (P3-Theme 6): APPEND, NOT REPLACE. This function returns a
 // NEW array of spawns and does not touch the input `maze`. The caller
 // is responsible for merging: `[...maze.enemies, ...injectEnemySpawns(...)]`.
@@ -27,9 +37,20 @@ import type { EnemySpawn, MazeData } from './types';
 // hand-crafted levels, since hand-crafted `maze.enemies` (FR-21) are
 // always preserved. See `Game.startLevel` and `gameStore.startLevel`
 // for the canonical mode gate.
-export function injectEnemySpawns(maze: MazeData, count: number | undefined): EnemySpawn[] {
+export function injectEnemySpawns(
+  maze: MazeData,
+  count: number | undefined,
+  options?: { levelCount?: number },
+): EnemySpawn[] {
   const target = clampEnemyCount(count);
   if (target === 0) return [];
+
+  // P3-1: pin the multi-level distribution. We snapshot the value
+  // up front so the `i % levelCount` indexing below is stable for
+  // any caller that passes `undefined` / 0 / 1 (single-layer back
+  // path: every enemy is left level-less).
+  const levelCount = options?.levelCount ?? 1;
+  const useLevelDistribution = levelCount >= 2;
 
   const w = maze.size.width;
   const d = maze.size.depth;
@@ -70,6 +91,14 @@ export function injectEnemySpawns(maze: MazeData, count: number | undefined): En
     // dwell forever on its spawn point. Walk past the candidate and try
     // the next one; the spec just needs up to `target` distinct cells.
     if (!neighbor) continue;
+    // P3-1: round-robin layer distribution across multi-level levels.
+    // The index is `out.length` (NOT `i` in the candidate loop) so the
+    // distribution tracks accepted spawns, not iteration count — if
+    // an island cell gets skipped, the next accepted spawn still lands
+    // on the layer its successor would have. Single-layer levels
+    // (levelCount <= 1, the default) leave `level` undefined for
+    // back-compat with the P2-era EnemySpawn shape.
+    const level = useLevelDistribution ? out.length % levelCount : undefined;
     out.push({
       id: `gen-${out.length + 1}`,
       x: c.x,
@@ -78,6 +107,7 @@ export function injectEnemySpawns(maze: MazeData, count: number | undefined): En
         { x: c.x, z: c.z },
         { x: neighbor.x, z: neighbor.z },
       ],
+      level,
     });
   }
   return out;
