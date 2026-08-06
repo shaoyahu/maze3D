@@ -10,9 +10,9 @@
 
 | 字段 | 值 |
 |---|---|
-| 活跃增量 | **P3-1 multi-level-mazes(2026-08-06 session 实施;1-6 层垂直迷宫 + 数据层 v2 seed codec + 多层渲染 + Player y 轴 + transition 引擎 + HUD level indicator + minimap 自动切层 + parchment Tab 循环 + editor level-tab UI + 36 editorStore test;待用户 commit)** |
-| 已完成 | P2-2 14/14 ✅ + P2-3 14/14 ✅ + P2-4a 16/16 ✅ + P2-4b 20/20 ✅ + P2-5 16/16 ✅ + P2-6 10/10 ✅ + P2-7 8/8 ✅ + P2-9 ✅ + P2-10 11/11 ✅ + P2-11 16/16 ✅ + P2-13 ✅ + P2-14 ✅ + P2-15 24/24 ✅ + P2-16 ✅ + P2-17 ✅ + P2-18 ✅ + P2-19 ✅ + P2-20 ✅ + P2-21 ✅ + **P3-1 ✅ (2026-08-06,session 实施)** |
-| 下一个任务 | 等用户决策:commit P3-1 → 或进入 P3-1d polish 候选 |
+| 活跃增量 | **P3-2 hole-down-warning-flash(2026-08-06 session 实施;Game.ts warningFlash 状态机 0.5s pre-transition + Scene.ts 红色 ring + SceneRefs.setWarningFlashState closure + 6 test 覆盖;待用户 commit)** |
+| 已完成 | P2-2 14/14 ✅ + P2-3 14/14 ✅ + P2-4a 16/16 ✅ + P2-4b 20/20 ✅ + P2-5 16/16 ✅ + P2-6 10/10 ✅ + P2-7 8/8 ✅ + P2-9 ✅ + P2-10 11/11 ✅ + P2-11 16/16 ✅ + P2-13 ✅ + P2-14 ✅ + P2-15 24/24 ✅ + P2-16 ✅ + P2-17 ✅ + P2-18 ✅ + P2-19 ✅ + P2-20 ✅ + P2-21 ✅ + P3-1 ✅ + **P3-2 ✅ (2026-08-06,session 实施)** |
+| 下一个任务 | 等用户决策:commit P3-2 → 或进入 P3-3 候选 (HUD 屏闪) |
 | 最后更新 | 2026-08-06 |
 | 最近 commit | 待提交 — P2-21 算法集收尾到 jamisbuck 15 种全部 1:1 对齐，等待用户 commit |
 
@@ -74,6 +74,7 @@
 | P2-20 | 扩展程序生成算法集第二批(+4 算法:Parallel Backtracker / Recursive Division / Aldous-Broder / Wilson's + Algorithm 联合 8 → 12 + AlgorithmMazeProvider switch 12 case + `levels.algorithm.*` +4 key + LevelSelect 下拉 8 → 12 项 + E2E Recursive Division URL;Aldous-Broder 性能容差 500 → 1500ms) | P1 | P2-3, P2-19 | Medium | `docs/increments/p2-20-maze-algorithms-2/` | ✅ done (2026-08-06,session 实施) |
 | P2-21 | 扩展程序生成算法集第三批收尾(+3 算法:Houston / Growing Binary Tree / Blobby Recursive Division + Algorithm 联合 12 → 15 + AlgorithmMazeProvider switch 15 case + `levels.algorithm.*` +3 key + LevelSelect 下拉 12 → 15 项 + E2E Houston URL;Houston 复用 P2-20 AB+Wilson's 核心逻辑(不重写);Growing Binary Tree "Binary" 含义=active 每个 cell 取出后**永远移除**(跟 Growing Tree 不同);Blobby 不加 perimeter(避免 post-process 传染),wall 加 0-2 random 洞;Houston 性能容差 1500ms 跟 AB 一致,其他 2 个 500ms;jambisbuck 15 种算法 1:1 对齐) | P1 | P2-3, P2-19, P2-20 | Medium | `docs/increments/p2-21-maze-algorithms-3/` | ✅ done (2026-08-06,session 实施) |
 | P3-1 | 垂直多层迷宫 1-6 层(数据层 LevelData/VerticalTransition/LevelCount + v2 seed codec + 多层渲染 Scene N 层不透明 floor/ceiling + Player y/currentLevel + transition 引擎 stair-up/hole-down MVP + HUD level indicator + minimap 自动切层 + parchment Tab 循环层 + enemySpawner round-robin 跨层分布 + editor level-tab UI + 36 editorStore test 覆盖 currentLevel/addLevel/removeLevel/placeTransition/updateTransition/import/loadLevel clamp;FLOOR_HEIGHT=2.4 / EYE_HEIGHT=1.6 在 Player/Scene/Game 三处 lockstep 同步;算法名仍是 URL seed 一部分,重命名 breaking;15 算法 SoT 不动) | P1 | P2-21 | Large | `docs/increments/p3-1-multi-level-mazes/` | ✅ done (2026-08-06,session 实施) |
+| P3-2 | Hole-down 0.5s warning flash(Game.ts `WARNING_FLASH_DURATION_SEC=0.5` + warningFlash 状态机 sequential 到 activeTransition + Scene.ts 红色 ring per hole-down cell + SceneRefs.setWarningFlashState closure + 6 test 覆盖 kind gate / 0.5s timing / startLevel reset / SceneRefs 显隐;只对 hole-down 触发,其他 kind 走旧路径;input lock 0.5+0.4=0.9s 全程;HUD 屏闪标 P3-3) | P1 | P3-1 | S | `docs/increments/p3-2-hole-down-warning-flash/` | ✅ done (2026-08-06,session 实施) |
 
 > **P2-1 已删除**：原计划"多关卡 JSON（中/大尺寸）"被 P2-3 算法生成取代。MVP 保留 `level-small.json` 作为"教学关"，`level-tiny.json` 留 E2E。
 > **P2-4 拆分**：原"敌人 + 编辑器"X-Large 拆成 P2-4a（敌人+survive mode，依赖 P2-3）和 P2-4b（编辑器，独立）。

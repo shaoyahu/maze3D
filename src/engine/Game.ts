@@ -221,6 +221,16 @@ export const FLOOR_HEIGHT = 2.4;
 export const STAIR_DURATION_SEC = 0.5;
 export const HOLE_DURATION_SEC = 0.4;
 
+// P3-2: pre-transition warning flash for `hole-down`. The spec
+// (decision §12 Q2) calls for a 0.5s "you're about to fall" cue
+// before the actual 0.4s free-fall, so the player has time to
+// visually register the drop instead of being teleported down.
+// Only `hole-down` triggers this — stairs / hole-up / ladder
+// don't need a warning because the player can see where they're
+// going. The constant is the only knob; the rest of the warning
+// machinery reads it via `this.warningFlash.durationSec`.
+export const WARNING_FLASH_DURATION_SEC = 0.5;
+
 // P3-1: per-layer wall lookup. The closure falls back to the
 // historical `maze.walls` field when no per-layer cache entry
 // exists (JsonMazeProvider levels, levelCount=1 procedural
@@ -385,6 +395,57 @@ export class Game {
     // all keypress / mouse-look effects while the flag is set.
     this.input?.setPaused(true);
   }
+  // P3-2: start the pre-transition warning for `hole-down`. Captures
+  // the full `VerticalTransition` so the warning completion path
+  // (in `tickWarningFlash`) can hand the same data to
+  // `startActiveTransition` without re-deriving from the table. The
+  // input is locked for the full 0.5s + 0.4s = 0.9s window — the
+  // player cannot WASD / jump out of a fall, which is the desired
+  // safety behavior (they committed to the cell when they walked
+  // onto it). Scene receives the warning state via
+  // `setWarningFlashState(t)` so it can show the red ring.
+  private startWarningFlash(t: VerticalTransition): void {
+    // The kind check is a hard guard: spec Q1 locks warning to
+    // `hole-down` only, and the only call site (update line 924)
+    // already filters on `t.kind === 'hole-down'`. The runtime
+    // assert here is a safety net for future refactors that might
+    // add a second call site and forget the kind gate.
+    if (t.kind !== 'hole-down') {
+      this.startActiveTransition(t);
+      return;
+    }
+    this.warningFlash = {
+      kind: 'hole-down',
+      transition: t,
+      durationSec: WARNING_FLASH_DURATION_SEC,
+      elapsed: 0,
+    };
+    this.input?.setPaused(true);
+    // P3-2: tell the scene which transition is warning so it can
+    // show / hide the matching red ring. The setter is a no-op if
+    // the scene refs are stale (e.g. mid-dispose) — the closure
+    // pattern is the same as the rest of the engine ↔ scene
+    // contract.
+    this.sceneRefs?.setWarningFlashState(t);
+  }
+  // P3-2: per-frame warning driver. Accumulates `dt`; on completion
+  // it hands the captured `transition` to `startActiveTransition`
+  // for the actual 0.4s free-fall. The two-state pipeline is what
+  // makes the drop feel like a drop rather than a teleport —
+  // 0.5s of "you're about to fall" → 0.4s of fall → layer flip.
+  // `setWarningFlashState(null)` clears the scene's red ring at the
+  // handoff so the visual is in lockstep with the state machine.
+  private tickWarningFlash(dt: number): void {
+    const w = this.warningFlash;
+    if (!w) return;
+    w.elapsed += dt;
+    if (w.elapsed >= w.durationSec) {
+      const t = w.transition;
+      this.warningFlash = null;
+      this.sceneRefs?.setWarningFlashState(null);
+      this.startActiveTransition(t);
+    }
+  }
   // P3-1: per-frame y interpolation. Called from update() while a
   // transition is active (and only then). Advances `elapsed`, lerps
   // `playerY`, and clears `activeTransition` on completion. When the
@@ -535,6 +596,21 @@ export class Game {
     elapsed: number;
     x: number;
     z: number;
+  } | null = null;
+  // P3-2: pre-transition warning state. When a `hole-down` cell is
+  // stepped on, the engine first plays a 0.5s warning (visual ring +
+  // input lock) and THEN transfers to `activeTransition` for the
+  // 0.4s free-fall. The two-state pipeline mirrors how a real game's
+  // "fall" feels: a brief telegraph before the drop. `transition`
+  // is captured so the completion path can hand the same data to
+  // `startActiveTransition` without re-deriving it from the table.
+  // `kind` is locked to `'hole-down'` (the only kind that triggers
+  // this phase); other kinds skip straight to `activeTransition`.
+  private warningFlash: {
+    kind: 'hole-down';
+    transition: VerticalTransition;
+    durationSec: number;
+    elapsed: number;
   } | null = null;
   private bridge: GameBridge;
 
@@ -734,6 +810,12 @@ export class Game {
     this.bridge.onLevelChange?.(this.playerLevel);
     this.playerY = this.playerLevel * FLOOR_HEIGHT;
     this.activeTransition = null;
+    // P3-2: also reset the warning phase so a mid-warning level
+    // reset (e.g. user clicks "restart" while a 0.5s red ring is
+    // up) doesn't leave a stale ring on the new layer. Mirrors the
+    // `activeTransition = null` reset above.
+    this.warningFlash = null;
+    this.sceneRefs?.setWarningFlashState(null);
     this.loop = new Loop((dt) => this.update(dt));
     this.loop.start();
   }
@@ -801,6 +883,19 @@ export class Game {
     // is the y interpolation + the camera y override below. The
     // render still happens (the world is visible behind the
     // animation) so the player sees the climb / fall in real time.
+    // P3-2: warning flash short-circuit — runs BEFORE the
+    // `activeTransition` short-circuit because the two states are
+    // sequential, not concurrent. When a `hole-down` is triggered,
+    // the engine first plays 0.5s of warning, then the 0.4s fall.
+    // The two `return`s share the same render call so the visual
+    // (red ring during warning, climb during fall) tracks the
+    // state machine exactly.
+    if (this.warningFlash !== null) {
+      this.tickWarningFlash(dt);
+      this.camera.position.y = this.playerY + 1.6;
+      this.renderer.render(this.sceneRefs.scene, this.camera);
+      return;
+    }
     if (this.activeTransition !== null) {
       this.tickActiveTransition(dt);
       this.camera.position.y = this.playerY + 1.6;
@@ -921,7 +1016,17 @@ export class Game {
       const cellZ = Math.floor(this.player.position.z / cs);
       const t = findTransitionAt(this.transitions, this.playerLevel, cellX, cellZ);
       if (t && t.level !== t.toLevel) {
-        this.startActiveTransition(t);
+        // P3-2: `hole-down` triggers a 0.5s warning phase before the
+        // 0.4s fall; all other kinds (stair-up/-down, hole-up, ladder)
+        // skip straight to `activeTransition` because they're either
+        // visible the whole time (stairs) or stationery (ladder) and
+        // don't need a telegraph. The kind gate is in `startWarningFlash`
+        // too, but routing it here keeps the call sites obvious.
+        if (t.kind === 'hole-down') {
+          this.startWarningFlash(t);
+        } else {
+          this.startActiveTransition(t);
+        }
       }
     }
 

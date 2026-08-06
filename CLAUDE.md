@@ -146,6 +146,20 @@ Type system 不会挡住"主动改 mapping"(exhaustive switch 仍过), 需 revie
 
 **Editor 多层 UI**(`src/ui/editor/LevelTabs.tsx`):左侧 panel 底部的 level tab bar + [+]/[−] 按钮。`addLevel` 6 上限 / `removeLevel` 1 下限 都由 store 守门,UI 同步 `disabled` 视觉态。删层弹 confirm(`useConfirm` + `editor.leftPanel.removeLevelTitle/Message`)避免误删带实体的层。
 
+### Hole-down warning flash (P3-2) — locked contracts
+
+**Pre-transition 0.5s warning 仅对 `hole-down` 触发**(`src/engine/Game.ts:WARNING_FLASH_DURATION_SEC = 0.5`)。其他 transition kinds(`stair-up` / `stair-down` / `hole-up` / `ladder`)走旧路径直接 `startActiveTransition`,不经过 warning phase(玩家能看到自己要走的方向,不需要 telegraph)。
+
+**两阶段 pipeline**:`startWarningFlash(t)` → 0.5s `tickWarningFlash(dt)` → 自动调 `startActiveTransition(t)`(同一 `t`)启动 0.4s 落体。`warningFlash` 和 `activeTransition` 是 sequential 状态,**不是 concurrent**——`update()` 顶层先 check warningFlash 再 check activeTransition,两个 short-circuit 都立即 return。
+
+**Input lock 全程**:`startWarningFlash` 调 `input.setPaused(true)`,`startActiveTransition` 也调一次(同一 flag),玩家在 0.5s + 0.4s = 0.9s 全程不能 WASD/跳跃。这是 spec Q3 决策(commit-to-fall 安全行为)。
+
+**Scene ↔ Game 视觉同步**:`SceneRefs.setWarningFlashState(t | null)`(`src/engine/Scene.ts` buildScene 内 closure)是 Scene 暴露给 Game 的唯一 mutator。Game 在 `startWarningFlash` 调 `setWarningFlashState(t)` 显 ring,`tickWarningFlash` 完成时 + `startLevel` 重置时调 `setWarningFlashState(null)` 隐 ring。Closure pattern 与 `setDarkMode` 平行——封装 per-mesh walk,让 Game 不用知道哪个 mesh 索引哪个 transition。
+
+**Self-loop 守卫**:`startWarningFlash` 看到 `t.kind !== 'hole-down'` 自动 re-route 到 `startActiveTransition`(运行时 assert,不是 spec 错误)。spec Q1 锁定 hole-down 唯一,但 caller 走 `update()` 触发路径已经过滤,这里是双保险。
+
+**HUD 屏闪是 P3-3 候选**:本期只做 3D 脚底红色环(spec §12 Q2 "脚底闪红"),HUD 红色 vignette overlay 留 P3-3。3D 视觉是核心提示,玩家低头就能看到;HUD 屏闪是 polish 上 polish。
+
 ## 测试
 
 ```

@@ -153,6 +153,17 @@ export interface SceneRefs {
   // graph and call `dispose` on every mesh, regardless of which
   // SceneRefs array it came from).
   transitions: THREE.Mesh[];
+  // P3-2: per-hole-down warning ring meshes, parallel to `transitions`
+  // (one ring per `hole-down` entry, hidden by default). The engine
+  // calls `setWarningFlashState(t)` with the active `hole-down`
+  // transition during the 0.5s warning phase; the matching ring
+  // becomes visible (and pulses) for that window. After the warning
+  // completes, the engine calls `setWarningFlashState(null)` and
+  // the ring goes back to hidden. The closure is the same pattern
+  // as `setDarkMode` — encapsulates the per-mesh walk so the engine
+  // doesn't have to know which mesh indexes which transition.
+  warningRings: THREE.Mesh[];
+  setWarningFlashState: (transition: VerticalTransition | null) => void;
   setDarkMode: (enabled: boolean) => void;
 }
 
@@ -566,7 +577,73 @@ export function buildScene(maze: MazeData, darkMode =false): SceneRefs {
     transitions.push(mesh);
   }
 
-  return { scene, walls, exit, pickups, enemies, traps, doors, playerMarker, transitions, setDarkMode };
+  // P3-2: warning rings. One per `hole-down` transition, hidden by
+  // default. The geometry is a thin torus lying flat on the floor
+  // so the player sees a red halo around the dark hole-down square
+  // during the 0.5s warning phase. The `userData.transition` lookup
+  // is the inverse of the `setWarningFlashState` match, so the
+  // engine can call `setWarningFlashState(t)` with the full
+  // `VerticalTransition` and the closure finds the right ring.
+  // Sharing the same `userData.transition` key with the main
+  // `transitions[i]` mesh means a future refactor that consolidates
+  // the two arrays can do so without changing the call shape.
+  const warningRings: THREE.Mesh[] = [];
+  for (const t of transitionsList) {
+    if (t.kind !== 'hole-down') continue;
+    const tcs = t.level * FLOOR_HEIGHT;
+    const cellCenterX = (t.x + 0.5) * cs;
+    const cellCenterZ = (t.z + 0.5) * cs;
+    const ringGeom = new THREE.TorusGeometry(cs * 0.4, cs * 0.05, 8, 24);
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: 0xff2222,
+      transparent: true,
+      opacity: 0.9,
+    });
+    const ring = new THREE.Mesh(ringGeom, ringMat);
+    ring.rotation.x = -Math.PI / 2; // lie flat on the floor
+    ring.position.set(cellCenterX, tcs + 0.03, cellCenterZ);
+    ring.visible = false;
+    ring.userData = { transition: t, isWarningRing: true };
+    scene.add(ring);
+    warningRings.push(ring);
+  }
+
+  // P3-2: closure that turns the matching ring on / off. The
+  // matching key is `transition.id` because every `VerticalTransition`
+  // has a unique id (the seed codec uses it as the primary key too,
+  // so the same id reaches the runtime through the round-trip).
+  // When the engine calls this with `null`, all rings go hidden —
+  // the typical sequence is `setWarningFlashState(t)` on warning
+  // start, `setWarningFlashState(null)` on warning complete (or on
+  // level reset). The `setVisible(true)` branch also nudges the
+  // material opacity toward 1; the per-frame pulse is owned by
+  // the engine's tick (we don't drive it here because the engine
+  // is the only thing that knows the elapsed time).
+  const setWarningFlashState = (active: VerticalTransition | null): void => {
+    for (const ring of warningRings) {
+      const matches = active !== null && ring.userData.transition.id === active.id;
+      ring.visible = matches;
+      if (matches) {
+        const mat = ring.material as THREE.MeshBasicMaterial;
+        mat.opacity = 0.9;
+      }
+    }
+  };
+
+  return {
+    scene,
+    walls,
+    exit,
+    pickups,
+    enemies,
+    traps,
+    doors,
+    playerMarker,
+    transitions,
+    warningRings,
+    setWarningFlashState,
+    setDarkMode,
+  };
 }
 
 // P3-1: per-kind transition mesh builder. Returns `null` for the
