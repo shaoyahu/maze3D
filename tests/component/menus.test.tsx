@@ -4,6 +4,12 @@ import { MainMenu } from '../../src/ui/MainMenu';
 import { LevelSelect, type LevelDef } from '../../src/ui/LevelSelect';
 import { Settings } from '../../src/ui/Settings';
 import { useSettingsStore } from '../../src/store/settingsStore';
+// P2-21 cleanup (DESIGN DEBT #7): the menu test's hard-coded
+// `expected` algorithm list (P2-19/20/21 grew it from 4 → 15) is
+// derived from the registry. Adding a new algorithm now flows in
+// lockstep: registry entry → union widening → labelKey in i18n →
+// LevelSelect dropdown → this expected list.
+import { ALGORITHM_IDS } from '../../src/maze/algorithmRegistry';
 import { ConfirmProvider } from '../../src/ui/useConfirm';
 
 describe('menu components', () => {
@@ -244,6 +250,37 @@ describe('menu components', () => {
       fireEvent.change(screen.getByTestId('level-source-select'), { target: { value: 'seed' } });
       const seedInput = screen.getByTestId('seed-input') as HTMLInputElement;
       expect(seedInput.value).toBe('');
+    });
+  });
+
+  // P2-19: the "指定种子关卡" group exposes an algorithm <select> with
+  // 8 options. P2-20: 12. P2-21: 15 (full jamisbuck.org/mazes coverage).
+  // Default is `algorithmForMode(mode)`; switching mode resets the pick
+  // to that mode's default.
+  describe('P2-19 / P2-20 / P2-21 algorithm picker (seed path)', () => {
+    it('renders every algorithm option from the registry in the seed section', () => {
+      render(<ConfirmProvider><LevelSelect available={[]} onPick={() => {}} onBack={() => {}} /></ConfirmProvider>);
+      fireEvent.change(screen.getByTestId('level-source-select'), { target: { value: 'seed' } });
+      const select = screen.getByTestId('algorithm-select');
+      // P2-21 cleanup: expected list comes from the registry. The
+      // previous 15-item hard-coded copy here was the 3rd parallel
+      // algorithm list (levelStore, LevelSelect, this test) that
+      // could drift — registry collapses them to one source.
+      for (const algo of ALGORITHM_IDS) {
+        expect(within(select).getByTestId(`algorithm-${algo}`)).toBeInTheDocument();
+      }
+    });
+
+    it('default value tracks algorithmForMode(mode); resets on mode change', () => {
+      render(<ConfirmProvider><LevelSelect available={[]} onPick={() => {}} onBack={() => {}} /></ConfirmProvider>);
+      fireEvent.change(screen.getByTestId('level-source-select'), { target: { value: 'seed' } });
+      const select = screen.getByTestId('algorithm-select') as HTMLSelectElement;
+      // Default mode in LevelSelect is 'time-trial' → algorithmForMode returns 'prim'
+      // (see AlgorithmMazeProvider.algorithmForMode).
+      expect(select.value).toBe('prim');
+      // Switch mode to 'survive' → algorithmForMode('survive') = 'kruskal'.
+      fireEvent.change(screen.getByTestId('mode-select'), { target: { value: 'survive' } });
+      expect(select.value).toBe('kruskal');
     });
   });
 

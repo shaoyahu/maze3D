@@ -118,15 +118,16 @@ npx playwright test --grep "specific title"
 
 ### 5.2 程序生成关卡
 
-`AlgorithmMazeProvider` 调度四种迷宫生成算法：
+`AlgorithmMazeProvider` 调度十五种迷宫生成算法（与 jamisbuck.org/mazes 的 15 种算法集合 1:1 对齐）：
 
-- `recursive-backtracker`（递归回溯）
-- `kruskal`（Kruskal）
-- `prim`（随机 Prim）
-- `hunt-and-kill`（Hunt-and-Kill）
+- **P2-3（前 4 种）**：`recursive-backtracker` / `kruskal` / `prim` / `hunt-and-kill`
+- **P2-19（再 4 种）**：`eller`（行扫描 + union-find 流式）/ `sidewinder`（行扫描 + run 闭合）/ `binary-tree`（每 cell 北/东打通一面墙）/ `growing-tree`（参数化 active list 策略）
+- **P2-20（再 4 种）**：`parallel-backtracker`（并行 RB，多 walker + 颜色合并）/ `recursive-division`（反向房间算法）/ `aldous-broder`（随机游走均匀迷宫）/ `wilsons`（loop-erased random walk 均匀迷宫，比 AB 快很多）
+- **P2-21（最后 3 种）**：`houston`（Aldous-Broder + Wilson's 混合，先 AB 走到访问过半再切 Wilson's）/ `growing-binary-tree`（Growing Tree 简化版，active 维护 2 cell 队列对）/ `blobby-recursive-division`（BSP + 噪声驱动的不规则墙，接近"自然洞穴"感）
 
 提供 3 档尺寸（15×15 / 30×30 / 50×50）+ 16 位十六进制种子。种子格式
 `algo-v1-<algorithm>-<size>-<hex>` 自包含算法、版本、尺寸和熵，跨设备复现完全相同的迷宫。
+P2-19 + P2-20 + P2-21 在「指定种子关卡」分组里加了算法下拉（15 项），玩家可以在选 seed 时同时挑算法。Houston 实现复用 P2-20 的 AB + Wilson's 核心逻辑（不重写）。
 
 ### 5.3 编辑器关卡
 
@@ -335,6 +336,11 @@ Phase 2 增量按序推进，已完成：
 | P2-14 | 代码评审 batch 1 修复 | ✅ 已完成（12/33） |
 | P2-15 | 代码评审 batch 2 修复 | ✅ 已完成（24/24） |
 | P2-16 | 羊皮纸地图（三态 `minimapMode` + M 键全屏 modal + 走过才显现 + 50% 概率生成水渍/火烧/撕裂损伤） | ✅ 已完成 |
+| P2-17 | 编辑器教程手册（6 章 + 左侧 TOC + 右侧内容 + Prev/Next + TopBar 📖 入口 + `editor.manual.*` i18n） | ✅ 已完成 |
+| P2-18 | 陷阱 + 门机关（fire/water 陷阱 + 四色钥匙门 + 闭合门=walls + 羊皮纸 burn/water 印记 + 编辑器 TrapForm/DoorForm） | ✅ 已完成 |
+| P2-19 | 扩展程序生成算法集（+4 算法：Eller / Sidewinder / Binary Tree / Growing Tree + LevelSelect 算法下拉） | ✅ 已完成 |
+| P2-20 | 扩展程序生成算法集第二批（+4 算法：Parallel Backtracker / Recursive Division / Aldous-Broder / Wilson's + 下拉扩到 12 项） | ✅ 已完成 |
+| P2-21 | 扩展程序生成算法集第三批收尾（+3 算法：Houston / Growing Binary Tree / Blobby Recursive Division + 下拉扩到 15 项，与 jamisbuck 15 种 1:1 对齐） | ✅ 已完成 |
 
 候选池（待用户决策）：音频管线、移动端 / 触摸支持、额外 pickup 子类型。
 

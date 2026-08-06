@@ -4,6 +4,15 @@
 // decodeSeed for round-tripping a Seed through a single string id.
 
 import type { Algorithm, MazeSize, Seed } from '../maze/types';
+// P2-21 cleanup (DESIGN DEBT #7): VALID_ALGORITHMS used to be a
+// parallel 15-item array. The levelStore mirror (CRITICAL #1) had
+// drifted to a stale 4-item copy, silently dropping best records for
+// the newer algorithms during init. The single source of truth now
+// lives in maze/algorithmRegistry.ts — re-export it here for back-
+// compat with the `decodeSeed` whitelist check (below) and any
+// third-party consumer (the previous public name of this constant).
+import { ALGORITHM_IDS as VALID_ALGORITHMS } from '../maze/algorithmRegistry';
+export { ALGORITHM_IDS as VALID_ALGORITHMS } from '../maze/algorithmRegistry';
 
 export class InvalidSeedError extends Error {
   constructor(message: string) {
@@ -57,12 +66,11 @@ export function parseHexSeed(s: string): bigint {
   return BigInt('0x' + s);
 }
 
-const VALID_ALGORITHMS: readonly Algorithm[] = [
-  'recursive-backtracker',
-  'kruskal',
-  'prim',
-  'hunt-and-kill',
-];
+// P2-21 cleanup: the 15-item VALID_ALGORITHMS array was re-exported
+// from maze/algorithmRegistry.ts at the top of this file (single
+// source of truth). The historical inline copy (4 → 8 → 12 → 15 items
+// over P2-3 / P2-19 / P2-20 / P2-21) is removed — see the registry
+// file for the canonical list and the matching id → labelKey map.
 
 const VALID_SIZES: readonly MazeSize[] = [15, 30, 50];
 

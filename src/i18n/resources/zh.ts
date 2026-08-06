@@ -245,6 +245,38 @@ export const zh: Translations = {
   'levels.brief.idPreview': '编号预览',
   'levels.brief.waiting': '— 等待有效输入 —',
 
+  // P2-19: algorithm picker labels (used by the LevelSelect "指定种子关卡"
+  // group's new algorithm <select>). The 4 legacy algorithms shipped in
+  // P2-3 never had a player-facing label (the brief panel just printed
+  // the raw kebab-case name); P2-19 promotes them to i18n strings for
+  // consistency with the 4 new ones. P2-20 adds 4 more. P2-21 finalizes
+  // the set at 15 (full jamisbuck.org/mazes coverage).
+  //
+  // P2-21 cleanup (DESIGN DEBT #7): the i18n key set must be a
+  // 1:1 map of ALGORITHM_REGISTRY entries' labelKey. See
+  // algorithmRegistry.ts and tests/unit/maze/algorithmRegistry.test.ts
+  // for the lockstep invariant. Adding a new algorithm requires
+  // adding its labelKey here AND a matching entry in the registry.
+  'levels.algorithm.label': '算法',
+  'levels.algorithm.recursiveBacktracker': 'Recursive Backtracker',
+  'levels.algorithm.kruskal': 'Kruskal',
+  'levels.algorithm.prim': "Prim's",
+  'levels.algorithm.huntAndKill': 'Hunt and Kill',
+  'levels.algorithm.eller': "Eller's",
+  'levels.algorithm.sidewinder': 'Sidewinder',
+  'levels.algorithm.binaryTree': 'Binary Tree',
+  'levels.algorithm.growingTree': 'Growing Tree',
+  // P2-20: 4 new algorithm labels.
+  'levels.algorithm.parallelBacktracker': 'Parallel Backtracker',
+  'levels.algorithm.recursiveDivision': 'Recursive Division',
+  'levels.algorithm.aldousBroder': 'Aldous-Broder',
+  'levels.algorithm.wilsons': "Wilson's",
+  // P2-21: 3 final algorithm labels (Houston's / Growing Binary Tree /
+  // Blobby Recursive Division).
+  'levels.algorithm.houston': "Houston's",
+  'levels.algorithm.growingBinaryTree': 'Growing Binary Tree',
+  'levels.algorithm.blobbyRecursiveDivision': 'Blobby Recursive Division',
+
   'levels.seedInput.useLast': '↻ 使用上次种子',
   'levels.action.hint': '按 {enter} 进入 · 按 {esc} 退出',
   'levels.action.back': '返回',

@@ -241,6 +241,39 @@ export const en: Translations = {
   'levels.brief.idPreview': 'ID Preview',
   'levels.brief.waiting': '— Awaiting valid input —',
 
+  // P2-19: algorithm picker labels (used by the LevelSelect "指定种子关卡"
+  // group's new algorithm <select>). The 4 legacy algorithms shipped in
+  // P2-3 never had a player-facing label (the brief panel just printed
+  // the raw kebab-case name); P2-19 promotes them to i18n strings for
+  // consistency with the 4 new ones. P2-20 adds 4 more. P2-21 finalizes
+  // the set at 15 (full jamisbuck.org/mazes coverage).
+  //
+  // P2-21 cleanup (DESIGN DEBT #7): the i18n key set must be a
+  // 1:1 map of ALGORITHM_REGISTRY entries' labelKey. The
+  // `tests/unit/maze/algorithmRegistry.test.ts` test asserts this
+  // invariant on every CI run so a registry entry without a label
+  // fails typecheck, and a label without a registry entry is
+  // detected as a stray. Adding a new algorithm requires adding
+  // its labelKey here AND a matching entry in algorithmRegistry.ts.
+  'levels.algorithm.label': 'Algorithm',
+  'levels.algorithm.recursiveBacktracker': 'Recursive Backtracker',
+  'levels.algorithm.kruskal': 'Kruskal',
+  'levels.algorithm.prim': "Prim's",
+  'levels.algorithm.huntAndKill': 'Hunt and Kill',
+  'levels.algorithm.eller': "Eller's",
+  'levels.algorithm.sidewinder': 'Sidewinder',
+  'levels.algorithm.binaryTree': 'Binary Tree',
+  'levels.algorithm.growingTree': 'Growing Tree',
+  // P2-20: 4 new algorithm labels.
+  'levels.algorithm.parallelBacktracker': 'Parallel Backtracker',
+  'levels.algorithm.recursiveDivision': 'Recursive Division',
+  'levels.algorithm.aldousBroder': 'Aldous-Broder',
+  'levels.algorithm.wilsons': "Wilson's",
+  // P2-21: 3 final algorithm labels.
+  'levels.algorithm.houston': "Houston's",
+  'levels.algorithm.growingBinaryTree': 'Growing Binary Tree',
+  'levels.algorithm.blobbyRecursiveDivision': 'Blobby Recursive Division',
+
   'levels.seedInput.useLast': '↻ Reuse last seed',
   'levels.action.hint': 'Press {enter} to start · {esc} to quit',
   'levels.action.back': 'Back',

@@ -1,8 +1,15 @@
-import { decodeSeed, fnv1a, mulberry32, InvalidSeedError } from '../utils/seed';
-import { generateRecursiveBacktracker } from './generators/recursiveBacktracker';
-import { generateKruskal } from './generators/kruskal';
-import { generatePrim } from './generators/prim';
-import { generateHuntAndKill } from './generators/huntAndKill';
+import { decodeSeed, fnv1a, mulberry32 } from '../utils/seed';
+// P2-21 cleanup (DESIGN DEBT #7): the 15 generator imports and the
+// 15-case switch below are replaced by a single registry lookup. The
+// registry file (algorithmRegistry.ts) is the single source of truth
+// for "what algorithms exist and how do you call them" — adding a
+// new algorithm now means: (1) add the entry to the registry, (2)
+// widen the `Algorithm` union in types.ts, (3) add the labelKey in
+// i18n/resources/{en,zh}.ts. That's it. No more import statement in
+// this file, no more case in `generateWalls`, no more parallel
+// whitelist in levelStore. The Registry widens / narrows in lockstep
+// with the union via `id: Algorithm` and `ALGORITHM_BY_ID: Record<Algorithm, _>`.
+import { ALGORITHM_BY_ID } from './algorithmRegistry';
 import type { Algorithm, MazeData, MazeProvider, Pickup, VictoryType } from './types';
 
 // P2-5 FR-17: the algorithm is an implementation detail; the player only
@@ -103,24 +110,16 @@ function prngFromHex(hex: string): () => number {
   return mulberry32(fnv1a(hex));
 }
 
+// P2-21 cleanup (DESIGN DEBT #7): replaced the 15-case switch with a
+// single registry lookup. Adding a new algorithm no longer requires
+// editing this file — the registry's `id: Algorithm` and the
+// `ALGORITHM_BY_ID: Record<Algorithm, _>` type guarantee that a new
+// Algorithm union literal is unreachable here (typecheck fails
+// before runtime). The previous `_exhaustive: never` narrowing is
+// no longer needed because the registry IS the closed set.
 function generateWalls(algorithm: Algorithm, size: number, hex: string) {
-  const rng = prngFromHex(hex);
-  switch (algorithm) {
-    case 'recursive-backtracker':
-      return generateRecursiveBacktracker(size, rng);
-    case 'kruskal':
-      return generateKruskal(size, rng);
-    case 'prim':
-      return generatePrim(size, rng);
-    case 'hunt-and-kill':
-      return generateHuntAndKill(size, rng);
-    default: {
-      // Exhaustiveness check: if a new algorithm is added to the union
-      // without updating this switch, TS will fail to compile here.
-      const _exhaustive: never = algorithm;
-      throw new InvalidSeedError(`AlgorithmMazeProvider: unhandled algorithm ${String(_exhaustive)}`);
-    }
-  }
+  const entry = ALGORITHM_BY_ID[algorithm];
+  return entry.generate(size, prngFromHex(hex));
 }
 
 // F-2026-06-17-D-M-1: defensive spatial guard. Filters out pickups that

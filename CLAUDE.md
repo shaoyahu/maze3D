@@ -93,6 +93,34 @@ src/
 - **编辑器输出与手写关卡同构**:编辑器导出同样使用 `MazeData` schema(与 `public/levels/*.json` 一致),外层包 `ExportEnvelope { schemaVersion: 1, level: MazeData }`。自定义关卡 id 前缀 `custom-`(`CUSTOM_LEVEL_PREFIX`)。
 - **种子自描述**:`algo-v1-{algorithm}-{size}-{hex}` 把算法、版本、尺寸、熵打包到同一字符串 —— 重命名一个 `Algorithm` 是对既有最佳成绩的破坏性变更。
 
+## Architecture Contracts (do not break without explicit P2-N deprecation)
+
+### `algorithmForMode(mode)` 4-mode default mapping (locked since P2-3, re-confirmed in P2-19/20/21)
+
+| Mode | Default algorithm |
+|---|---|
+| `reach-exit` | `recursive-backtracker` |
+| `time-trial` | `prim` |
+| `survive` | `kruskal` |
+| `caught-by-enemy` | `recursive-backtracker` |
+
+P2-19/20/21 spec 显式 excluded 改这层 mapping。修改须先回 P2-3 路线图确认 + 写明 deprecation 路径。
+Type system 不会挡住"主动改 mapping"(exhaustive switch 仍过), 需 reviewer / spec 守门。
+
+### `ALGORITHM_REGISTRY` 是 15 种算法的 single source of truth (P2-21 引入)
+
+`src/maze/algorithmRegistry.ts` 定义 `ALGORITHM_REGISTRY: readonly AlgorithmEntry[]`(15 项),并派生:
+- `ALGORITHM_IDS: readonly Algorithm[]` —— 经 `src/utils/seed.ts` re-export 为 `VALID_ALGORITHMS` 保留历史名字(back-compat,`levelStore.isValidSeed` 仍走这条链)
+- `ALGORITHM_BY_ID: Record<Algorithm, AlgorithmEntry>` —— O(1) 派发,`AlgorithmMazeProvider.generateWalls` / `LevelSelect` 全部走这条链
+
+`Algorithm` 联合类型在 `src/maze/types.ts` 是 closed 15 字面量,与 registry 1:1 绑定。**加第 16 个算法必须同时改 4 处**(任一漏改会被 TS 编译失败逼住):
+1. `src/maze/algorithmRegistry.ts` 加 entry
+2. 扩 `src/maze/types.ts` 的 `Algorithm` 联合字面量
+3. 加 i18n label `levels.algorithm.*` 到 `src/i18n/resources/{en,zh}.ts`
+4. `tests/unit/maze/algorithmRegistry.test.ts` 自动覆盖(7 case 守 1:1 锁定)
+
+`Record<Algorithm, AlgorithmEntry>` 类型让"加算法漏更新 dispatch"变成 typecheck 错误,无法 silent drift。`ALGORITHM_REGISTRY` 文件 50 行 header doc 详述每字段 rationale。
+
 ### i18n(P2-8)
 
 自研零依赖的 i18n,不是 i18next。`getT(locale)` 是纯函数翻译器;`useT()` 是绑定到 `settingsStore.language` 的 React hook,语言切换会重渲染所有消费者。占位符使用 `{name}` 语法。缺失 key → `console.warn` + 原样返回 key 字符串。未知 locale → warn + 回退到 `DEFAULT_LOCALE`。新增翻译写在 `src/i18n/resources/{zh,en}.ts`。关卡可带可选的 `i18n.en` 显示名;面向用户显示时用 `getDisplayName(maze, locale)`,缺失时回退到 `maze.name`。

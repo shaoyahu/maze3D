@@ -249,10 +249,41 @@ export interface MazeProvider {
 // P2-3: procedural modes
 // ---------------------------------------------------------------------------
 
-// The 4 maze-generation algorithms shipped in P2-3. The string is also part
-// of the encoded seed id (algo-v1-{algorithm}-{size}-{hex}), so renaming a
-// variant is a breaking change to existing localStorage best records.
-export type Algorithm = 'recursive-backtracker' | 'kruskal' | 'prim' | 'hunt-and-kill';
+// P2-19: extended from 4 to 8 algorithms. P2-20: 12. P2-21: 15 (full
+// jamisbuck.org/mazes set). The string is also part of the encoded seed
+// id (algo-v1-{algorithm}-{size}-{hex}), so renaming a variant is a
+// breaking change to existing localStorage best records.
+// P2-19 additions: 'eller' / 'sidewinder' / 'binary-tree' / 'growing-tree'.
+// P2-20 additions: 'parallel-backtracker' / 'recursive-division' /
+// 'aldous-broder' / 'wilsons'.
+// P2-21 additions: 'houston' / 'growing-binary-tree' /
+// 'blobby-recursive-division'.
+//
+// P2-21 cleanup (DESIGN DEBT #7): the literal union below is the
+// single source of truth for algorithm id literals. The runtime
+// enumeration (ALGORITHM_IDS) and the labelKey map live in
+// `maze/algorithmRegistry.ts` and `i18n/resources/{en,zh}.ts`
+// respectively; both are kept in lockstep with this union by the
+// `Record<Algorithm, number>` and `Record<Algorithm, AlgorithmEntry>`
+// types in the registry, so widening this union without also
+// adding an entry to ALGORITHM_REGISTRY is a typecheck error. See
+// `algorithmRegistry.ts` for the full design.
+export type Algorithm =
+  | 'recursive-backtracker'
+  | 'kruskal'
+  | 'prim'
+  | 'hunt-and-kill'
+  | 'eller'
+  | 'sidewinder'
+  | 'binary-tree'
+  | 'growing-tree'
+  | 'parallel-backtracker'
+  | 'recursive-division'
+  | 'aldous-broder'
+  | 'wilsons'
+  | 'houston'
+  | 'growing-binary-tree'
+  | 'blobby-recursive-division';
 
 // Square grid sizes the procedural provider accepts. The literal union
 // doubles as the whitelist enforced by decodeSeed() in utils/seed.ts; adding

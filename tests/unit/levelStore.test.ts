@@ -115,6 +115,36 @@ describe('levelStore', () => {
       const bad = rec({ levelId: 'bad', seed: { ...PROC_SEED, mazeSeed: 'not-hex' } });
       expect(sanitizeBestRecordMap({ good, bad })).toEqual({ map: { good }, dropped: ['bad'] });
     });
+
+    // P2-21 cleanup: the previous in-file 4-item VALID_ALGORITHMS in
+    // levelStore had drifted from the 15-item whitelist in seed.ts after
+    // P2-19 / P2-20 / P2-21 added 11 algorithms. The drift silently
+    // dropped best records for the newer algorithms during init — a
+    // player who finished a Wilson's run would have the record erased
+    // on the next page load. These two cases pin the post-fix behavior
+    // so a future re-introduction of the parallel list fails loudly.
+    it('accepts a record whose seed uses a P2-20 algorithm (wilsons)', () => {
+      expect(isBestRecord(rec({
+        levelId: 'algo-v1-wilsons-30-0123456789abcdef',
+        seed: { algorithm: 'wilsons', size: 30, mazeSeed: '0123456789abcdef' },
+      }))).toBe(true);
+    });
+
+    it('accepts a record whose seed uses a P2-21 algorithm (houston)', () => {
+      expect(isBestRecord(rec({
+        levelId: 'algo-v1-houston-15-fedcba9876543210',
+        seed: { algorithm: 'houston', size: 15, mazeSeed: 'fedcba9876543210' },
+      }))).toBe(true);
+    });
+
+    it('still rejects a record whose seed uses a fake algorithm (regression guard)', () => {
+      // isBestRecord's seed guard must stay in lockstep with the
+      // 15-algorithm whitelist — if a future refactor reintroduces a
+      // stale parallel list, this case will fail.
+      expect(isBestRecord(rec({
+        seed: { ...PROC_SEED, algorithm: 'fake-algorithm' as 'recursive-backtracker' },
+      }))).toBe(false);
+    });
   });
 
   describe('sanitizeBestRecordMap', () => {

@@ -12,6 +12,7 @@ import {
   isMazeSize,
   isSurviveSeconds,
   isVictoryType,
+  type Algorithm,
   type LevelSource,
   type MazeData,
   type MazeSize,
@@ -25,6 +26,11 @@ import { formatTime } from '../utils/time';
 import { isStorageAvailable } from '../store/persist';
 import { useLevelStore } from '../store/levelStore';
 import { algorithmForMode } from '../maze/AlgorithmMazeProvider';
+// P2-21 cleanup (DESIGN DEBT #7): the algorithm dropdown options are
+// derived from the registry. Adding a new algorithm now flows in
+// lockstep: registry entry → union widening → labelKey in i18n
+// resources → this dropdown picks it up automatically.
+import { ALGORITHM_REGISTRY } from '../maze/algorithmRegistry';
 import { useT } from '../i18n';
 import { useSettingsStore } from '../store/settingsStore';
 import { getDisplayName } from '../utils/getDisplayName';
@@ -65,6 +71,14 @@ const ENEMY_COUNT_OPTIONS: ReadonlyArray<number> = (() => {
 const HEX_RE = /^[0-9a-f]{16}$/;
 const LAST_SEED_KEY = 'maze3d.lastSeed';
 
+// P2-21 cleanup (DESIGN DEBT #7): the dropdown options are derived
+// from the single-source-of-truth registry. P2-19/20/21 grew the
+// 4-item legacy list to 15 — see ALGORITHM_REGISTRY in
+// src/maze/algorithmRegistry.ts for the canonical list. Names match
+// the in-jamisbuck convention; values in code use kebab-case.
+const ALGORITHM_OPTIONS: ReadonlyArray<{ value: Algorithm; labelKey: string }> =
+  ALGORITHM_REGISTRY.map((e) => ({ value: e.id, labelKey: e.labelKey }));
+
 function randomHexSeed(): string {
   if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
     const bytes = new Uint8Array(8);
@@ -92,6 +106,10 @@ interface ValidationContext {
   progressive: boolean;
   seedInput: string;
   randomSeed: string;
+  // P2-19: only consulted when levelSource === 'seed'; ignored on the
+  // 'random' path (which still uses algorithmForMode(mode) so the
+  // mode→algorithm default mapping is preserved).
+  selectedAlgorithm: Algorithm;
 }
 
 function validateSelection(ctx: ValidationContext): Validation {
@@ -121,7 +139,11 @@ function validateSelection(ctx: ValidationContext): Validation {
   if (ctx.levelSource === 'seed') {
     if (!HEX_RE.test(ctx.seedInput)) return { valid: false, reason: 'invalid seed' };
     const seed: Seed = {
-      algorithm: algorithmForMode(ctx.mode),
+      // P2-19: seed path uses the algorithm picker (not the mode default),
+      // so the player can pick e.g. Eller in time-trial. The 'random'
+      // path above is intentionally left on algorithmForMode(mode) so
+      // existing random-level flows keep the mode→algo mapping.
+      algorithm: ctx.selectedAlgorithm,
       size: ctx.selectedSize,
       mazeSeed: ctx.seedInput,
     };
@@ -271,6 +293,13 @@ export function LevelSelect({
   const [seedInput, setSeedInput] = useState('');
   const [selectedSize, setSelectedSize] = useState<MazeSize>(30);
   const [randomSeed, setRandomSeed] = useState<string>(() => randomHexSeed());
+  // P2-19: algorithm pick for the "指定种子关卡" path. Initialized to
+  // the mode's default algorithm; reset on every mode change (the
+  // default mapping between mode and algorithm is the P2-3 contract we
+  // do not want to silently break).
+  const [selectedAlgorithm, setSelectedAlgorithm] = useState<Algorithm>(
+    () => algorithmForMode('time-trial'),
+  );
 
   const customLevels = useLevelStore((s) => s.customLevels);
   const bestByLevel = useLevelStore((s) => s.bestByLevel);
@@ -301,6 +330,14 @@ export function LevelSelect({
     if (last && HEX_RE.test(last)) setSeedInput(last);
   }, []);
 
+  // P2-19: mode change resets the algorithm pick to that mode's default
+  // (P2-3's algorithmForMode mapping). Players can still override the
+  // pick manually after switching mode.
+  useEffect(() => {
+    setSelectedAlgorithm(algorithmForMode(mode));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode]);
+
   const sublevelOptions: LevelDef[] = useMemo(() => {
     if (levelSource === 'teaching') return available;
     if (levelSource === 'custom') return customDefs.map((d) => ({ id: d.id, name: d.name, data: d.data }));
@@ -325,6 +362,7 @@ export function LevelSelect({
     progressive,
     seedInput,
     randomSeed,
+    selectedAlgorithm,
   });
   const startDisabled = !validation.valid;
 
@@ -897,6 +935,23 @@ export function LevelSelect({
                   style={{ gridColumn: '1 / -1', display: 'flex' }}
                 >
                   <h3 className="console-proc__panel-title">{t('levels.panel.seedInput')}</h3>
+                  {/* P2-19: algorithm picker for the seed path. The 4 legacy
+                      algorithms (P2-3) sit alongside the 4 new ones; the
+                      default is `algorithmForMode(mode)` and the picker
+                      resets whenever `mode` changes. */}
+                  <div className="console-proc__seed-label">{t('levels.algorithm.label')}</div>
+                  <Dropdown<Algorithm>
+                    testId="algorithm-select"
+                    className="console-select"
+                    ariaLabel={t('levels.algorithm.label')}
+                    value={selectedAlgorithm}
+                    options={ALGORITHM_OPTIONS.map((opt) => ({
+                      value: opt.value,
+                      label: t(opt.labelKey),
+                    }))}
+                    onChange={(v) => setSelectedAlgorithm(v)}
+                    optionTestId={(opt) => `algorithm-${opt.value}`}
+                  />
                   <div className="console-stepper" style={{ maxWidth: 360 }}>
                     <span className="console-stepper__unit" style={{ borderLeft: 'none', borderRight: '1px solid var(--border)' }}>0x</span>
                     <input

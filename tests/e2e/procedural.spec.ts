@@ -69,4 +69,50 @@ test.describe('procedural levels (P2-3) + P2-5 UI revamp + P2-6 cascading', () =
     await expect(page.getByTestId('level-select-root')).toBeVisible();
     await expect(page.locator('canvas')).toHaveCount(0);
   });
+
+  // P2-19: the seed source exposes an algorithm <select> with 8 options
+  // (4 P2-3 + 4 new in P2-19). Picking Eller and starting the game
+  // must round-trip through encodeSeed → AlgorithmMazeProvider.load →
+  // generateEller → walls. The 3D canvas is the smoke check; the unit
+  // tests cover the generator itself.
+  test('指定种子关卡 with Eller algorithm loads and starts the game', async ({ page }) => {
+    await page.getByTestId('level-source-select').selectOption('seed');
+    await page.getByTestId('algorithm-select').selectOption('eller');
+    await page.getByTestId('seed-input').fill('0123456789abcdef');
+    await page.getByTestId('start-button').click();
+    const canvas = page.locator('canvas');
+    await expect(canvas).toBeVisible();
+    await expect(page.getByRole('timer')).toBeVisible({ timeout: 5_000 });
+  });
+
+  // P2-20: extended the algorithm <select> to 12. Recursive Division is
+  // a particularly distinct visual style (room-based partitions), so we
+  // smoke-test it here to confirm the new generator wires through the
+  // UI → provider → renderer pipeline end-to-end.
+  test('指定种子关卡 with Recursive Division algorithm loads and starts the game', async ({ page }) => {
+    await page.getByTestId('level-source-select').selectOption('seed');
+    await page.getByTestId('algorithm-select').selectOption('recursive-division');
+    await page.getByTestId('seed-input').fill('0123456789abcdef');
+    await page.getByTestId('start-button').click();
+    const canvas = page.locator('canvas');
+    await expect(canvas).toBeVisible();
+    await expect(page.getByRole('timer')).toBeVisible({ timeout: 5_000 });
+  });
+
+  // P2-21: extended the algorithm <select> to 15 (full jamisbuck
+  // coverage). Houston is the AB+Wilson's hybrid; smoke-test it here
+  // to confirm the new generator wires through the UI → provider →
+  // renderer pipeline end-to-end. The other 2 new algorithms
+  // ('growing-binary-tree' and 'blobby-recursive-division') are covered
+  // by their unit tests; one E2E for Houston is enough to catch the
+  // typical wiring regression.
+  test('指定种子关卡 with Houston algorithm loads and starts the game', async ({ page }) => {
+    await page.getByTestId('level-source-select').selectOption('seed');
+    await page.getByTestId('algorithm-select').selectOption('houston');
+    await page.getByTestId('seed-input').fill('0123456789abcdef');
+    await page.getByTestId('start-button').click();
+    const canvas = page.locator('canvas');
+    await expect(canvas).toBeVisible();
+    await expect(page.getByRole('timer')).toBeVisible({ timeout: 5_000 });
+  });
 });

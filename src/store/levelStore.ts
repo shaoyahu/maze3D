@@ -6,13 +6,14 @@ import { loadJSON, safeSetItem, type PersistResult } from './persist';
 import { applyLevelMigrations, parseStorageKeyVersion } from './migrations';
 import { validateMaze } from '../maze/JsonMazeProvider';
 import type { Algorithm, MazeData, MazeSize, Seed } from '../maze/types';
+// P2-21 cleanup: import the 15-algorithm whitelist from seed.ts. The old
+// in-file 4-item copy had drifted (P2-19/20/21 added 11 algorithms here
+// but levelStore was never updated), so isValidSeed was silently dropping
+// best records for the newer algorithms. Single source of truth lives
+// in seed.ts (which is also where the round-trip codec encodes the
+// algorithm literal into the seed id).
+import { VALID_ALGORITHMS } from '../utils/seed';
 
-const VALID_ALGORITHMS: readonly Algorithm[] = [
-  'recursive-backtracker',
-  'kruskal',
-  'prim',
-  'hunt-and-kill',
-];
 const VALID_SIZES: readonly MazeSize[] = [15, 30, 50];
 const MAZE_SEED_RE = /^[0-9a-f]{16}$/;
 

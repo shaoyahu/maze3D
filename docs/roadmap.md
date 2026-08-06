@@ -10,11 +10,11 @@
 
 | 字段 | 值 |
 |---|---|
-| 活跃增量 | **P2-18 traps-and-doors(2026-07-01 session 实施,全部 Phase 1-5 done;85 files / 1224 tests pass;typecheck 0 错误;待用户 commit)** |
-| 已完成 | P2-2 14/14 ✅ + P2-3 14/14 ✅ + P2-4a 16/16 ✅ + P2-4b 20/20 ✅ + P2-5 16/16 ✅ + P2-6 10/10 ✅ + P2-7 8/8 ✅ + P2-9 ✅ + P2-10 11/11 ✅ + P2-11 16/16 ✅ + P2-13 ✅ + P2-14 ✅ + P2-15 24/24 ✅ + P2-16 ✅ + P2-17 ✅ + **P2-18 ✅ (2026-07-01,session 实施)** |
-| 下一个任务 | 等用户决策:commit P2-18 → 或进入 P3 候选 |
-| 最后更新 | 2026-07-01 |
-| 最近 commit | 待提交 — P2-18 陷阱+门机关系统已完成，等待用户 commit |
+| 活跃增量 | **P2-21 maze-algorithms-3(2026-08-06 session 实施;Houston / Growing Binary Tree / Blobby Recursive Division 3 generator + 单测 + 接线 + i18n + LevelSelect 算法下拉扩到 15 项 + E2E;待用户 commit)** |
+| 已完成 | P2-2 14/14 ✅ + P2-3 14/14 ✅ + P2-4a 16/16 ✅ + P2-4b 20/20 ✅ + P2-5 16/16 ✅ + P2-6 10/10 ✅ + P2-7 8/8 ✅ + P2-9 ✅ + P2-10 11/11 ✅ + P2-11 16/16 ✅ + P2-13 ✅ + P2-14 ✅ + P2-15 24/24 ✅ + P2-16 ✅ + P2-17 ✅ + P2-18 ✅ + P2-19 ✅ + P2-20 ✅ + **P2-21 ✅ (2026-08-06,session 实施)** |
+| 下一个任务 | 等用户决策:commit P2-21 → 或进入 P3 候选 |
+| 最后更新 | 2026-08-06 |
+| 最近 commit | 待提交 — P2-21 算法集收尾到 jamisbuck 15 种全部 1:1 对齐，等待用户 commit |
 
 **约束**：
 - 一次只做一个任务（见下方「总任务列表」）
@@ -70,6 +70,9 @@
 | P2-16 | 羊皮纸地图(三态 `minimapMode` 替换 `hideMinimap` + M 键全屏 modal + 走过才显现 + 受伤 50% 生成水渍/火烧/撕裂损伤区 + 编辑器联级 `mapOpenBehavior` / `parchmentLifecycle` + `hideMinimap` 兼容迁移) | P1 | P2-11, P2-4a, P2-8 | Large | `docs/increments/p2-16-parchment-map/` | ✅ done (2026-06-30,session 实施) |
 | P2-17 | 编辑器教程手册(6 章分节阅读模式 + 左侧 TOC + 右侧内容 + Prev/Next 导航 + TopBar 📖 入口 + ESC/backdrop/click-outside 关闭 + 移动端 dropdown + `editor.manual.*` i18n 56 key) | P1 | P2-4b, P2-8 | Small–Medium | `docs/increments/p2-17-editor-tutorial-manual/` | ✅ done (2026-06-30,session 实施) |
 | P2-18 | 陷阱 + 门机关系统(fire/water 陷阱扣血/减速 + 红/蓝/绿/黄四色钥匙门 + 闭合门=walls + `maybeRecordDamage` forceType + 羊皮纸 burn/water 印记 + 编辑器 TrapForm/DoorForm + InventoryBar key swatch + HelpDrawer 条目 + E2E) | P1 | P2-4a, P2-4b, P2-8, P2-16 | Medium | `docs/increments/p2-18-traps-and-doors/` | ✅ done (2026-07-01,session 实施) |
+| P2-19 | 扩展程序生成算法集(+4 算法:Eller / Sidewinder / Binary Tree / Growing Tree + 各自 8-case 单测 + Algorithm 联合扩到 8 字面量 + `VALID_ALGORITHMS` 同步 + AlgorithmMazeProvider switch 8 case + `levels.algorithm.*` 9 个 i18n key + LevelSelect 「指定种子关卡」算法下拉 + E2E Eller URL) | P1 | P2-3 | Medium | `docs/increments/p2-19-maze-algorithms/` | ✅ done (2026-08-06,session 实施) |
+| P2-20 | 扩展程序生成算法集第二批(+4 算法:Parallel Backtracker / Recursive Division / Aldous-Broder / Wilson's + Algorithm 联合 8 → 12 + AlgorithmMazeProvider switch 12 case + `levels.algorithm.*` +4 key + LevelSelect 下拉 8 → 12 项 + E2E Recursive Division URL;Aldous-Broder 性能容差 500 → 1500ms) | P1 | P2-3, P2-19 | Medium | `docs/increments/p2-20-maze-algorithms-2/` | ✅ done (2026-08-06,session 实施) |
+| P2-21 | 扩展程序生成算法集第三批收尾(+3 算法:Houston / Growing Binary Tree / Blobby Recursive Division + Algorithm 联合 12 → 15 + AlgorithmMazeProvider switch 15 case + `levels.algorithm.*` +3 key + LevelSelect 下拉 12 → 15 项 + E2E Houston URL;Houston 复用 P2-20 AB+Wilson's 核心逻辑(不重写);Growing Binary Tree "Binary" 含义=active 每个 cell 取出后**永远移除**(跟 Growing Tree 不同);Blobby 不加 perimeter(避免 post-process 传染),wall 加 0-2 random 洞;Houston 性能容差 1500ms 跟 AB 一致,其他 2 个 500ms;jambisbuck 15 种算法 1:1 对齐) | P1 | P2-3, P2-19, P2-20 | Medium | `docs/increments/p2-21-maze-algorithms-3/` | ✅ done (2026-08-06,session 实施) |
 
 > **P2-1 已删除**：原计划"多关卡 JSON（中/大尺寸）"被 P2-3 算法生成取代。MVP 保留 `level-small.json` 作为"教学关"，`level-tiny.json` 留 E2E。
 > **P2-4 拆分**：原"敌人 + 编辑器"X-Large 拆成 P2-4a（敌人+survive mode，依赖 P2-3）和 P2-4b（编辑器，独立）。

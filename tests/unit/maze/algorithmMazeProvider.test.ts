@@ -4,9 +4,17 @@ import {
   AlgorithmMazeProvider,
   filterPickupsAgainstSpawn,
 } from '../../../src/maze/AlgorithmMazeProvider';
+// P2-21 cleanup (DESIGN DEBT #7): the test's `ALGOS` list is derived
+// from the registry. Adding a new algorithm now flows in lockstep:
+// the registry entry, the union widening, and the test loop. The
+// previous hard-coded 15-item list had to be edited in three other
+// places (levelStore, AlgorithmMazeProvider, LevelSelect) plus this
+// test — and the levelStore copy had already drifted (see CRITICAL #1
+// regression test in levelStore.test.ts).
+import { ALGORITHM_IDS, ALGORITHM_REGISTRY } from '../../../src/maze/algorithmRegistry';
 import type { Algorithm, MazeSize, Pickup } from '../../../src/maze/types';
 
-const ALGOS: Algorithm[] = ['recursive-backtracker', 'kruskal', 'prim', 'hunt-and-kill'];
+const ALGOS: readonly Algorithm[] = ALGORITHM_IDS;
 const SIZES: MazeSize[] = [15, 30, 50];
 
 function seedId(algorithm: Algorithm, size: MazeSize, hex: string): string {
@@ -64,13 +72,23 @@ describe('AlgorithmMazeProvider', () => {
     }
   });
 
-  it('50×50 generation for every algorithm completes in under 500ms', async () => {
+  // P2-21 cleanup (LOW #6): per-algo perf budget. The 500ms blanket
+  // assertion was the right number for cheap O(N) / O(N log N) spanning-
+  // tree algorithms, but Aldous-Broder (O(N²) expected), Wilson's
+  // (O(N²) expected), and Houston (also O(N²) per the P2-21 spec) need
+  // 1500ms to stay under CI jitter. The other 12 algorithms stay at
+  // 500ms. The per-algo budget is now carried by the registry
+  // (`perfBudgetMs50`) so adding a new algorithm requires picking a
+  // budget at the registry level — see the comment at the top of
+  // `maze/algorithmRegistry.ts` for the 500/1500 split rationale.
+  it('50×50 generation completes within each algorithm\'s individual perf budget', async () => {
     const provider = new AlgorithmMazeProvider();
-    for (const algorithm of ALGOS) {
+    for (const entry of ALGORITHM_REGISTRY) {
+      const budget = entry.perfBudgetMs50;
       const t0 = performance.now();
-      await provider.load(seedId(algorithm, 50, '0123456789abcdef'));
+      await provider.load(seedId(entry.id, 50, '0123456789abcdef'));
       const elapsed = performance.now() - t0;
-      expect(elapsed).toBeLessThan(500);
+      expect(elapsed, `${entry.id} 50×50 took ${elapsed}ms, budget ${budget}ms`).toBeLessThan(budget);
     }
   });
 
