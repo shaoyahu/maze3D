@@ -332,6 +332,58 @@ P4b-CellSize 锁的 5s budget 只对 O(N) 家族有效。**未来 3D Aldous-Brod
 - `Game.3D.tween.test.ts` (NEW): mid-tween linear progress / completion snap / wall reject no tween / held-D 连续 tween / mouse-look 仍可用 / startLevel 重置 / dt=0 不前进
 - `Game.3D.test.ts` (UPDATE): 4 旧 case 改 tween-aware — `update(0.1)` 跑完 tween + 加 keyup 避免下一帧立即重触发
 
+### 3D top-down minimap (P4b-Minimap) — locked contracts
+
+**3D minimap 渲染当前 y-layer 的 2D 顶视图**:
+- `is3D = maze.walls3D !== undefined` dispatch (P4a 锁的 `walls` vs `walls3D` 互斥)
+- 3D path 渲染 `walls3D[currentLayer]` (y-slice, `CellType[][]` 同 2D 形状)
+- `currentLayer` 在 3D 模式 = `Math.floor(player.position.y / cellSize)`,2D 模式 = `useGameStore.player.currentLevel`
+- y 跟踪走 10Hz polling (`useTickRef` 已有 polling),加 `y` 到 `PlayerSnapshot` + `Y_EPSILON = 1/8` 早出条件
+
+**复用 P3-1 `recordVisit` 机制**:
+- `tick3DTween` 完成时调 `recordVisit(parchment, yCell, endCell.x, endCell.z)`,`level = yCell`
+- 2D 跟 3D 互斥 (一个 maze 不会同时有 walls 跟 walls3D),`parchment.visitedCells` map 共享同 shape
+- 2D path `recordVisit(parchment, playerLevel, x, z)` 完全不动 (P3-1 行为不变)
+
+**3D 出口 dispatch**:
+- 出口 y === currentLayer → 2D 出口 rect (COLOR_EXIT 填充) — 跟 2D minimap 同形
+- 出口 y > currentLayer → 玩家 arrow 下方 "↑ exit" SVG `<text>` 元素
+- 出口 y < currentLayer → 玩家 arrow 下方 "↓ exit" SVG `<text>` 元素
+- 2D 模式无 off-layer 概念 (出口永远在当前 layer),不渲染 hint
+
+**y-level 标签** (3D only):
+- 位置: minimap 容器右上角,absolute-positioned 不影响 SVG viewBox
+- 字体: 11px `ui-monospace, SFMono-Regular, Menlo, monospace` + `var(--accent)` 颜色
+- 文本: 1-indexed 格式 `L{n}/{total}` (n = currentLayer+1, total = visualSize)
+- 跟 HUD `LevelIndicator` chip 风格一致 (单字符 L + 数字),但 chip 留给 P4b+ scope
+
+**`getPlayerY()` accessor** (跟 `getPlayerPosition()` 平行):
+- 3D minimap 唯一 y 数据来源
+- 2D minimap 永远不读 y (currentLevel 足够)
+- `position.y` 是 source of truth,engine 在 `tick3DTween` 跟 `createPlayer` (mode: '3d') 直接更新
+- player 未创建时返回 0 跟 `getPlayerYaw` fallback 一致
+
+**`PlayerSnapshot` 加 `y` 字段 + `Y_EPSILON`**:
+- `Y_EPSILON = 1/8` 跟 `POS_EPSILON` 同 (1/8 cell),保证 0.1s tween 期间 (y 跨 cell 边界) early-out 不命中 → 触发 minimap 重渲染
+- player 静止时 y 不变 → early-out 命中 → 0 重渲染
+- 跟 2D path `PlayerSnapshot` shape 兼容 (2D 测试 fixture 传 y=0 不变)
+
+**`StaticMaze` 重构 (2D 跟 3D 复用)**:
+- 接受 `walls2D: CellType[][]` + `exitPos: {x,z} | null` + `pickups` props
+- 2D minimap 传 `maze.walls` / `maze.exit` / `maze.pickups`
+- 3D minimap 传 `walls3D[currentLayer]` / `maze.exit3D` 投影到 (x, z) (同层) / `[]` (P4a 锁 3D 无 pickup)
+- 同结构不同数据源 — `React.memo` 跳过静态部分,只换数据
+
+**HUD `LevelIndicator` chip 不动** (P4b+ scope):
+- 3D 模式 chip 仍显示 "L1" (因为 `player.currentLevel` 永远是 0)
+- 修 chip 要 dispatch 2D/3D 内部逻辑,不在 P4b-Minimap 范围
+- 3D y-level 信息已在 minimap 标签 + off-layer hint 表达
+
+**测试**(`tests/component/Minimap.3D.test.tsx` 新建 8 case + `tests/component/minimap.test.tsx` 改 mock 加 `getPlayerY` + `tests/unit/engine/Game.3D.tween.test.ts` 加 2 recordVisit case):
+- `Minimap.3D.test.tsx` (NEW, 8 case): data-is-3d="true" / "L1/5" y-level 标签 / y-cell 切换重新投影 / "↑ exit" 上方 hint / "↓ exit" 下方 hint / 同层 exit rect 不显示 hint / visited cells 从 `visitedMap.get(yCell)` 读取 / polling tick y delta 触发重渲染
+- `Game.3D.tween.test.ts` (+2 case): 3D recordVisit 写入 `visitedCells.get(yCell)` / 2D 跟 3D recordVisit 互斥 (3D maze 不会触发 2D path)
+- `minimap.test.tsx` (UPDATE): mock `gameRef` 加 `getPlayerY()` 返回 0 (2D 测试不读 y,但 minimap 内部在 3D dispatch path 调)
+
 ## 测试
 
 ```

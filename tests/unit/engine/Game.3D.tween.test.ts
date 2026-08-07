@@ -266,4 +266,79 @@ describe('Game P4b-Lerp — 3D cell-to-cell tween', () => {
     // No exit fired.
     expect(bridge.reachExitCalls).toBe(0);
   });
+
+  it('recordVisit: 3D tween completion adds (x, z) to visitedCells.get(yCell) for the destination y-layer (P4b-Minimap)', () => {
+    // P4b-Minimap: tick3DTween calls recordVisit(parchment, yCell,
+    // endCell.x, endCell.z) on tween completion. Verify the
+    // engine writes into the per-y-level visited map.
+    // Build a 5×5×5 cube with start3D (1, 0, 1) and exit3D (3, 0, 3)
+    // (not (2, 2, 2) like the default helper) so the D press
+    // hop (1, 0, 1) → (2, 0, 1) lands on a passage cell, not
+    // the exit.
+    const maze: MazeData = {
+      ...build3DTestMaze(),
+      exit3D: { x: 3, y: 0, z: 3 },
+    };
+    game.startLevel(maze);
+    // Press D and run a full 0.1s tween. The destination is
+    // (2, 0, 1) — yCell = 0, endCell.x = 2, endCell.z = 1.
+    window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyD' }));
+    update(game)(0.1);
+    // The engine should have pushed a new parchment state via
+    // onParchmentStateChange. We read the engine's private
+    // parchment field directly (the stub bridge captures
+    // onTutorialEvent but not onParchmentStateChange, so the
+    // authoritative source is the Game's own parchment).
+    const parchment = (game as unknown as { parchment?: { visitedCells: Map<number, Set<string>> } }).parchment;
+    expect(parchment).toBeDefined();
+    const y0Visited = parchment!.visitedCells.get(0);
+    expect(y0Visited).toBeDefined();
+    // The destination cell (2, 1) should be in the y=0 visited set.
+    expect(y0Visited!.has('2,1')).toBe(true);
+    // No other y-level should have entries (we only moved along x).
+    expect(parchment!.visitedCells.get(1)).toBeUndefined();
+    // The start cell (1, 1) was visited too if the engine
+    // records the start. The 2D path records the current cell
+    // every tick (the "I'm here" overlay); the 3D path records
+    // the tween destination. This is a deliberate divergence:
+    // a 3D tween's "I was here" is the start cell, but the
+    // engine only writes on tween completion, so the start cell
+    // never gets recorded. We don't assert on (1, 1) presence
+    // — that would pin a behavior the spec doesn't require.
+  });
+
+  it('recordVisit: 2D and 3D recordVisit never race on the same parchment (P4b-Minimap mutual exclusion)', () => {
+    // The 2D update() path calls recordVisit(parchment, playerLevel,
+    // cellX, cellZ) (P3-1). The 3D tick3DTween calls
+    // recordVisit(parchment, yCell, endCell.x, endCell.z)
+    // (P4b-Minimap). The two paths are mutually exclusive at
+    // the maze level (a maze has either `walls` or `walls3D`,
+    // never both), so they never run in the same level. This
+    // test pins the spec by checking that the engine's 3D path
+    // doesn't accidentally write to the 2D layer (playerLevel)
+    // — after a 3D tween, the parchment's layer 0 should only
+    // have entries for the 3D path's yCell, not a phantom 2D
+    // "level 0" entry from the 2D path.
+    game.startLevel(build3DTestMaze());
+    // After startLevel, the engine's parchment is fresh (no
+    // recordVisit yet). The 2D path's recordVisit is gated
+    // behind the `walls3D === undefined` check, so a 3D maze
+    // never runs it. Verify the parchment's visitedCells
+    // is empty after startLevel (no automatic 2D path entry
+    // was written for "the player spawned at level 0").
+    const initial = (game as unknown as { parchment?: { visitedCells: Map<number, Set<string>> } }).parchment;
+    expect(initial!.visitedCells.size).toBe(0);
+    // Then trigger a 3D tween to completion.
+    window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyD' }));
+    update(game)(0.1);
+    // The 3D path should have added one entry to the
+    // yCell=0 visited set. The 2D path's "level 0" entry
+    // (if it ever ran) would have added the same set under
+    // the same key — but since the 2D path is short-circuited
+    // for 3D, only the 3D write is present. The visited set
+    // size should be exactly 1 (the destination cell).
+    const after = (game as unknown as { parchment?: { visitedCells: Map<number, Set<string>> } }).parchment;
+    expect(after!.visitedCells.size).toBe(1);
+    expect(after!.visitedCells.get(0)?.size).toBe(1);
+  });
 });

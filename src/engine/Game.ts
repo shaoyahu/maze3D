@@ -344,6 +344,26 @@ export class Game {
   getPlayerYaw(): number {
     return this.player?.yaw ?? 0;
   }
+  // P4b-Minimap: 3D player's y position (in world meters). Mirrors
+  // `getPlayerPosition()`'s shape but returns just the y axis —
+  // the 3D minimap polls it to project the current y-layer
+  // (`walls3D[Math.floor(y / cellSize)]`) and to flip the
+  // visited-cells overlay on a vertical move. The 2D minimap
+  // never reads y (it only needs the x/z projection of the
+  // 2D layer), so this accessor is exclusively consumed by the
+  // 3D minimap and the 3D parchment path (P4b+). Returns 0
+  // when no player is active, matching the 2D `getPlayerYaw`
+  // fallback (the 2D minimap also defaults to 0 on missing
+  // refs). `position.y` is the canonical source of truth — the
+  // engine updates it directly during `tick3DTween` (P4b-Lerp)
+  // and on 3D spawn via `createPlayer` (mode: '3d' overload),
+  // so this accessor always reflects the latest interpolated
+  // value (mid-tween the minimap projects `floor(y / cs)` to
+  // the start or destination cell, depending on which side of
+  // the cell boundary the lerp is on).
+  getPlayerY(): number {
+    return this.player?.position.y ?? 0;
+  }
   // Vertical FOV in degrees (Three.js convention). UI components (e.g.
   // the minimap view cone) read this to know how wide to draw the cone.
   getCameraFov(): number {
@@ -696,6 +716,32 @@ export class Game {
       marker.position.z = t.endPos.z;
       this.camera!.position.y = t.endPos.y + EYE_HEIGHT;
       this.active3DTween = null;
+      // P4b-Minimap: per-y-layer visited cells. Mirrors the
+      // 2D path's `recordVisit(this.parchment, this.playerLevel,
+      // cellX, cellZ)` (called in the 2D update branch below
+      // the activeTransition guard). The 3D `level` is the
+      // integer y-cell index (`Math.floor(y / cs)`), and the
+      // cellX/cellZ come from the integer `endCell` (Q5 of
+      // P4b-Minimap spec). Parchment copy-on-write returns the
+      // same object reference when the (level, x, z) triple
+      // is already visited, so a player holding a key against
+      // an already-visited cell does NOT re-push state to the
+      // UI. The 2D path's `recordVisit` lives in the 2D
+      // update() branch; the 3D path here is in tick3DTween
+      // — both call the same module-level helper, but the
+      // `level` argument is semantically different (2D layer
+      // index vs 3D y-cell). 2D and 3D mazes are mutually
+      // exclusive (a maze has either `walls` or `walls3D`,
+      // never both), so the two `recordVisit` call sites can
+      // never race against the same parchment instance in
+      // the same level.
+      const cs = this.currentMaze?.cellSize ?? 2;
+      const yCell = Math.floor(t.endPos.y / cs);
+      const nextParchment = recordVisit(this.parchment, yCell, t.endCell.x, t.endCell.z);
+      if (nextParchment !== this.parchment) {
+        this.parchment = nextParchment;
+        this.bridge.onParchmentStateChange?.(this.parchment);
+      }
       // Q5: exit check fires here, on the integer cell pair.
       // The tween has fully arrived; if the destination cell
       // is the maze exit, the player wins. Firing the check

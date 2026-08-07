@@ -2,7 +2,7 @@ import type { CSSProperties } from 'react';
 import type { MutableRefObject } from 'react';
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import type { Game } from '../../engine/Game';
-import type { MazeData } from '../../maze/types';
+import type { CellType, MazeData, Pickup } from '../../maze/types';
 import { useGameStore } from '../../store/gameStore';
 import { PICKUP_COLORS } from '../../entities/Pickup';
 
@@ -74,10 +74,28 @@ export interface MinimapProps {
 // Static maze background (walls, exit, pickups) never change after mount.
 // React.memo skips its reconciliation on every tick so a50x50 maze doesn't
 // spend ~25-50ms/sec re-diffing thousands of static rects.
-const StaticMaze = memo(function StaticMaze({ maze }: { maze: MazeData }) {
+//
+// P4b-Minimap: the 2D minimap passes `maze.walls` (a 2D `CellType[][]`)
+// as the `walls2D` prop. The 3D minimap passes
+// `walls3D[currentLayer]` (a 2D y-slice of the cube, also a
+// `CellType[][]` with the same indexing). Same data shape, same
+// rect layout — the only delta is where the slice comes from.
+// `exitPos` is `{x, z}` for both 2D and 3D (the 2D `maze.exit`
+// field; the 3D minimap computes a same-layer 2D exit position
+// when `maze.exit3D.y === currentLayer`, otherwise it skips the
+// exit rect and lets the off-layer hint show instead).
+const StaticMaze = memo(function StaticMaze({
+ walls2D,
+ exitPos,
+ pickups,
+}: {
+ walls2D: CellType[][];
+ exitPos: { x: number; z: number } | null;
+ pickups: ReadonlyArray<{ x: number; z: number; type: keyof typeof PICKUP_COLORS }>;
+}) {
  return (
  <>
- {maze.walls.map((row, z) =>
+ {walls2D.map((row, z) =>
  row.map((cell, x) => (
  <rect
  key={`${x}-${z}`}
@@ -89,14 +107,16 @@ const StaticMaze = memo(function StaticMaze({ maze }: { maze: MazeData }) {
  />
  )),
  )}
+ {exitPos && (
  <rect
- x={maze.exit.x}
- y={maze.exit.z}
+ x={exitPos.x}
+ y={exitPos.z}
  width="1"
  height="1"
  fill={COLOR_EXIT}
  />
- {maze.pickups.map((p, i) => (
+ )}
+ {pickups.map((p, i) => (
  <circle
  key={i}
  cx={p.x +0.5}
@@ -177,15 +197,58 @@ const VisitedCells = memo(function VisitedCells({
 // subscription is a single `useGameStore` selector so a transition
 // that flips the layer triggers a full minimap re-render with the
 // new level's data — no manual refresh needed.
+//
+// P4b-Minimap: 3D dispatch on `maze.walls3D !== undefined`. The 3D
+// path renders the current y-layer as a 2D top-down (a slice of
+// `walls3D[yCell]`), the same data shape as the 2D path. The
+// visited-cells overlay reads `visitedMap.get(yCell)` (the
+// parchment already uses `level = yCell` from the engine's
+// `tick3DTween` recordVisit). The 3D path also adds a small
+// "L{n}/{total}" label in the container's top-right and a
+// directional "↑/↓ exit" hint near the player when the maze
+// exit is on a different y-layer. `currentLayer` is the
+// 2D/3D-agnostic "which layer is visible" variable — `0..N-1`
+// for both 2D (P3-1 stack) and 3D (y-cell), so the visited
+// overlay, the `data-level` attribute, and the layer-flip
+// opacity flash all share the same per-layer key.
 export function Minimap({ maze, gameRef }: MinimapProps) {
  if (maze.hideMinimap) return null;
  useTickRef(gameRef,100);
- // P3-1: subscribe to the player's current layer (engine pushes
+ // P3-1: subscribe to the player's current 2D layer (engine pushes
  // via `GameBridge.onLevelChange` → `setCurrentLevel` in
  // GameCanvas). The selector is intentionally narrow — only
  // `player?.currentLevel` — so unrelated store churn (health,
  // inventory, etc.) doesn't re-render the minimap.
- const currentLevel = useGameStore((s) => s.player?.currentLevel ?? 0);
+ // P4b-Minimap: for 3D mazes the store's `currentLevel` is always
+ // 0 (3D never goes through `activeTransition`), so we ignore it
+ // and compute the 3D y-cell on the fly from `getPlayerY()`. The
+ // 10 Hz polling tick captures y in the snapshot and the early-
+ // out check on `|y - y_prev| < Y_EPSILON` ensures idle players
+ // don't churn React.
+ const storedLevel = useGameStore((s) => s.player?.currentLevel ?? 0);
+ // P4b-Minimap: is3D detection. `walls3D !== undefined` is the
+ // canonical dispatch (P4a spec Q5); a 3D maze has `walls: []`
+ // and `walls3D: CellType[][][]`, a 2D maze has `walls: CellType[][]`
+ // and `walls3D: undefined`. Mutually exclusive by provider
+ // contract (P4a AlgorithmMazeProvider.load3D vs .load), so this
+ // is a safe single boolean.
+ const is3D = maze.walls3D !== undefined;
+ // P4b-Minimap: for 3D, compute currentLayer from player.y.
+ // `Math.floor(y / cellSize)` matches the engine's 3D cell
+ // resolution (used in `tick3DMovement` for `curCellY`,
+ // `tick3DTween` for `yCell = floor(endPos.y / cs)`, and
+ // `recordVisit`'s `level` arg). Computed inline in the
+ // render body because the 10 Hz poll re-renders this
+ // component whenever y crosses a cell boundary (the
+ // snapshot's y delta triggers a re-render via setTick).
+ // For 2D, defer to the store-sourced `storedLevel` so a
+ // P3-1 vertical transition updates the visible layer
+ // immediately on the same frame the engine fires
+ // `onLevelChange`.
+ const playerY = gameRef.current?.getPlayerY() ?? 0;
+ const currentLayer = is3D
+ ? Math.floor(playerY / maze.cellSize)
+ : storedLevel;
  // P3-1: subscribe to the parchment so the engine's per-tick
  // `recordVisit` push updates the visited overlay. We read
  // `visitedCells` directly (the `Map<level, Set<"x,z">>` shape)
@@ -198,8 +261,8 @@ export function Minimap({ maze, gameRef }: MinimapProps) {
  // which is correct for a level the player hasn't walked into
  // yet).
  const visitedForLevel = useMemo(
- () => visitedMap.get(currentLevel) ?? EMPTY_VISITED,
- [visitedMap, currentLevel],
+ () => visitedMap.get(currentLayer) ?? EMPTY_VISITED,
+ [visitedMap, currentLayer],
  );
  // P3-1: 0.1s smooth re-render on layer change. The flash state
  // drops opacity to 0.4 on every level flip and the CSS
@@ -207,16 +270,19 @@ export function Minimap({ maze, gameRef }: MinimapProps) {
  // the jump; the timer then restores it. Without the flash
  // the visited overlay would pop (old rects vanish, new rects
  // appear in the same frame), which on a dark / sepia UI feels
- // like a glitch.
+ // like a glitch. P4b-Minimap: the `currentLayer` value works
+ // for both 2D (`storedLevel`) and 3D (`floor(y / cs)`) — the
+ // opacity flash fires on a 3D y-cell flip exactly the same as
+ // a 2D P3-1 layer transition, no special-casing.
  const [overlayOpacity, setOverlayOpacity] = useState(1);
- const prevLevelRef = useRef(currentLevel);
+ const prevLayerRef = useRef(currentLayer);
  useEffect(() => {
- if (prevLevelRef.current === currentLevel) return;
- prevLevelRef.current = currentLevel;
+ if (prevLayerRef.current === currentLayer) return;
+ prevLayerRef.current = currentLayer;
  setOverlayOpacity(0.4);
  const id = window.setTimeout(() => setOverlayOpacity(1), 50);
  return () => window.clearTimeout(id);
- }, [currentLevel]);
+ }, [currentLayer]);
  const p = gameRef.current?.getPlayerPosition() ?? {
  x: maze.start.x * maze.cellSize + maze.cellSize /2,
  z: maze.start.z * maze.cellSize + maze.cellSize /2,
@@ -244,6 +310,71 @@ export function Minimap({ maze, gameRef }: MinimapProps) {
  // SVG attribute re-set on every tick).
  const viewBox = useMemo(() => `0 0 ${w} ${d}`, [w, d]);
 
+ // P4b-Minimap: 3D path data. `walls2D` is either `maze.walls`
+ // (2D) or `walls3D[currentLayer]` (3D y-slice). Both are
+ // `CellType[][]` with `[z][x]` indexing. `exitPos2D` is the
+ // same-layer exit position (`{x, z}`) or `null` for 3D exits
+ // that aren't on `currentLayer`. `pickups3D` is always the
+ // empty array for 3D (P4a spec: 3D cubes don't carry pickups),
+ // and the 2D maze's `maze.pickups` for 2D. Memoize so the
+ // `<StaticMaze>` reference equality holds across re-renders
+ // that don't change the slice (e.g. a yaw-only update) — its
+ // `React.memo` then skips reconciliation.
+ const walls2D: CellType[][] = useMemo(
+ () => (is3D ? (maze.walls3D?.[currentLayer] as CellType[][]) ?? [] : maze.walls),
+ [is3D, maze.walls3D, maze.walls, currentLayer],
+ );
+ const exitPos2D: { x: number; z: number } | null = useMemo(() => {
+ if (is3D) {
+ const e3 = maze.exit3D;
+ // P4b-Minimap: 3D exit indicator dispatch. If the exit is on
+ // the current y-layer, render a 2D exit rect at (exitX,
+ // exitZ) — same shape as the 2D minimap's exit. If the exit
+ // is above the player, fall through to a "↑ exit" hint near
+ // the player arrow. If below, "↓ exit". Same-layer exit is
+ // rare for a procedural 3D maze (the start/exit picker
+ // chooses random reachable cells), but the dispatch is
+ // symmetric.
+ if (e3 && e3.y === currentLayer) return { x: e3.x, z: e3.z };
+ return null;
+ }
+ // 2D: always show the exit (it's always on the current layer
+ // for a single-layer maze, or on the start layer for a
+ // P3-1 stacked level — the engine dispatches the per-layer
+ // exit check).
+ return maze.exit;
+ }, [is3D, maze.exit3D, maze.exit, currentLayer]);
+ const pickupsForMinimap = useMemo<ReadonlyArray<Pickup>>(
+ () => (is3D ? [] : maze.pickups),
+ [is3D, maze.pickups],
+ );
+ // P4b-Minimap: 3D off-layer exit hint. For 3D mazes where the
+ // exit is NOT on the current y-layer, render a small text
+ // below the player arrow indicating direction. Computed
+ // inline (cheap) — used only when `exitPos2D === null && is3D`
+ // (the same-layer branch already returned a rect). Returns
+ // `null` for 2D (the 2D minimap has no off-layer concept)
+ // and for 3D same-layer (the rect already shows it).
+ const exitHint: { symbol: '↑' | '↓'; offset: number } | null = useMemo(() => {
+ if (!is3D) return null;
+ if (exitPos2D !== null) return null; // same-layer: rect shows it
+ const e3 = maze.exit3D;
+ if (!e3) return null;
+ if (e3.y > currentLayer) return { symbol: '↑', offset: 1.5 };
+ if (e3.y < currentLayer) return { symbol: '↓', offset: -1.5 };
+ // Same layer but no rect rendered — shouldn't happen unless
+ // the data is malformed. Fall through to no hint.
+ return null;
+ }, [is3D, exitPos2D, maze.exit3D, currentLayer]);
+ // P4b-Minimap: y-level label string for 3D mazes. "L1/15"
+ // (1-indexed display, matches the 2D LevelIndicator HUD chip
+ // convention so the two surfaces don't drift). For 2D, the
+ // label is `null` (the 2D minimap has no layer-count display
+ // in P3-1; that surface is the editor's level tabs).
+ const yLevelLabel: string | null = is3D
+ ? `L${currentLayer + 1}/${maze.walls3D?.length ?? 0}`
+ : null;
+
  return (
  // F-2026-07-01 M-25: in-game minimap is decorative (the 3D view is the
  //  authoritative representation of player position + facing), so it
@@ -253,14 +384,38 @@ export function Minimap({ maze, gameRef }: MinimapProps) {
  //  needs an sr-only <table> summary — that's the one where a blind
  //  level author would otherwise have no semantic picture of the grid
  //  they're editing. That table lives in EditorViewport, not here.
- <div aria-hidden="true" data-testid="minimap" data-level={currentLevel} style={STYLE_CONTAINER}>
+ <div aria-hidden="true" data-testid="minimap" data-level={currentLayer} data-is-3d={is3D ? 'true' : 'false'} style={STYLE_CONTAINER}>
+ {yLevelLabel && (
+ // P4b-Minimap: small y-level label in the container's top-right
+ // corner. Absolute-positioned so it doesn't disrupt the SVG's
+ // viewBox. 11px monospace so the "/N" stays aligned across
+ // re-renders (a proportional font would reflow on every y
+ // flip). The label is purely decorative (aria-hidden via the
+ // parent div), so screen readers ignore it; the 3D HUD chip
+ // (P4b+ scope) is the authoritative source for a11y.
+ <div
+ data-testid="minimap-y-level"
+ style={{
+ position: 'absolute',
+ top: 4,
+ right: 6,
+ fontSize: 11,
+ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+ color: 'var(--accent)',
+ zIndex: 1,
+ pointerEvents: 'none',
+ }}
+ >
+ {yLevelLabel}
+ </div>
+ )}
  <svg
  viewBox={viewBox}
  width="100%"
  height="100%"
  preserveAspectRatio="xMidYMid meet"
  >
- <StaticMaze maze={maze} />
+ <StaticMaze walls2D={walls2D} exitPos={exitPos2D} pickups={pickupsForMinimap} />
  {/* P3-1: visited cells for the current layer. The <g> wrapper
  carries the layer-flip opacity transition (0.1s) so the
  swap from the previous level's set to the new one doesn't
@@ -271,7 +426,7 @@ export function Minimap({ maze, gameRef }: MinimapProps) {
  style={{ opacity: overlayOpacity, transition: 'opacity 0.1s linear' }}
  data-testid="minimap-visited-wrap"
  >
- <VisitedCells level={currentLevel} visited={visitedForLevel} />
+ <VisitedCells level={currentLayer} visited={visitedForLevel} />
  </g>
  <polygon
  points={conePoints}
@@ -287,6 +442,31 @@ export function Minimap({ maze, gameRef }: MinimapProps) {
  transform={`translate(${playerGridX} ${playerGridZ}) rotate(${yawDeg})`}
  data-testid="player-arrow"
  />
+ {/* P4b-Minimap: off-layer exit hint. Rendered last so the
+ text sits on top of the maze + arrow (no z-fighting with
+ the visited overlay). The text is translated by
+ `(playerGridX, playerGridZ + offset)` so it follows the
+ player through cell hops; `offset = ±1.5` puts it just
+ outside the player arrow's apex without overlapping it.
+ Rotated by `yawDeg` so the text follows the player's
+ facing — useful when the player is rotating to "look at"
+ the hint as they move vertically. */}
+ {exitHint && (
+ <text
+ data-testid="minimap-exit-hint"
+ x={playerGridX}
+ y={playerGridZ + exitHint.offset}
+ fill="var(--accent)"
+ fontSize="0.6"
+ fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+ textAnchor="middle"
+ dominantBaseline="middle"
+ transform={`rotate(${yawDeg} ${playerGridX} ${playerGridZ + exitHint.offset})`}
+ style={{ pointerEvents: 'none' }}
+ >
+ {exitHint.symbol} exit
+ </text>
+ )}
  </svg>
  </div>
  );
@@ -297,6 +477,19 @@ export function Minimap({ maze, gameRef }: MinimapProps) {
 // when nothing visibly changed (A-M6) without forcing a re-render.
 interface PlayerSnapshot {
  pos: { x: number; z: number };
+ // P4b-Minimap: 3D y position. The 2D minimap never reads y
+ // (currentLevel is enough for the 2D path's per-layer
+ // visited cells), but the snapshot includes it so the same
+ // 10 Hz polling path drives both 2D and 3D re-renders. A y
+ // delta below `Y_EPSILON` doesn't trigger a minimap
+ // re-render — that includes the entire 0.1 s P4b-Lerp
+ // window (a cell hop is `cellSize` = 2 m, well above the
+ // epsilon), so a mid-tween poll still captures the change
+ // and re-renders. After the tween completes, the next poll
+ // sees the new y, recomputes `currentLayer = floor(y / cs)`,
+ // and the minimap projects `walls3D[currentLayer]` for the
+ // new layer's walls.
+ y: number;
  yaw: number; // radians
  fov: number; // degrees
 }
@@ -308,6 +501,13 @@ interface PlayerSnapshot {
 // finer than the arrow polygon's apex. Exported (via snapshotsEqual)
 // so the threshold logic is pinned by a unit test.
 const POS_EPSILON = 1 / 8;
+// P4b-Minimap: y epsilon. The 3D minimap projects
+// `walls3D[floor(y / cs)]` — a y delta below this threshold
+// can't cross a cell boundary, so it can't change the visible
+// layer, and the minimap re-render would be wasted. The value
+// matches POS_EPSILON (1/8 cell) so the same 10 Hz polling
+// cadence works for both x/z and y deltas.
+const Y_EPSILON = 1 / 8;
 const YAW_EPSILON_RAD = (0.5 * Math.PI) / 180;
 const FOV_EPSILON_DEG = 0.1;
 
@@ -318,6 +518,7 @@ export function snapshotsEqual(a: PlayerSnapshot, b: PlayerSnapshot): boolean {
  return (
  Math.abs(a.pos.x - b.pos.x) < POS_EPSILON &&
  Math.abs(a.pos.z - b.pos.z) < POS_EPSILON &&
+ Math.abs(a.y - b.y) < Y_EPSILON &&
  Math.abs(a.yaw - b.yaw) < YAW_EPSILON_RAD &&
  Math.abs(a.fov - b.fov) < FOV_EPSILON_DEG
  );
@@ -403,8 +604,13 @@ function useTickRef(gameRef: MutableRefObject<Game | null>, intervalMs: number):
  // engine's mutable position. The engine mutates `pos.x` / `pos.z`
  // in place every frame, so without this copy prev.pos === next.pos
  // and snapshotsEqual returns true forever.
+ // P4b-Minimap: also read `getPlayerY()` (added in P4b-Minimap,
+ // returns `player.position.y ?? 0`) and store it on the snapshot.
+ // The 2D minimap never projects y, but the snapshot is shared so
+ // the 3D minimap's 10 Hz poll gets the same early-out treatment.
  const next: PlayerSnapshot = {
  pos: { x: pos.x, z: pos.z },
+ y: game.getPlayerY(),
  yaw: game.getPlayerYaw(),
  fov: game.getCameraFov(),
  };

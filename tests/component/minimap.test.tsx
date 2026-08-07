@@ -18,20 +18,25 @@ const maze: MazeData = {
   doors: [],
 };
 
-function makeGameState(x: number, z: number, yaw = 0, fov = 60) {
+function makeGameState(x: number, z: number, yaw = 0, fov = 60, y = 0) {
   return {
     getPlayerPosition: () => ({ x, z }),
+    // P4b-Minimap: 3D minimap polls y from `getPlayerY()` to
+    // project the current y-layer. 2D mazes never read y (the
+    // test fixtures pass 0 by default), so the existing 2D
+    // test cases are unaffected by adding y here.
+    getPlayerY: () => y,
     getPlayerYaw: () => yaw,
     getCameraFov: () => fov,
   } as unknown as Game;
 }
 
-function makeGameRef(x: number, z: number, yaw = 0, fov = 60) {
+function makeGameRef(x: number, z: number, yaw = 0, fov = 60, y = 0) {
   // The Minimap reads gameRef.current.getPlayerPosition() / getPlayerYaw()
   // and re-renders when the polling tick bumps. We don't need a real Game
   // instance — the ref-shaped object is enough to exercise the rendering
   // path.
-  return { current: makeGameState(x, z, yaw, fov) };
+  return { current: makeGameState(x, z, yaw, fov, y) };
 }
 
 function expectedArrowTransform(gridX: number, gridZ: number, yaw: number): string {
@@ -319,6 +324,7 @@ describe('Minimap polling tick under <StrictMode>', () => {
     const ref = {
       current: {
         getPlayerPosition: () => livePos,
+        getPlayerY: () => 0,
         getPlayerYaw: () => 0,
         getCameraFov: () => 60,
       } as unknown as Game,
@@ -350,6 +356,7 @@ describe('Minimap polling tick under <StrictMode>', () => {
     const ref = {
       current: {
         getPlayerPosition: () => livePos,
+        getPlayerY: () => 0,
         getPlayerYaw: () => 0,
         getCameraFov: () => 60,
       } as unknown as Game,
@@ -390,6 +397,7 @@ describe('Minimap polling tick under <StrictMode>', () => {
     const ref = {
       current: {
         getPlayerPosition: () => livePos,
+        getPlayerY: () => 0, // y constant — must not be the trigger
         getPlayerYaw: () => 0, // yaw constant — must not be the trigger
         getCameraFov: () => 60,
       } as unknown as Game,
@@ -442,8 +450,13 @@ describe('snapshotsEqual (A-M6 epsilon early-out)', () => {
 
   // A structurally-compatible shape: PlayerSnapshot isn't exported, so
   // we let TypeScript infer the literal type from snapshotsEqual's
-  // parameter signature.
-  const base = () => ({ pos: { x: 1, z: 1 }, yaw: 0, fov: 60 });
+  // parameter signature. P4b-Minimap adds `y` to the snapshot
+  // (the 3D minimap polls y from `Game.getPlayerY()` to
+  // project the current y-layer); the early-out epsilon for y
+  // matches x/z (Y_EPSILON = 1/8 cell), so the 2D tests'
+  // "no y delta" assumption holds when y === 0 (a 2D maze
+  // never crosses the y threshold).
+  const base = () => ({ pos: { x: 1, z: 1 }, y: 0, yaw: 0, fov: 60 });
 
   it('returns true for identical snapshots', () => {
     expect(snapshotsEqual(base(), base())).toBe(true);
@@ -527,6 +540,7 @@ describe('snapshotsEqual (A-M6 epsilon early-out)', () => {
     const a = base();
     const b = {
       pos: { x: a.pos.x + POS_EPSILON / 2, z: a.pos.z - POS_EPSILON / 2 },
+      y: a.y,
       yaw: a.yaw + YAW_EPSILON_RAD / 2,
       fov: a.fov + FOV_EPSILON_DEG / 2,
     };
@@ -537,9 +551,11 @@ describe('snapshotsEqual (A-M6 epsilon early-out)', () => {
     // The contract is && of strict-<; if a future refactor accidentally
     // uses ||, a single exceeding delta would still return true, and
     // the polling tick would skip a real re-render. This case pins the
-    // AND semantics.
+    // AND semantics. P4b-Minimap: 4 fields now (pos.x, pos.z, y, yaw, fov)
+    // — but the contract shape stays the same (each below-epsilon delta
+    // contributes an independent && clause).
     const a = base();
-    const b = { pos: { x: a.pos.x + 1, z: a.pos.z }, yaw: a.yaw, fov: a.fov };
+    const b = { pos: { x: a.pos.x + 1, z: a.pos.z }, y: a.y, yaw: a.yaw, fov: a.fov };
     expect(snapshotsEqual(a, b)).toBe(false);
   });
 });
