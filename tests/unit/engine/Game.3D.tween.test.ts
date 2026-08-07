@@ -32,17 +32,24 @@ import type { MazeData } from '../../../src/maze/types';
 function makeStubBridge(): GameBridge & {
   reachExitCalls: number;
   tutorialEvents: Array<{ kind: string; [k: string]: unknown }>;
+  levelChanges: number[];
 } {
   const bridge: GameBridge & {
     reachExitCalls: number;
     tutorialEvents: Array<{ kind: string; [k: string]: unknown }>;
+    levelChanges: number[];
   } = {
     reachExitCalls: 0,
     tutorialEvents: [],
+    levelChanges: [],
     onTick: vi.fn(),
     onPauseToggle: vi.fn(),
     onPickupCollected: vi.fn(() => true),
     onReachExit: vi.fn(() => { bridge.reachExitCalls++; }),
+    // P4b-HudLayer: capture every level-change push so the
+    // tests can assert the 3D path sends y-cell values to
+    // the bridge (and the 2D path stays unaffected).
+    onLevelChange: (level) => { bridge.levelChanges.push(level); },
     getInitialFov: () => 60,
     getInitialPointerSensitivity: () => 0.002,
     getCurrentDarkMode: () => false,
@@ -340,5 +347,72 @@ describe('Game P4b-Lerp — 3D cell-to-cell tween', () => {
     const after = (game as unknown as { parchment?: { visitedCells: Map<number, Set<string>> } }).parchment;
     expect(after!.visitedCells.size).toBe(1);
     expect(after!.visitedCells.get(0)?.size).toBe(1);
+  });
+
+  it('P4b-HudLayer: tick3DTween completion fires bridge.onLevelChange(yCell) on every cell hop', () => {
+    // The HUD `LevelIndicator` chip subscribes to
+    // `useGameStore.player.currentLevel` (the 1-indexed
+    // display is `L{currentLevel + 1}`). For 3D mazes, the
+    // 2D `playerLevel` stays 0 forever, so the chip would
+    // be stuck on "L1" unless the 3D path pushes the
+    // actual y-cell. Verify `tick3DTween` fires the push.
+    game.startLevel(build3DTestMaze());
+    // startLevel fires one initial push with `start3D.y` = 0
+    // (the build3DTestMaze fixture spawns at y=0). Clear
+    // the captured list to isolate the tween-driven pushes.
+    bridge.levelChanges = [];
+    // Press D — horizontal move, yCell stays 0. The push
+    // should fire with 0 (not 1) — the no-op guard in
+    // `setCurrentLevel` drops the duplicate React render,
+    // but the engine still fires the push (it doesn't
+    // know whether the store will short-circuit).
+    window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyD' }));
+    update(game)(0.1);
+    window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyD' }));
+    expect(bridge.levelChanges).toContain(0);
+    // Now move to the ladder base (2, 0, 2). The fixture
+    // carves (2, 0, 1) and (2, 0, 2) as the only path between
+    // the start and the vertical column; the second D would
+    // overshoot to (3, 0, 1) (open) but then S from (3, 0, 1)
+    // hits a wall, so we go D+S to land exactly on (2, 0, 2).
+    window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyS' }));
+    update(game)(0.1);
+    window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyS' }));
+    // Now at (2, 0, 2). Press Space to climb.
+    bridge.levelChanges = []; // reset before the meaningful push
+    window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space' }));
+    update(game)(0.1);
+    // The tween destination is (2, 1, 2) — yCell = 1. The
+    // bridge should have received at least one push with 1.
+    expect(bridge.levelChanges).toContain(1);
+  });
+
+  it('P4b-HudLayer: startLevel for a 3D maze fires the initial bridge.onLevelChange(start3D.y)', () => {
+    // The HUD chip's first frame after `startLevel` must
+    // already show the correct y-layer. P3-1 already does
+    // this for the 2D `start.level`; P4b-HudLayer mirrors
+    // it for 3D's `start3D.y`. The fixture's spawn is
+    // `(1, 0, 1)` (y=0), so the first captured level
+    // change must be 0 — NOT the 2D `playerLevel` of 0 by
+    // coincidence, but actually the 3D start3D path. Verify
+    // the start3D path fires by using a fixture that
+    // spawns at a non-zero y-cell.
+    const maze: MazeData = {
+      ...build3DTestMaze(),
+      start3D: { x: 1, y: 2, z: 1 }, // spawn on layer 2
+      // Build a vertical column of open cells so the
+      // player can actually exist on layer 2 (the default
+      // test fixture carves only (2, 0..2, 2)).
+      walls3D: (() => {
+        const w = build3DTestMaze().walls3D!;
+        w[1][2][1] = 0; // (1, 2, 1) — start cell on layer 2
+        return w;
+      })(),
+    };
+    game.startLevel(maze);
+    // The initial push should be 2 (the spawn y-cell), not
+    // 0 (the 2D `playerLevel` default). This distinguishes
+    // the 3D dispatch from a back-compat 2D push.
+    expect(bridge.levelChanges[0]).toBe(2);
   });
 });

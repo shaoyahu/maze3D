@@ -384,6 +384,50 @@ P4b-CellSize 锁的 5s budget 只对 O(N) 家族有效。**未来 3D Aldous-Brod
 - `Game.3D.tween.test.ts` (+2 case): 3D recordVisit 写入 `visitedCells.get(yCell)` / 2D 跟 3D recordVisit 互斥 (3D maze 不会触发 2D path)
 - `minimap.test.tsx` (UPDATE): mock `gameRef` 加 `getPlayerY()` 返回 0 (2D 测试不读 y,但 minimap 内部在 3D dispatch path 调)
 
+### HUD LevelIndicator 2D/3D dispatch (P4b-HudLayer) — locked contracts
+
+**3D 模式 HUD chip 跟实际 y-cell 同步**:
+- 2D 路径: `tickActiveTransition` 完成时 `bridge.onLevelChange?.(this.playerLevel)` 推 vertical layer (P3-1 行为)
+- 3D 路径: `tick3DTween` 完成时 `bridge.onLevelChange?.(yCell)` 推 y-cell (P4b-HudLayer 新加)
+- 2D 跟 3D 路径在 `update()` 顶部 short-circuit 互斥,`onLevelChange` 永远不会在同一 session 收到两种值
+
+**`startLevel` 3D path 初始 push**:
+- 2D: `bridge.onLevelChange?.(this.playerLevel)` (P3-1 D6 back-compat)
+- 3D: `if (injectedMaze.start3D) bridge.onLevelChange?.(injectedMaze.start3D.y)` (P4b-HudLayer 新加)
+- 互斥 dispatch,2D 不会走 3D 分支,3D 不会走 2D 分支 (start3D 在 2D maze 里是 undefined)
+
+**`onLevelChange` 语义统一为 "current visible layer"**:
+- 2D: vertical layer index (0..levelCount-1)
+- 3D: y-cell (0..visualSize-1)
+- 同一个 bridge callback 服务两种情况,store / HUD 不用 dispatch 2D/3D
+- `setCurrentLevel` setter no-op guard 防止重复 push 触发 React 重渲染
+
+**`this.playerLevel` 字段 2D only**:
+- 3D 路径不污染 `this.playerLevel` (永远是 0)
+- 3D yCell 通过 `bridge.onLevelChange` 单独推,engine 内部用 `player.position.y / cs` 算 (跟 minimap 一致)
+- `this.playerLevel` 仍被 2D path 用 (recordVisit / findTransitionAt / enemy contact / crossesExit)
+
+**HUD `LevelIndicator` chip 不动**:
+- 已有渲染逻辑 `L{currentLevel + 1}` (1-indexed display) 自动处理任意 0-indexed 整数
+- 2D 模式: L1..L6 (P3-1 stacked layers)
+- 3D 模式: L1..L15 (P4a visualSize range)
+- 1-indexed 跟 minimap 标签 `L{n}/{total}` 数字部分一致
+
+**player 静止时 chip 不闪**:
+- tween 完成时才推 yCell
+- 静止时 `active3DTween = null`,不推
+- `setCurrentLevel` setter no-op guard: 值相等不触发 React 重渲染
+- 快速 walk (Space 长按): 连续 tween = 连续 push,setter short-circuit 防止 React churn
+
+**2D 行为完全不变**:
+- 2D `startLevel` 走 `this.bridge.onLevelChange?.(this.playerLevel)` 推 vertical layer
+- 2D `tickActiveTransition` 完成时推 transition 目标 layer
+- P3-1 既有 test 全部不动,新加 3D test 覆盖 3D path push
+
+**测试**(`tests/unit/engine/Game.3D.tween.test.ts` +2 case):
+- `tick3DTween` 完成时 fire `onLevelChange(yCell)` (Space press 0→1)
+- `startLevel` 3D path fire 初始 `onLevelChange(start3D.y)` (跟 2D path 互斥 dispatch)
+
 ## 测试
 
 ```

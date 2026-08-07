@@ -742,6 +742,22 @@ export class Game {
         this.parchment = nextParchment;
         this.bridge.onParchmentStateChange?.(this.parchment);
       }
+      // P4b-HudLayer: push the new y-cell to the bridge so the
+      // HUD `LevelIndicator` chip updates from "L1" (stuck on
+      // `currentLevel = 0`) to the actual y-layer the player
+      // just arrived on. Symmetric to `tickActiveTransition`
+      // pushing `this.playerLevel` on 2D vertical transition
+      // completion (P3-1). 2D and 3D mazes are mutually
+      // exclusive (a maze has either `walls` or `walls3D`,
+      // never both), so this push and the P3-1 push never
+      // happen in the same session — `onLevelChange`'s
+      // semantics ("current visible layer") works for both.
+      // The store's `setCurrentLevel` setter has a no-op
+      // guard (early-returns when the new value equals the
+      // existing one), so a tween that lands on the same
+      // y-cell as before (e.g. a horizontal move) doesn't
+      // churn the React tree.
+      this.bridge.onLevelChange?.(yCell);
       // Q5: exit check fires here, on the integer cell pair.
       // The tween has fully arrived; if the destination cell
       // is the maze exit, the player wins. Firing the check
@@ -1179,7 +1195,29 @@ export class Game {
     // matching level in the same tick — otherwise the visual
     // "L1" lags behind the actual floor. Mirrors the
     // `tickActiveTransition` fire site below.
-    this.bridge.onLevelChange?.(this.playerLevel);
+    //
+    // P4b-HudLayer: dispatch on 2D vs 3D. The 2D push sends
+    // `this.playerLevel` (the vertical layer index). The 3D
+    // push sends `injectedMaze.start3D.y` (the y-cell where
+    // the player spawned). They're mutually exclusive — a
+    // 3D maze has `start3D` set and `start.level` is always
+    // 0 by P4a contract; a 2D maze has `start3D` undefined.
+    // The store's `setCurrentLevel` setter has a no-op guard
+    // for repeated values, so the 2D push's `0` for a 3D
+    // maze followed by the 3D push's `start3D.y` is harmless
+    // — the second call updates the store to the real value,
+    // and the React tree only re-renders for the final state.
+    if (injectedMaze.start3D) {
+      // P4b-HudLayer: 3D path — push the player's starting
+      // y-cell. `start3D.y` is in cell coordinates (0..visualSize-1),
+      // matching `walls3D[z][y][x]` indexing, so no scaling
+      // needed. The HUD chip's first frame after `startLevel`
+      // shows the correct y-layer instead of the stuck "L1".
+      this.bridge.onLevelChange?.(injectedMaze.start3D.y);
+    } else {
+      // P3-1 D6: 2D path — push the vertical layer (P3-1 back-compat).
+      this.bridge.onLevelChange?.(this.playerLevel);
+    }
     this.playerY = this.playerLevel * FLOOR_HEIGHT;
     this.activeTransition = null;
     // P4b-Lerp: also reset the 3D tween so a mid-slide level
