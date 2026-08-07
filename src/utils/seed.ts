@@ -148,7 +148,17 @@ const VALID_3D_SIZES: readonly number[] = [5, 7, 9];
 // for the rationale. TypeScript can't enforce the prefix
 // without a string-literal-union here, so a runtime test
 // (tests/unit/utils/seed.test.ts) asserts it.
-const VALID_3D_ALGORITHMS: readonly string[] = ['3d-recursive-backtracker'];
+//
+// P4b-Prim: add '3d-prim' as the second 3D algorithm. The
+// entry is appended (not interleaved) so the whitelist order
+// is "P4a first, P4b-Prim second, future P4b-... last" — this
+// doesn't affect any code path (whitelist membership is
+// `Array.prototype.includes`-based, order-independent) but
+// makes git history show the algorithm growth clearly.
+const VALID_3D_ALGORITHMS: readonly string[] = [
+  '3d-recursive-backtracker',
+  '3d-prim',
+];
 
 export function encodeSeed(seed: Seed): string {
   // P2-21 back-compat: this function is the v1 codec. It is the

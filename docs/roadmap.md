@@ -10,11 +10,11 @@
 
 | 字段 | 值 |
 |---|---|
-| 活跃增量 | **P4a 3D voxel mazes MVP(2026-08-06 session 实施;数据层 MazeData.walls3D + 3D Recursive Backtracker generator + 3D BFS reachability + seed v3 codec `algo-v3-3d-recursive-backtracker-{5,7,9}-{hex}` + AlgorithmMazeProvider.load3D + 3D Scene 渲染 cuboid per cell + 6 邻居 WASD+Space/C 移动 + 3D exit 检验 + 5 文件/约 25 case;typecheck 0/vitest 1695 pass+1 skip/build 886ms;待用户 commit)** |
-| 已完成 | P2-2 14/14 ✅ + P2-3 14/14 ✅ + P2-4a 16/16 ✅ + P2-4b 20/20 ✅ + P2-5 16/16 ✅ + P2-6 10/10 ✅ + P2-7 8/8 ✅ + P2-9 ✅ + P2-10 11/11 ✅ + P2-11 16/16 ✅ + P2-13 ✅ + P2-14 ✅ + P2-15 24/24 ✅ + P2-16 ✅ + P2-17 ✅ + P2-18 ✅ + P2-19 ✅ + P2-20 ✅ + P2-21 ✅ + P3-1 ✅ + P3-2 ✅ + P3-3 ✅ + **P4a ✅ (2026-08-06,session 实施;5 文件/+约 25 case)** |
-| 下一个任务 | 等用户决策:commit P4a → 或继续 P4b 候选 (3D Prim / 3D Cellular Automata / 3D editor / 3D minimap / 3D enemy AI / 3D tutorial / 3D Player lerp 动画 / 3D 多 cell size 11/13/15) |
-| 最后更新 | 2026-08-06 |
-| 最近 commit | 待提交 — P3-3 HUD 0.5s 红色 vignette overlay (30982bb) 已 commit;P4a 增量在 working tree 等待用户 commit |
+| 活跃增量 | **P4b-Prim 3D Prim 第二算法(2026-08-07 session 实施;3D Randomized Prim generator `src/maze/generators/prim3D.ts` + Algorithm 联合加 `'3d-prim'` + AlgorithmMazeProvider.load3D 加分支 + seed v3 加 '3d-prim' 到 whitelist + 11 case prim3D.test.ts + 1 case seed v3 + 2 case algorithmMazeProvider;typecheck 0/vitest 1711 pass+1 skip;修 2 真 bug:start cell 越界(用 maxIdx 替代 logicalSize)+ parallel `visited` 数组越界(cellKey 跨界乘法错位,改用 walls 数组判断);待用户 commit)** |
+| 已完成 | P2-2 14/14 ✅ + P2-3 14/14 ✅ + P2-4a 16/16 ✅ + P2-4b 20/20 ✅ + P2-5 16/16 ✅ + P2-6 10/10 ✅ + P2-7 8/8 ✅ + P2-9 ✅ + P2-10 11/11 ✅ + P2-11 16/16 ✅ + P2-13 ✅ + P2-14 ✅ + P2-15 24/24 ✅ + P2-16 ✅ + P2-17 ✅ + P2-18 ✅ + P2-19 ✅ + P2-20 ✅ + P2-21 ✅ + P3-1 ✅ + P3-2 ✅ + P3-3 ✅ + P4a ✅ + **P4b-Prim ✅ (2026-08-07, session 实施;3 文件/+14 case)** |
+| 下一个任务 | 等用户决策:commit P4b-Prim → 或继续 P4b-CellSize (11/13/15) / P4b-Lerp (0.1s tween) / P4b-Minimap (top-down 3D) — ship-each 节奏 |
+| 最后更新 | 2026-08-07 |
+| 最近 commit | 待提交 — P4a 3D 体素迷宫 MVP (eded76d) 已 push;P4b-Prim 增量在 working tree 等待用户 commit |
 
 **约束**：
 - 一次只做一个任务（见下方「总任务列表」）
@@ -77,6 +77,7 @@
 | P3-2 | Hole-down 0.5s warning flash(Game.ts `WARNING_FLASH_DURATION_SEC=0.5` + warningFlash 状态机 sequential 到 activeTransition + Scene.ts 红色 ring per hole-down cell + SceneRefs.setWarningFlashState closure + 6 test 覆盖 kind gate / 0.5s timing / startLevel reset / SceneRefs 显隐;只对 hole-down 触发,其他 kind 走旧路径;input lock 0.5+0.4=0.9s 全程;HUD 屏闪标 P3-3) | P1 | P3-1 | S | `docs/increments/p3-2-hole-down-warning-flash/` | ✅ done (2026-08-06,session 实施) |
 | P3-3 | HUD 0.5s 红色 vignette overlay 与 P3-2 同步(WarningFlashOverlay.tsx + gameStore warningFlashUntil/triggerId + GameBridge.onWarningFlashState callback + 复用 invulnerable-fade keyframe(0.5s linear forwards);0.5s 锁 WARNING_FLASH_DURATION_SEC;只 hole-down 触发,bridge 写 wall-clock timestamp `Date.now()/1000 + 0.5`;trigger id bump 重启 CSS animation;8 test 覆盖 5 store + 3 component) | P1 | P3-2 | S | `docs/increments/p3-3-warning-flash-hud/` | ✅ done (2026-08-06,session 实施) |
 | P4a | 3D 体素迷宫 MVP(3D Recursive Backtracker generator + MazeData.walls3D + 3D BFS reachability isReachable3D + seed v3 codec `algo-v3-3d-recursive-backtracker-{5,7,9}-{hex}` + AlgorithmMazeProvider.load3D 路由 + 3D Scene 渲染 cuboid per wall cell + InputManager.getMove3D 6 邻居 WASD+Space/C + Game.tick3DMovement cell-based collision + 3D exit check at exit3D cell + MazeData.start3D?/exit3D? 可选字段;Algorithm union 加 `'3d-recursive-backtracker'`;3D RB 不通过 ALGORITHM_REGISTRY(签名不兼容 `CellType[][][]` vs `CellType[][]`);walls3D 出现走 3D 路径,否则 2D;P4a 不做 enemy/tutorial/parchment/3D 移动 lerp/3D 多 cell size,留 P4b) | P1 | P3-3 | L | `docs/increments/p4-3d-voxel-mazes/` | ✅ done (2026-08-06,session 实施;5 文件/+约 25 case;typecheck 0 / vitest 1695+1 skip / build 886ms) |
+| P4b-Prim | 3D Prim 第二算法(1:1 翻译 2D Prim 升 6 邻居 + frontier + swap-and-pop;Algorithm union 加 `'3d-prim'`;AlgorithmMazeProvider.load3D 加分支;seed v3 加 '3d-prim' 到 whitelist;复用 P4a 3D 数据布局 + thick-wall + VALID_3D_SIZES + 性能预算;3D RB 跟 3D Prim 是 sibling 不是 alias,同 seed 产生不同 walls;修 2 真 bug — start cell 越界(用 maxIdx 替代 logicalSize)+ parallel `visited` 数组越界(cellKey 跨界乘法错位,改用 walls 数组判断)) | P1 | P4a | S | `docs/increments/p4b-3d-prim/` | ✅ done (2026-08-07, session 实施;3 文件/+14 case;typecheck 0 / vitest 1711+1 skip) |
 
 > **P2-1 已删除**：原计划"多关卡 JSON（中/大尺寸）"被 P2-3 算法生成取代。MVP 保留 `level-small.json` 作为"教学关"，`level-tiny.json` 留 E2E。
 > **P2-4 拆分**：原"敌人 + 编辑器"X-Large 拆成 P2-4a（敌人+survive mode，依赖 P2-3）和 P2-4b（编辑器，独立）。

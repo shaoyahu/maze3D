@@ -11,6 +11,13 @@ import { decodeSeed, fnv1a, mulberry32 } from '../utils/seed';
 // with the union via `id: Algorithm` and `ALGORITHM_BY_ID: Record<Algorithm, _>`.
 import { ALGORITHM_BY_ID } from './algorithmRegistry';
 import { generateRecursiveBacktracker3D } from './generators/recursiveBacktracker3D';
+// P4b-Prim: 3D Randomized Prim. Sibling of P4a RB; both
+// bypass the 2D algorithm registry and dispatch through
+// `load3D` (see the long comment above `load3D` for the
+// rationale). The 3D Prim's data layout and thick-wall
+// encoding mirror P4a RB; the only delta is the outer
+// loop (frontier-based random pick vs. stack-based DFS).
+import { generatePrim3D } from './generators/prim3D';
 import type {
   Algorithm,
   CellType,
@@ -161,19 +168,31 @@ export class AlgorithmMazeProvider implements MazeProvider {
     prng: () => number,
     id: string,
   ): MazeData {
-    // F-P4-PROVIDER-1: only the 3D RB algorithm ships in P4a. A
-    // runtime assert here keeps the v3 codec honest — a future
-    // algorithm that lands in v3 must also add a dispatch case
-    // below, and the assert is the loud failure if they forget.
-    if (algorithm !== '3d-recursive-backtracker') {
+    // F-P4-PROVIDER-1: only the 3D algorithms that ship are
+    // accepted here. P4a ships `3d-recursive-backtracker`;
+    // P4b-Prim ships `3d-prim`. A runtime assert keeps the v3
+    // codec honest — a future 3D algorithm that lands in v3
+    // must also add a dispatch case below, and the assert is
+    // the loud failure if they forget.
+    let walls3D: CellType[][][];
+    if (algorithm === '3d-recursive-backtracker') {
+      // F-P4-PROVIDER-2: 3D RB is a 3D-only shape, so it
+      // doesn't go through the 2D registry. We import the
+      // generator directly here and bind the per-call prng.
+      walls3D = generateRecursiveBacktracker3D(size, prng);
+    } else if (algorithm === '3d-prim') {
+      // P4b-Prim: 3D Randomized Prim. Same data layout
+      // (z × y × x, thick-wall odd indices) and same
+      // performance contract as P4a RB. The dispatch is
+      // a sibling `else if` rather than a separate
+      // function because both algorithms share the
+      // start/exit picker + MazeData assembly below.
+      walls3D = generatePrim3D(size, prng);
+    } else {
       throw new Error(
         `AlgorithmMazeProvider.load3D: unhandled v3 algorithm ${String(algorithm)}`,
       );
     }
-    // F-P4-PROVIDER-2: 3D RB is a 3D-only shape, so it doesn't go
-    // through the 2D registry. We import the generator directly
-    // here and bind the per-call prng.
-    const walls3D = generateRecursiveBacktracker3D(size, prng);
     // F-P4-PROVIDER-3: pick start + exit. The 3D RB is a spanning
     // tree so any non-wall cell is reachable from any other. We
     // pick the start first (rng), then a random exit that's

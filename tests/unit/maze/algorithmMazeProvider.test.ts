@@ -699,4 +699,59 @@ describe('AlgorithmMazeProvider P4 — 3D voxel load', () => {
       provider.load('algo-v3-recursive-backtracker-7-0123456789abcdef'),
     ).rejects.toThrow();
   });
+
+  // P4b-Prim: 3D Prim dispatch. `load3D` now branches on
+  // `algorithm === '3d-prim'` and calls `generatePrim3D`.
+  // The contract is the same shape as the 3D RB test
+  // above — start3D / exit3D on passage cells, walls3D
+  // is a cube of the requested size, walls:[] back-fill.
+  // P4a RB and P4b Prim are siblings, not aliases: the
+  // generated walls differ for the same seed.
+  it('P4b-Prim: load() returns a 3D MazeData for every size in {5, 7, 9} via the 3d-prim algorithm', async () => {
+    const provider = new AlgorithmMazeProvider();
+    for (const size of [5, 7, 9] as const) {
+      const data = await provider.load(
+        encodeSeedV3({ algorithm: '3d-prim', size, mazeSeed: '0123456789abcdef' }, size),
+      );
+      expect(data.walls3D).toBeDefined();
+      expect(data.walls3D!).toHaveLength(size);
+      // Every (z, y) layer is a length-`size` array of length-`size` rows.
+      for (const layer of data.walls3D!) {
+        for (const row of layer) {
+          expect(row).toHaveLength(size);
+        }
+      }
+      // Same back-compat shape as the 3D RB test.
+      expect(data.walls).toEqual([]);
+      expect(data.levelCount).toBeUndefined();
+      expect(data.transitions).toEqual([]);
+      expect(data.pickups).toEqual([]);
+      expect(data.enemies).toEqual([]);
+      expect(data.traps).toEqual([]);
+      expect(data.doors).toEqual([]);
+      expect(data.start3D).toBeDefined();
+      expect(data.exit3D).toBeDefined();
+      const { start3D, exit3D } = data;
+      expect(data.walls3D![start3D!.z][start3D!.y][start3D!.x]).toBe(0);
+      expect(data.walls3D![exit3D!.z][exit3D!.y][exit3D!.x]).toBe(0);
+      // The 3D start ↔ exit are reachable (3D Prim is a spanning tree).
+      expect(isReachable3D(data.walls3D!, start3D!, exit3D!)).toBe(true);
+    }
+  });
+
+  it('P4b-Prim: 3d-prim and 3d-recursive-backtracker produce DIFFERENT walls for the same seed', async () => {
+    // Sibling-contract guard: 3D Prim and 3D RB share data
+    // layout + thick-wall encoding, but the outer loop
+    // (frontier-based random pick vs. stack-based DFS)
+    // yields different wall patterns for the same PRNG
+    // seed. A future refactor that accidentally collapses
+    // the two generators (e.g. P4b Prim becomes a thin
+    // wrapper around P4a RB) would fail this assertion.
+    const provider = new AlgorithmMazeProvider();
+    const rbData = await provider.load(v3Id(7, '0123456789abcdef'));
+    const primData = await provider.load(
+      encodeSeedV3({ algorithm: '3d-prim', size: 7, mazeSeed: '0123456789abcdef' }, 7),
+    );
+    expect(primData.walls3D).not.toEqual(rbData.walls3D);
+  });
 });

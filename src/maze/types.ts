@@ -411,7 +411,17 @@ export type Algorithm =
   // search space clear: any future 2D variant of the same name
   // would be a 2D algorithm and the registry's `id: Algorithm`
   // type would refuse to register it without a separate literal.
-  | '3d-recursive-backtracker';
+  | '3d-recursive-backtracker'
+  // P4b-Prim: 3D Randomized Prim. Sibling of `3d-recursive-backtracker`
+  // — both bypass the algorithm registry (signature mismatch with
+  // the 2D `(size, rng) => CellType[][]` contract) and dispatch
+  // through `AlgorithmMazeProvider.load3D`. Same data layout
+  // (`walls3D[z][y][x]`) and same thick-wall encoding; the only
+  // delta from the 3D RB is the outer loop: a frontier-based random
+  // pick instead of a stack-based DFS. The 3d- prefix keeps the
+  // name space disjoint from the 2D `prim` literal (which is the
+  // canonical 2D Prim).
+  | '3d-prim';
 
 // Square grid sizes the procedural provider accepts. The literal union
 // doubles as the whitelist enforced by decodeSeed() in utils/seed.ts; adding

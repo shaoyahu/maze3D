@@ -327,6 +327,28 @@ describe('encodeSeed / decodeSeed', () => {
       }
     });
 
+    // P4b-Prim: 3D Prim codec round-trip. Same wire format
+    // as P4a RB (`algo-v3-{algorithm}-{size}-{hex}`); the
+    // only delta is the algorithm literal. The whitelist
+    // (`VALID_3D_ALGORITHMS`) auto-accepts any `3d-`
+    // prefixed literal, so adding a new 3D algorithm to
+    // the registry is a one-line change in `seed.ts` + a
+    // sibling dispatch case in
+    // `AlgorithmMazeProvider.load3D` (no codec changes
+    // needed).
+    it('P4b-Prim: encodeSeedV3 round-trips a 3d-prim id', () => {
+      const id = encodeSeedV3(
+        { algorithm: '3d-prim', size: 7, mazeSeed: '0123456789abcdef' },
+        7,
+      );
+      expect(id).toBe('algo-v3-3d-prim-7-0123456789abcdef');
+      const decoded = decodeSeed(id);
+      expect(decoded.algorithm).toBe('3d-prim');
+      expect(decoded.size).toBe(7);
+      expect(decoded.mazeSeed).toBe('0123456789abcdef');
+      expect(decoded.levelCount).toBeUndefined();
+    });
+
     it('decodeSeed routes a v3 id through the v3 branch (algorithm + 3D size)', () => {
       const id = 'algo-v3-3d-recursive-backtracker-9-fedcba9876543210';
       const decoded = decodeSeed(id);

@@ -204,6 +204,28 @@ Type system 不会挡住"主动改 mapping"(exhaustive switch 仍过), 需 revie
 
 **测试**(`tests/unit/maze/recursiveBacktracker3D.test.ts` 新建 10 case + `tests/unit/utils/seed.test.ts` v3 段 +7 case + `tests/unit/inputManager.test.ts` getMove3D 段 8 case + `tests/unit/maze/algorithmMazeProvider.test.ts` 3D 段 4 case + `tests/unit/engine/Game.3D.test.ts` 新建 5 case):覆盖 determinism / cube shape / 边界 wall / spanning-tree reachability / 6-neighbor input / 3D seed codec round-trip / load3D 形状 / Game 3D 移动 collision / 出口 check。
 
+### 3D Prim (P4b-Prim) — locked contracts
+
+**3D 算法第二成员**:`src/maze/generators/prim3D.ts`(`src/maze/generators/prim3D.ts`)。3D Randomized Prim 是 2D Prim(`prim.ts`)的 1:1 翻译,升 4 邻居到 6 邻居。跟 P4a RB 共享 3D 数据布局 (`[z][y][x]`)、thick-wall 编码、VALID_3D_SIZES、isVoxel3DSize、PRNG 消费顺序。**差异只在外层循环**:RB = stack-based DFS (`stack.pop()` + 邻居 DFS),Prim = frontier-based random pick (`frontier[Math.floor(rng() * length)]` + swap-and-pop)。
+
+**Algorithm 联合新增 1 字面量**:`'3d-prim'`(`src/maze/types.ts:401+`)。跟 P4a `'3d-recursive-backtracker'` 并列,3D 算法集 = {RB, Prim}。3D Prim 不进 ALGORITHM_REGISTRY(签名 `[][][]` 不兼容 2D `[][]`)。
+
+**AlgorithmMazeProvider.load3D 分支**:`else if (algorithm === '3d-prim')` 调 `generatePrim3D(size, prng)`。两个 3D 算法共享 `load3D` 的 start3D / exit3D picker + MazeData 装配路径。
+
+**Seed v3 codec**:`algo-v3-3d-prim-{size}-{hex}`(size ∈ {5, 7, 9})。`VALID_3D_ALGORITHMS` 加 `'3d-prim'`(P4a 已有白名单机制自动接受)。`encodeSeedV3(seed, size)` 不变:调用者传 `algorithm: '3d-prim'`,encoder 自动生成 v3 wire format。
+
+**Determinism 契约**:`generatePrim3D(size, rng)` 的 PRNG 消费顺序是 (1) start cell pick 1 次, (2) 每次 frontier pick 1 次 `Math.floor(rng() * frontier.length)`(无论 pick 是否 no-op)。**refactor 改顺序会破 URL round-trip**。
+
+**P4b-Prim 修过的 2 个真 bug**(开发时自测发现):
+1. **start cell 越界**: 最初用 `Math.floor(rng() * logicalSize)`,对 visualSize=5 logicalSize=3 但 `oddIdx(2) = 5` 是 outer ring wall ~33% 时间 start 在墙上。修:用 `maxIdx = (visualSize - 1) / 2` 跟 P4a RB 一致。
+2. **parallel `visited` 数组越界**: 最初引入了 `visited: Uint8Array` + `cellKey(x, y, z) = (z * logicalSize + y) * logicalSize + x` 的逻辑 cell 索引。但 pushNeighbors3D 推 candidate 时传的是 VISUAL odd indices,`cellKey(1, 1, 3)` 对 visualSize=5 算 = 31 > 27, 越界写 `visited` 导致 undefined 行为 + OOM 跑飞。修:删除 `visited` 数组 + `cellKey` helper,改用 `walls` 数组本身判断(跟 P4a RB 一样 — `walls[z][y][x] === 0` = carved/visited,`=== 1` = unvisited/wall)。
+
+**为什么 P4b-Prim 用 walls 不用 visited**: P2D Prim 用了 `visited: Uint8Array` 但用 additive index `z * size + x + 1`,不跨轴,所以不会踩 multiplicative 跨界 bug。3D 我一开始 lift 到 `(z * logicalSize + y) * logicalSize + x`(同公式 3D 形式),但因为 cross-axis 乘法 + 1 错位,踩到 bug。改用 `walls` 数组最简单 — P4a RB 就是这样做的,被验证过。
+
+**测试**(`tests/unit/maze/prim3D.test.ts` 新建 11 case + `tests/unit/utils/seed.test.ts` P4b-Prim 段 +1 case + `tests/unit/maze/algorithmMazeProvider.test.ts` P4b-Prim 段 +2 case):覆盖 determinism / cube shape / 边界 wall / 不同 seed / spanning-tree reachability / 3d-prim 跟 3d-recursive-backtracker 产生不同 walls(P4a 跟 P4b-Prim 是 sibling,不是 alias)/ seed v3 codec round-trip / AlgorithmMazeProvider load 形状。
+
+**P4a 跟 P4b-Prim 关系**:sibling 不是 alias — 同样 data layout + 性能 + reachability,但 outer loop 不同(RB = DFS, Prim = frontier)。同 seed 产生不同 walls(`'3d-recursive-backtracker-7-0123456789abcdef' !== '3d-prim-7-0123456789abcdef'` 在 wall pattern 上 byte-不同)。这个 contract 在 `algorithmMazeProvider.test.ts` 的 "3d-prim and 3d-recursive-backtracker produce DIFFERENT walls for the same seed" case pin 住。
+
 ## 测试
 
 ```
