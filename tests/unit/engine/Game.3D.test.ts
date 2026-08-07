@@ -176,13 +176,20 @@ describe('Game P4 — 3D movement tick', () => {
     game.startLevel(maze);
     const sceneRefs = (game as unknown as { sceneRefs?: { walls: unknown[] } }).sceneRefs;
     expect(sceneRefs).toBeDefined();
-    // The 3D builder should have populated the walls array with
-    // a cuboid per wall cell. Our test maze has 5×5×5=125 cells
-    // minus the 8 passage cells = 117 wall cuboids. (Passage
-    // layout: y=0 corridor (1,0,1)(2,0,1)(3,0,1) + (1,0,2)(1,0,3)
-    // + ladder base (2,0,2) = 6 cells; y=1 ladder cell (2,1,2)
-    // = 1; y=2 ladder cell (2,2,2) = 1; total 8.)
-    expect(sceneRefs!.walls.length).toBe(125 - 8);
+    // P4b-Instanced: the 3D builder now uses a single
+    // `THREE.InstancedMesh` to render all wall cells. The
+    // `walls` array is a single-element array containing the
+    // InstancedMesh; the per-cell count lives in
+    // `instancedMesh.count` (the actual number of wall cells)
+    // instead of `walls.length`. Our test maze has 5×5×5=125
+    // cells minus the 8 passage cells = 117 wall cuboids.
+    // (Passage layout: y=0 corridor (1,0,1)(2,0,1)(3,0,1) +
+    // (1,0,2)(1,0,3) + ladder base (2,0,2) = 6 cells; y=1
+    // ladder cell (2,1,2) = 1; y=2 ladder cell (2,2,2) = 1;
+    // total 8.)
+    expect(sceneRefs!.walls.length).toBe(1);
+    const instanced = sceneRefs!.walls[0] as { count: number };
+    expect(instanced.count).toBe(125 - 8);
   });
 
   it('a single D key press slides the player one cell along +x over 0.1s (P4b-Lerp)', () => {

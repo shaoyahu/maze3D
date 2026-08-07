@@ -895,31 +895,74 @@ function buildScene3D(maze: MazeData, darkMode: boolean): SceneRefs {
   dir.position.set(cubeSize * 0.6, cubeSize * 0.8, cubeSize * 0.6);
   scene.add(dir);
 
-  // Walls: one BoxGeometry per wall cell. We share the geometry
-  // + material across all walls so the GPU sees N instances of
-  // the same buffers (sparse draw, no per-cell allocation). The
-  // `walls` array is the dispose-side reference handle; the
-  // shared geometry / material are disposed by the dispose
-  // helper's `seenGeoms` / `seenMats` dedupe.
+  // Walls: P4a shipped one `THREE.Mesh` per wall cell —
+  // 1687 draw calls at visualSize=15, near the 1000-draw-call
+  // budget from P4a spec §15. P4b-Instanced collapses them
+  // into a single `THREE.InstancedMesh` (1 draw call total)
+  // by encoding each wall's cell-center position as an instance
+  // matrix. The shared `wallGeom` / `wallMat` are unchanged
+  // — Three.js draws the same buffers for every instance,
+  // just with per-instance matrix transforms applied in the
+  // vertex shader. The `walls` array is now a single-element
+  // reference (`[instancedMesh]`) instead of an N-mesh array;
+  // `disposeScene`'s `seenGeoms` / `seenMats` dedup still
+  // handles the shared buffers correctly because
+  // `InstancedMesh.dispose()` only releases the instance buffer
+  // (instanceMatrix) and its own reference — the shared geom
+  // + mat stay referenced by `seenGeoms` / `seenMats` until
+  // the rest of the scene is also disposed.
   const wallTex = createWallTexture();
   const wallMat = new THREE.MeshLambertMaterial({ map: wallTex });
   const wallGeom = new THREE.BoxGeometry(cs, cs, cs);
-  const walls: THREE.Mesh[] = [];
+  // F-P4b-INSTANCED-COUNT: count walls in 1 pass O(N) so we
+  // can set `InstancedMesh.count` to the actual number (not
+  // the upper-bound `visualSize³`). visualSize=15 → 3375 max
+  // but actual walls ≈ 1687 (the maze has passages, not
+  // solid). A second pass sets the matrices for the actual
+  // count; the rest of the allocation is unused (Three.js
+  // skips instances beyond `count`). Allocating max saves us
+  // a re-alloc if the maze is bigger, at the cost of ~half the
+  // instance buffer going unused — for visualSize=15 the
+  // unused 1688 slots cost ~108KB of typed-array memory
+  // (16 floats × 4 bytes × 1688), which is negligible.
+  const cubeSize3 = visualSize * visualSize * visualSize;
+  const instancedMesh = new THREE.InstancedMesh(wallGeom, wallMat, cubeSize3);
+  instancedMesh.count = 0; // start with 0 visible; real count set after the matrix pass
+  // F-P4b-INSTANCED-MATRIX: a module-level scratch matrix keeps
+  // the per-frame allocation cost at 0 (the existing 2D
+  // `__SCRATCH_*` pattern in Game.ts is the same idea). The
+  // matrix is reused for every cell — `makeTranslation` resets
+  // its elements, no `new THREE.Matrix4()` inside the loop.
+  const matrix = new THREE.Matrix4();
+  let wallCount = 0;
   for (let z = 0; z < visualSize; z++) {
     for (let y = 0; y < visualSize; y++) {
       for (let x = 0; x < visualSize; x++) {
         if (walls3D[z][y][x] !== 1) continue;
-        const mesh = new THREE.Mesh(wallGeom, wallMat);
         // F-P4-3D-CELL-CENTER: place the cuboid at the cell
         // center `(x+0.5)*cs` so the box occupies
         // `[x*cs, (x+1)*cs]` on its axis. Matches the 2D
-        // cell-center invariant.
-        mesh.position.set((x + 0.5) * cs, (y + 0.5) * cs, (z + 0.5) * cs);
-        scene.add(mesh);
-        walls.push(mesh);
+        // cell-center invariant. With InstancedMesh, the
+        // transform goes into the instance matrix instead of
+        // `mesh.position.set(...)` — the visible position is
+        // identical.
+        matrix.makeTranslation((x + 0.5) * cs, (y + 0.5) * cs, (z + 0.5) * cs);
+        instancedMesh.setMatrixAt(wallCount, matrix);
+        wallCount++;
       }
     }
   }
+  instancedMesh.count = wallCount;
+  instancedMesh.instanceMatrix.needsUpdate = true;
+  scene.add(instancedMesh);
+  // F-P4b-INSTANCED-REF: `walls` is the dispose-side reference
+  // handle. Previously an N-mesh array; now a single-element
+  // array containing the InstancedMesh. Consumers that iterate
+  // over `walls` (e.g. `disposeScene`) see the same single
+  // reference and dispose it via `mesh.dispose()` — the
+  // shared `wallGeom` / `wallMat` are dedup'd via the
+  // `seenGeoms` / `seenMats` Sets in `disposeScene`.
+  const walls: THREE.InstancedMesh[] = [instancedMesh];
 
   // F-P4-3D-EXIT: the exit pad is a small emissive green box
   // anchored at the exit cell's center. We default to

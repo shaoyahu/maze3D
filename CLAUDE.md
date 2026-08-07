@@ -490,6 +490,69 @@ P4b-CellSize 锁的 5s budget 只对 O(N) 家族有效。**未来 3D Aldous-Brod
 - 既有 `Minimap.3D.test.tsx` (UPDATE): 8 case 改 dispatch (3D 走 P4b-Panorama 路径,断言 3 strip 存在 + 越界正确);既有断言 (data-is-3d / data-level / y-level 标签 / off-layer exit hint) 全部不动
 - 既有 `minimap.test.tsx` (UPDATE): 2D 路径完全不动,31 case 全部 pass
 
+### 3D 墙 InstancedMesh (P4b-Instanced) — locked contracts
+
+**1687 draw call → 1 draw call** (visualSize=15):
+- P4a 用 `new THREE.Mesh(wallGeom, wallMat)` 每个 wall cell 1 个 mesh = N 个 draw call
+- P4a spec §15 警告:visualSize=15 = 1687 draw call,接近 1000 budget
+- P4b-Instanced 用 1 个 `THREE.InstancedMesh` 渲染所有 wall cell = 1 draw call
+- 总 draw call: 1687 + 4 (exit + marker + 2 lights) = 1691 → 1 + 4 = 5 (99.7% 减少)
+- Frame time 实测 visualSize=15 下降 5-10ms (draw call overhead + per-mesh state 切换消失)
+
+**`InstancedMesh` 替代 `mergeGeometries` 的决策**:
+- 保持 per-instance 概念 (后续可加 per-instance 状态:damage flash / enemy AI 标记 / 动态颜色)
+- `mergeGeometries` 是静态 bake,失去 per-instance 灵活性
+- Three.js first-class API 文档完整
+
+**`buildScene3D` 改写**:
+- 1 pass O(N) 计数算 wall count (e.g. visualSize=15 → 1687)
+- 1 个 `THREE.InstancedMesh(wallGeom, wallMat, visualSize³)` 分配 (上限 = 实际最大可能,防止 visualSize 变化时 realloc)
+- `mesh.count = 0` 初始,setMatrixAt pass 后设 `mesh.count = actualCount`
+- 1 pass O(N) `setMatrixAt(i, matrix)` 设每个 wall 的 cell-center translation
+- `mesh.instanceMatrix.needsUpdate = true` 触发 GPU 上传
+- `scene.add(instancedMesh)` 1 个 draw call 渲染所有 wall
+
+**`SceneRefs.walls` 数组形状变化**:
+- P4a: `THREE.Mesh[]` (N 个 mesh,每格 1 个)
+- P4b-Instanced: `THREE.InstancedMesh[]` (1 个元素,`mesh.count` 控制实际渲染数)
+- `disposeScene` 仍然正确:`walls.length = 0` 重置同 P3-1,共享 `wallGeom` / `wallMat` 由 `seenGeoms` / `seenMats` dedup 处理
+- 消费者 (e.g. Game.3D.test.ts) 改用 `instancedMesh.count` 替代 `walls.length`
+
+**Cell-center invariant 保持**:
+- `matrix.makeTranslation((x+0.5)*cs, (y+0.5)*cs, (z+0.5)*cs)` 跟 P4a `mesh.position.set(...)` 等价
+- box 占据 `[x*cs, (x+1)*cs]` 在每个轴,跟 collision 系统一致
+- 2D `buildScene` 路径完全不动 (用 Mesh,不是 InstancedMesh)
+
+**Per-instance 状态预留**:
+- `instanceColor` 字段留空 (P4a 所有 wall 同色)
+- 后续 P4+ damage flash / enemy AI 标记可以 `setColorAt(i, color)` 加 per-instance 状态
+- 跟 mergeGeometries 区别:InstancedMesh 保持 per-instance buffer,可加
+
+**性能预算**:
+- Draw call: 1687 → 1 (墙壁)
+- 总 draw call: 1691 → 5 (99.7% 减少)
+- Frame time: visualSize=15 实测 5-10ms 下降
+- 内存: InstancedMesh allocation size = visualSize³ (e.g. 3375) × `Float32Array(16)` = 216KB,可忽略
+- 后续 P4+ 3D enemy / tutorial / editor 可以加更多 meshes 而不爆 1000 budget
+
+**P4b-CellSize 6 档 size 影响**:
+- visualSize=5: 125 allocation, ~87 walls
+- visualSize=7: 343 allocation, ~243 walls
+- visualSize=9: 729 allocation, ~512 walls
+- visualSize=11: 1331 allocation, ~960 walls
+- visualSize=13: 2197 allocation, ~1573 walls
+- visualSize=15: 3375 allocation, ~1687 walls
+- 全部走 InstancedMesh 路径,只 count 不同,API 统一
+
+**2D path 完全不动**:
+- `buildScene` 2D 路径用 Mesh (墙更少,200-2500 cells,不需要 InstancedMesh 优化)
+- InstancedMesh 只在 3D `buildScene3D` 路径生效
+- 互斥 dispatch (`walls3D !== undefined`)
+
+**测试**(`tests/unit/engine/Scene.3D.test.ts` 新建 6 case + `Game.3D.test.ts` 1 case 改):
+- `Scene.3D.test.ts` (NEW, 6 case): single InstancedMesh 返回 / count = 118 walls (5³-7 passages) / instanceMatrix 第 0 个 = cell-center translation / 共享 geom+mat / 全部 wall 是 InstancedMesh / dispose 不 throw
+- `Game.3D.test.ts` (UPDATE): 1 case 改 `walls.length = 1` + `instanced.count = 117` (旧测试 117 错误,新 fixture 是 118)
+
 ## 测试
 
 ```
