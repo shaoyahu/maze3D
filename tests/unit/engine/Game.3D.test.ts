@@ -185,102 +185,113 @@ describe('Game P4 — 3D movement tick', () => {
     expect(sceneRefs!.walls.length).toBe(125 - 8);
   });
 
-  it('a single D key press teleports the player one cell along +x (when target is open)', () => {
+  it('a single D key press slides the player one cell along +x over 0.1s (P4b-Lerp)', () => {
     const maze = build3DTestMaze();
     game.startLevel(maze);
     // Player spawns at (1, 0, 1) (start3D). Pressing D moves
     // along +x → (2, 0, 1) which is open in our test maze.
+    // P4b-Lerp: the move is now a 0.1s tween, not an instant
+    // teleport. After one frame (dt=16ms), the player should
+    // be ~16% of the way from start (3) to end (5) = 3.32.
+    // After a full 0.1s of update calls, the tween completes
+    // and the player is at the target cell center.
     window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyD' }));
-    // Advance the game by ~16ms (one frame) so tick3DMovement
-    // processes the input. We do this by triggering the loop's
-    // tick directly through the public API — there's no public
-    // method, so we use the bridge's onTick callback shape
-    // (the engine reads it from the bridge, not from a tick).
-    // The cleanest way is to use the private `_update` method
-    // that the Loop's rAF fires; we re-define `update` here
-    // by invoking `Game`'s prototype method.
-    //
-    // The simplest path: call `Game.prototype.update` via
-    // a method override that bypasses the destroyed flag.
-    // But TypeScript doesn't expose `update` as public. We
-    // use the `(game as unknown as { update: (dt: number) => void })`
-    // pattern that other engine tests already use for the
-    // private `tickActiveTransition` access.
     const update = (game as unknown as { update: (dt: number) => void }).update.bind(game);
     update(0.016);
-    // Player should now be at cell (2, 0, 1), world coords
-    // (x=2*cs+cs/2=5, y=0*cs+cs/2=1, z=1*cs+cs/2=3) with cs=2.
     const player = (game as unknown as { player?: { position: { x: number; y: number; z: number } } }).player;
     expect(player).toBeDefined();
+    // Mid-tween: position should be partway from 3 → 5.
+    // 0.016 / 0.1 = 0.16 progress, so x ≈ 3 + 0.16 * 2 = 3.32.
+    expect(player!.position.x).toBeCloseTo(3.32, 1);
+    // y and z don't change on a pure +x move.
+    expect(player!.position.y).toBeCloseTo(1);
+    expect(player!.position.z).toBeCloseTo(3);
+    // Finish the tween with several more update calls. We use
+    // a single 0.1s call (which lands the tween exactly at u=1)
+    // and assert the snap-to-end position.
+    window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyD' }));
+    update(0.1);
+    // Player should now be at cell (2, 0, 1), world coords
+    // (x=2*cs+cs/2=5, y=0*cs+cs/2=1, z=1*cs+cs/2=3) with cs=2.
     expect(player!.position.x).toBeCloseTo(5);
     expect(player!.position.y).toBeCloseTo(1);
     expect(player!.position.z).toBeCloseTo(3);
   });
 
-  it('a move into a wall cell is rejected (player stays on current cell)', () => {
+  it('a move into a wall cell is rejected (player stays on current cell, no tween starts)', () => {
     const maze = build3DTestMaze();
     game.startLevel(maze);
     // Player at (1, 0, 1). Pressing W (dz = -1) tries to go
     // to (1, 0, 0) which is a wall in our test maze.
+    // P4b-Lerp: the collision check is at tween START (Q4), so
+    // a wall target means no tween is created and the player
+    // stays at the current cell. The test verifies that no
+    // movement happened even after a full 0.1s window (which
+    // would have completed a tween if one had started).
     window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyW' }));
     const update = (game as unknown as { update: (dt: number) => void }).update.bind(game);
-    update(0.016);
+    update(0.1);
     const player = (game as unknown as { player?: { position: { x: number; y: number; z: number } } }).player;
     // Player must NOT have moved.
     expect(player!.position.x).toBeCloseTo(1 * 2 + 1); // cell 1 center = 3
     expect(player!.position.z).toBeCloseTo(1 * 2 + 1); // cell 1 center = 3
+    // Also verify no tween state is left behind.
+    const tween = (game as unknown as { active3DTween: unknown }).active3DTween;
+    expect(tween).toBeNull();
   });
 
-  it('Space teleports the player +y when the target is open (vertical climb)', () => {
+  it('Space slides the player +y when the target is open (vertical climb, P4b-Lerp)', () => {
     const maze = build3DTestMaze();
     game.startLevel(maze);
     // Move to (2, 0, 2) first (start of the ladder column).
-    window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyD' }));
+    // P4b-Lerp: each cell hop is a 0.1s tween. We use update(0.1)
+    // to advance each tween to completion, then dispatch the
+    // next key. We also keyup between hops so the held key
+    // doesn't immediately re-trigger on the next frame.
     const update = (game as unknown as { update: (dt: number) => void }).update.bind(game);
-    update(0.016);
-    window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyD' }));
-    // Now press W to step to (2, 0, 1) — actually the test
-    // maze has (2, 0, 2) reachable from (1, 0, 1) by D
-    // (cell 2 on the corridor) AND from (1, 0, 1) by S+S
-    // would land on (1, 0, 3). Let me re-check: the corridor
-    // is (1, 0, 1)-(3, 0, 1) along x AND (1, 0, 1)-(1, 0, 3)
-    // along z, and (2, 0, 2) is a single open cell. So from
-    // (1, 0, 1), D goes to (2, 0, 1) (open), and the only
-    // way to (2, 0, 2) is via S from (2, 0, 1) (which would
-    // be (2, 0, 2) — but is (2, 0, 2) a 4-neighbor of (2, 0, 1)?
-    // No — (2, 0, 2) and (2, 0, 1) differ in z by 1, so YES
-    // they are 4-neighbors. S from (2, 0, 1) → (2, 0, 2).
-    window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyS' }));
-    update(0.016);
-    window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyS' }));
-    // Now press Space to climb y.
+    const move = (code: string) => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { code }));
+      update(0.1);
+      window.dispatchEvent(new KeyboardEvent('keyup', { code }));
+    };
+    move('KeyD');   // (1, 0, 1) → (2, 0, 1)
+    move('KeyS');   // (2, 0, 1) → (2, 0, 2)  (corridor + lateral cell)
+    // Now press Space to climb y. The tween is 0.1s; we use a
+    // mid-tween update to verify the partial progress, then a
+    // full 0.1s to land on the target.
     window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space' }));
     update(0.016);
-    const player = (game as unknown as { player?: { position: { x: number; y: number; z: number } } }).player;
+    const midPlayer = (game as unknown as { player?: { position: { x: number; y: number; z: number } } }).player;
+    // 16% into the +y slide: y goes from 1 (start cell center)
+    // to 3 (target cell center), so y ≈ 1 + 0.16 * 2 = 1.32.
+    expect(midPlayer!.position.y).toBeCloseTo(1.32, 1);
+    window.dispatchEvent(new KeyboardEvent('keyup', { code: 'Space' }));
+    update(0.1);
+    const finalPlayer = (game as unknown as { player?: { position: { x: number; y: number; z: number } } }).player;
     // Player should now be at (2, 1, 2) world (5, 3, 5).
-    expect(player!.position.x).toBeCloseTo(5);
-    expect(player!.position.y).toBeCloseTo(3);
-    expect(player!.position.z).toBeCloseTo(5);
+    expect(finalPlayer!.position.x).toBeCloseTo(5);
+    expect(finalPlayer!.position.y).toBeCloseTo(3);
+    expect(finalPlayer!.position.z).toBeCloseTo(5);
   });
 
-  it('reaching the 3D exit cell fires bridge.onReachExit and pauses the loop', () => {
+  it('reaching the 3D exit cell fires bridge.onReachExit and pauses the loop (P4b-Lerp exit check at tween end)', () => {
     const maze = build3DTestMaze();
     game.startLevel(maze);
     const update = (game as unknown as { update: (dt: number) => void }).update.bind(game);
     // Walk (1, 0, 1) → (2, 0, 1) → (2, 0, 2) → (2, 1, 2) → (2, 2, 2).
-    window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyD' }));
-    update(0.016);
-    window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyD' }));
-    window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyS' }));
-    update(0.016);
-    window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyS' }));
-    window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space' }));
-    update(0.016);
-    window.dispatchEvent(new KeyboardEvent('keyup', { code: 'Space' }));
-    window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space' }));
-    update(0.016);
-    window.dispatchEvent(new KeyboardEvent('keyup', { code: 'Space' }));
-    // After climbing twice, the player should be at (2, 2, 2) — the exit.
+    // P4b-Lerp: each hop is a 0.1s tween. We use update(0.1) per
+    // hop to land on the target cell before the next key press.
+    const move = (code: string) => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { code }));
+      update(0.1);
+      window.dispatchEvent(new KeyboardEvent('keyup', { code }));
+    };
+    move('KeyD');   // → (2, 0, 1)
+    move('KeyS');   // → (2, 0, 2)
+    move('Space');  // → (2, 1, 2)
+    move('Space');  // → (2, 2, 2) — the exit cell
+    // After the second Space tween completes, the exit check
+    // fires and the bridge records the win.
     expect(bridge.reachExitCalls).toBe(1);
     // The exit was reached, so the tutorial event 'reached-exit'
     // should have fired too.

@@ -242,6 +242,19 @@ export const HOLE_DURATION_SEC = 0.4;
 // machinery reads it via `this.warningFlash.durationSec`.
 export const WARNING_FLASH_DURATION_SEC = 0.5;
 
+// P4b-Lerp: 3D cell-to-cell tween duration. The player slides
+// from the current cell center to the target cell center over
+// this many seconds. Picked at 0.1s as the visual sweet spot —
+// 0.05s still reads as a "hop" (only 3 frames at 60fps), 0.2s
+// feels sluggish for a continuous 6-neighbor walk. 0.1s gives
+// 6 frames of interpolation, which is enough to read as a
+// smooth slide on a 16ms tick. Mirrors the role of
+// `STAIR_DURATION_SEC` / `HOLE_DOWN_DURATION_SEC` in the 2D
+// vertical-transition state machine (P3-1), but the value is
+// much shorter because cell hops are short distances (cellSize
+// ≈ 2m, not layerHeight ≈ 2.4m).
+export const MOVE_3D_TWEEN_SEC = 0.1;
+
 // P3-1: per-layer wall lookup. The closure falls back to the
 // historical `maze.walls` field when no per-layer cache entry
 // exists (JsonMazeProvider levels, levelCount=1 procedural
@@ -492,11 +505,15 @@ export class Game {
   // the camera sync (eye height 1.6m above the player's feet),
   // and the 3D exit check (player at exit3D cell → win).
   //
-  // The `dt` parameter is unused for the 3D path — P4a is
-  // input-driven, not time-driven. We accept the parameter for
-  // API parity with `update` and the 2D `tickActiveTransition`
-  // (which does use dt for the tween).
-  private tick3DMovement(_dt: number): void {
+  // The `dt` parameter feeds the in-flight `active3DTween`
+  // (P4b-Lerp): when a tween is running, this function bails
+  // early to `tick3DTween` and never reads new input until the
+  // 0.1s tween completes. When no tween is running, `dt` is
+  // only used for the tween-start frame (so the first frame
+  // already advances ~16ms / 0.1s = 16% into the slide, instead
+  // of 0% — the latter would feel like a 1-frame pause before
+  // motion starts).
+  private tick3DMovement(dt: number): void {
     // Narrow refs; the outer `update()` guard already verified
     // they're present, but TypeScript's strict null checks
     // don't propagate the narrowing into this method.
@@ -512,7 +529,11 @@ export class Game {
     // 不做), so the onTutorialEvent branch is a no-op for
     // every 3D level, but we keep the wire in place so a
     // future P4b teaching level can flip the bridge listener
-    // on without a code change here.
+    // on without a code change here. P4b-Lerp: mouse-look
+    // runs BEFORE the tween gate so the player can rotate
+    // the camera while sliding between cells (Q3 decision —
+    // short 0.1s tween + free camera feels more responsive
+    // than locking everything like P3-1 vertical transitions).
     const mouseDelta = this.input!.consumeMouseDelta();
     applyLook(player, mouseDelta);
     if (this.bridge.onTutorialEvent && (mouseDelta.x !== 0 || mouseDelta.y !== 0)) {
@@ -527,8 +548,20 @@ export class Game {
     // owns the timer; the engine just feeds it dt. We skip
     // this when not actively playing (a paused / game-over
     // state would otherwise drain the timer).
-    this.bridge.onTick(_dt);
+    this.bridge.onTick(dt);
     if (!this.bridge.isPlaying()) return;
+
+    // P4b-Lerp: if a tween is in flight, advance it and
+    // bail out — no new input read this frame. The tween
+    // short-circuits the rest of the function so the player
+    // can't queue a second cell hop while sliding to the
+    // first one (Q3 / Q4). Mouse-look above has already
+    // updated yaw / pitch, and the tween itself handles
+    // position + camera + marker + (on completion) exit check.
+    if (this.active3DTween !== null) {
+      this.tick3DTween(dt);
+      return;
+    }
 
     // 1. Read the 3D input triple.
     const move = this.input!.getMove3D();
@@ -570,41 +603,117 @@ export class Game {
       return;
     }
 
-    // 5. Teleport the player to the cell center. P4a is
-    //    "瞬移" (teleport) — no lerp, no animation. P4b
-    //    can layer a 0.1s tween on top.
-    player.position.x = tx * cs + cs / 2;
-    player.position.y = ty * cs + cs / 2;
-    player.position.z = tz * cs + cs / 2;
+    // 5. P4b-Lerp: instead of teleporting, snapshot the current
+    //    player position as `startPos` and the target cell
+    //    center as `endPos`, then hand control to `tick3DTween`
+    //    for the next 0.1s. The tween runs from startPos to
+    //    endPos (linear interpolation on all three axes) and
+    //    handles the marker / camera / exit check on completion.
+    //    Replacing the teleport with a tween is the entire
+    //    P4b-Lerp scope — Q1 (0.1s) + Q2 (linear) + Q4 (collision
+    //    at start) + Q5 (exit at end) all converge here.
+    const startPos = { x: player.position.x, y: player.position.y, z: player.position.z };
+    const endPos = { x: tx * cs + cs / 2, y: ty * cs + cs / 2, z: tz * cs + cs / 2 };
+    this.active3DTween = {
+      startPos,
+      endPos,
+      endCell: { x: tx, y: ty, z: tz },
+      durationSec: MOVE_3D_TWEEN_SEC,
+      elapsed: 0,
+    };
+    // Advance the tween by `dt` immediately so the first frame
+    // doesn't sit at u=0 (which would feel like a 1-frame pause
+    // before motion starts). After this call `active3DTween` may
+    // be null (tween completed within a single frame's dt, e.g.
+    // a synthetic 0.5s update for tests) — that's fine, the
+    // return below lets the next frame start a fresh input read.
+    this.tick3DTween(dt);
+  }
 
-    // 6. Sync the on-floor marker to the new cell. The
-    //    marker is shared with the 2D path; for 3D we
-    //    also update the y (the 2D path only updates
-    //    x / z because y never changes outside of a
-    //    vertical transition).
+  // P4b-Lerp: per-frame 3D cell-to-cell tween advance. Mirrors
+  // the shape of `tickActiveTransition` (P3-1) but interpolates
+  // three axes instead of one. On each frame we:
+  //   1. add `dt` to elapsed
+  //   2. compute u = min(1, elapsed / durationSec)
+  //   3. lerp player.position from startPos to endPos on x/y/z
+  //   4. sync the on-floor marker to the interpolated position
+  //   5. update the camera (position from player + eye height;
+  //      yaw/pitch already mutated by the mouse-look call earlier
+  //      in `tick3DMovement`)
+  //   6. if u >= 1 (tween completed), snap to the exact endPos,
+  //      clear `active3DTween`, and run the exit check (Q5:
+  //      fire `onReachExit` only when the player fully arrives
+  //      on the exit cell, not during the slide)
+  //
+  // The tween uses the same `lerp(a, b, t)` helper as P3-1
+  // (module-level, no per-frame allocation). Three calls per
+  // frame is well under any GC pressure threshold and matches
+  // P3-1's per-frame lerp cost.
+  private tick3DTween(dt: number): void {
+    const t = this.active3DTween;
+    if (!t) return;
+    const player = this.player;
+    if (!player) return;
+    t.elapsed += dt;
+    const u = Math.min(1, t.elapsed / t.durationSec);
+    // Linear interpolation (Q2 decision) on all three axes.
+    // The horizontal axes (x, z) and the vertical axis (y)
+    // are independent — a Space press (y+) reads the same lerp
+    // path as a D press (x+), no special-casing per direction.
+    player.position.x = t.startPos.x + (t.endPos.x - t.startPos.x) * u;
+    player.position.y = t.startPos.y + (t.endPos.y - t.startPos.y) * u;
+    player.position.z = t.startPos.z + (t.endPos.z - t.startPos.z) * u;
+
+    // Marker sync — same shape as the 2D path (P3-1c):
+    // on every position change, push player.position to the
+    // on-floor marker. The marker is shared with the 2D path
+    // (3D adds y to the sync payload because 2D never changes
+    // y outside vertical transitions).
     const marker = this.sceneRefs!.playerMarker;
     marker.position.x = player.position.x;
     marker.position.y = player.position.y;
     marker.position.z = player.position.z;
 
-    // 7. Camera + eye height. Same EYE_HEIGHT (1.6m) as
-    //    the 2D path — the player stands the same way in
-    //    a 3D cube as on a 2D layer.
+    // Camera sync — eye height 1.6m above the player's feet.
+    // `updatePlayerCamera` also applies the player's current
+    // yaw / pitch (mutated by mouse-look earlier this frame)
+    // to the camera quaternion, so the camera rotation tracks
+    // the player's view even mid-slide.
     updatePlayerCamera(this.camera!, player);
     this.camera!.position.y = player.position.y + EYE_HEIGHT;
 
-    // 8. Exit check. The 3D exit is at `exit3D` (cell
-    //    coords). The player wins when they occupy that
-    //    exact cell. No "midpoint sampling" — P4a is
-    //    cell-based movement so a teleport can't tunnel
-    //    past the exit (the worst case is "pressed W
-    //    while standing on the exit cell" which the
-    //    next tick's cell-mismatch check rejects).
-    const exit3D = maze.exit3D;
-    if (exit3D && tx === exit3D.x && ty === exit3D.y && tz === exit3D.z) {
-      this.bridge.onTutorialEvent?.({ kind: 'reached-exit' });
-      this.bridge.onReachExit();
-      this.pauseLoop();
+    // Completion: snap to the exact end cell center (the
+    // floating-point lerp at u=1 may land 1e-15 short of the
+    // target due to arithmetic, so we re-assert), clear the
+    // tween state, then run the exit check on the integer
+    // endCell (Q5).
+    if (t.elapsed >= t.durationSec) {
+      player.position.x = t.endPos.x;
+      player.position.y = t.endPos.y;
+      player.position.z = t.endPos.z;
+      marker.position.x = t.endPos.x;
+      marker.position.y = t.endPos.y;
+      marker.position.z = t.endPos.z;
+      this.camera!.position.y = t.endPos.y + EYE_HEIGHT;
+      this.active3DTween = null;
+      // Q5: exit check fires here, on the integer cell pair.
+      // The tween has fully arrived; if the destination cell
+      // is the maze exit, the player wins. Firing the check
+      // here (rather than at tween start) prevents a held move
+      // key from triggering the win on the start frame of a
+      // tween whose destination is NOT the exit — only an
+      // exact arrival on the exit cell counts.
+      const exit3D = this.currentMaze?.exit3D;
+      if (
+        exit3D &&
+        t.endCell.x === exit3D.x &&
+        t.endCell.y === exit3D.y &&
+        t.endCell.z === exit3D.z
+      ) {
+        this.bridge.onTutorialEvent?.({ kind: 'reached-exit' });
+        this.bridge.onReachExit();
+        this.pauseLoop();
+      }
     }
   }
 
@@ -758,6 +867,33 @@ export class Game {
     elapsed: number;
     x: number;
     z: number;
+  } | null = null;
+  // P4b-Lerp: 3D cell-to-cell tween state. Mirrors the shape of
+  // `activeTransition` (P3-1) but interpolates all three axes
+  // (x, y, z) instead of just y. The tween is much shorter
+  // (0.1s vs 0.4-0.5s) and only locks move keys, not mouse-look
+  // (Q3 decision). Like `activeTransition`, the tween is
+  // input-driven at start (cell collision decided before the
+  // tween begins) and time-driven per frame (lerp advances on
+  // `dt`). The exit check fires at tween completion, not at
+  // start, so a held move key can't false-positive through the
+  // exit cell (Q5). This field is in a separate slot from
+  // `activeTransition` because the 3D path short-circuits
+  // `update()` at the top (`walls3D !== undefined` check runs
+  // before the 2D activeTransition guard), so the two states
+  // are physically never concurrent — keeping them as separate
+  // fields makes the type and the per-frame path easier to read
+  // than a single union type. `endCell` captures the integer
+  // cell coordinates for the exit check (we can't use `endPos`
+  // directly because cellSize scaling could introduce float
+  // drift; the integer pair is the canonical "where did the
+  // player land" answer).
+  private active3DTween: {
+    startPos: { x: number; y: number; z: number };
+    endPos: { x: number; y: number; z: number };
+    endCell: { x: number; y: number; z: number };
+    durationSec: number;
+    elapsed: number;
   } | null = null;
   // P3-2: pre-transition warning state. When a `hole-down` cell is
   // stepped on, the engine first plays a 0.5s warning (visual ring +
@@ -1000,6 +1136,14 @@ export class Game {
     this.bridge.onLevelChange?.(this.playerLevel);
     this.playerY = this.playerLevel * FLOOR_HEIGHT;
     this.activeTransition = null;
+    // P4b-Lerp: also reset the 3D tween so a mid-slide level
+    // reset (e.g. user clicks "restart" while the player is
+    // 60ms into a 0.1s slide) doesn't leave a stale tween
+    // pointing at the old level's start cell. Mirrors the
+    // `activeTransition = null` reset above; the 3D path
+    // short-circuits update() at the top so this field and
+    // `activeTransition` are physically never concurrent.
+    this.active3DTween = null;
     // P3-2: also reset the warning phase so a mid-warning level
     // reset (e.g. user clicks "restart" while a 0.5s red ring is
     // up) doesn't leave a stale ring on the new layer. Mirrors the
@@ -1072,6 +1216,12 @@ export class Game {
     // the next startLevel() doesn't see leftover Enemy instances from
     // the previous level.
     this.enemies = [];
+    // P4b-Lerp: clear the 3D tween so a dispose-during-tween
+    // (e.g. user navigates away mid-slide) doesn't leave a
+    // dangling `endPos` / `endCell` pointing at a destroyed
+    // scene. Mirrors the startLevel reset; the destroyed flag
+    // is the real guard, this is just hygiene.
+    this.active3DTween = null;
     this.renderer?.dispose();
   }
 

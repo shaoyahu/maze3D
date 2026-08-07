@@ -276,6 +276,62 @@ P4b-CellSize 锁的 5s budget 只对 O(N) 家族有效。**未来 3D Aldous-Brod
 - `algorithmMazeProvider.test.ts` 3D load 6 sizes × 2 算法
 - `cellsize.perf.test.ts` 6 case (3 sizes × 2 algorithms × 1.5s/3s/5s budget)
 
+### 3D Player 0.1s cell-to-cell tween (P4b-Lerp) — locked contracts
+
+**3D cell 移动从瞬移升级为 0.1s linear lerp**:
+- `MOVE_3D_TWEEN_SEC = 0.1` (`src/engine/Game.ts` module-level,export,跟 `STAIR_DURATION_SEC` / `HOLE_DOWN_DURATION_SEC` 同位)
+- 按 D → 玩家从当前格中心 0.1s 内滑到目标格中心
+- tween 期间 input 内部 gate(只 lock move 键,**mouse-look 仍可用**),不调 `input.setPaused`(Q3 决策)
+- cell-based collision 在 tween 启动时判一次,tween 中途不重判(Q4)
+- exit check 在 tween 完成时触发,不在 tween 启动时(Q5 — 防止 false positive)
+- 完成时 snap 精确到 endPos(float drift 防护),`active3DTween = null`
+
+**`active3DTween` 字段**(跟 P3-1 `activeTransition` 同构,但 3 维全存):
+```ts
+{ startPos: {x,y,z}, endPos: {x,y,z}, endCell: {x,y,z}, durationSec: 0.1, elapsed: number }
+```
+
+**为什么新加 `active3DTween` 不复用 P3-1 `activeTransition`**:
+- 3D path 在 `update()` 顶部 short-circuit (`walls3D !== undefined` 在 `activeTransition` 检查之前)
+- 3D playerY 是连续值 (0..visualSize*cs),不是 layer index (0..levelCount-1)
+- 强行复用 P3-1 playerY/playerLevel 让代码语义混乱
+- 新字段跟 P3-1 同构(start+end+elapsed+duration),风格一致
+
+**为什么 0.1s linear (Q1+Q2 决策)**:
+- 0.05s 仍然能看出跳(60fps = 16ms,3 帧过渡太短)
+- 0.2s 慢得让快速 walk 显得卡
+- 0.1s = 6 帧 60fps,体感 sweet spot
+- linear 跟 P3-1 vertical transition 一致;ease-out 让快速 walk 黏滞;ease-in-out 跟 6 邻居 cell hop 节奏冲突
+
+**为什么 mouse-look 在 tween 期间仍可用 (Q3 决策)**:
+- 0.1s 短 tween,mouse-look 锁定反而显得卡(玩家想看下一格但相机被锁)
+- 跟 P3-1 vertical transition 不同:P3-1 是 0.4-0.5s 长时 + 玩家"在楼梯上"不期待自由视角
+- 实现:不调 `setPaused`,只在 `tick3DMovement` 顶加 1 行 `if (this.active3DTween) { tick3DTween(dt); return; }`
+
+**cellSize 跟 FLOOR_HEIGHT 不混用 (Q13 决策)**:
+- P3-1 用 `FLOOR_HEIGHT = 2.4` 锁 layer 高度
+- P4 3D 用 `cellSize` (=2) 锁 cell 宽度
+- 两个常量语义不同(layer vs cell),P4b-Lerp 3 维 lerp 走 `cellSize`
+
+**`startLevel` + `dispose` 双 reset**:
+- `startLevel` 末尾加 `this.active3DTween = null`(跟 `activeTransition = null` 同 reset 块)
+- `dispose` 末尾加 `this.active3DTween = null`(跟 `enemies = []` 同 hygiene 块)
+- 重置保证 mid-slide level reset / dispose 不留 stale tween 指向旧关 start3D
+
+**3D path short-circuit 在 update() 顶部**:
+- `walls3D !== undefined` 检查在 `warningFlash` / `activeTransition` 之前
+- 3D tween 跟 2D vertical transition 物理上永远不并发
+- 两个状态机各自独立,不需要 union type
+
+**为什么 6 维 vector 不用 `THREE.Vector3` lerp**:
+- `THREE.Vector3.lerp(target, alpha)` 是 instance method,会改 target
+- 3 维 lerp 用 `t.startPos.x + (t.endPos.x - t.startPos.x) * u` 3 次标量 lerp,跟 P3-1 `lerp(a, b, t)` 复用同 module-level helper
+- 0 GC pressure,跟 P3-1 tickActiveTransition 同量级 perf
+
+**测试**(`tests/unit/engine/Game.3D.tween.test.ts` 新建 7 case + `tests/unit/engine/Game.3D.test.ts` 改 4 case):
+- `Game.3D.tween.test.ts` (NEW): mid-tween linear progress / completion snap / wall reject no tween / held-D 连续 tween / mouse-look 仍可用 / startLevel 重置 / dt=0 不前进
+- `Game.3D.test.ts` (UPDATE): 4 旧 case 改 tween-aware — `update(0.1)` 跑完 tween + 加 keyup 避免下一帧立即重触发
+
 ## 测试
 
 ```
