@@ -624,10 +624,11 @@ import { encodeSeedV3 } from '../../../src/utils/seed';
 import { isReachable3D } from '../../../src/maze/reachability';
 
 function v3Id(size: number, hex: string): string {
-  return encodeSeedV3(
-    { algorithm: '3d-recursive-backtracker', size, mazeSeed: hex },
+  return encodeSeedV3({
+    algorithm: '3d-recursive-backtracker',
     size,
-  );
+    mazeSeed: hex,
+  });
 }
 
 describe('AlgorithmMazeProvider P4 — 3D voxel load', () => {
@@ -637,9 +638,15 @@ describe('AlgorithmMazeProvider P4 — 3D voxel load', () => {
     expect(ids).toEqual([]);
   });
 
-  it('load() returns a 3D MazeData for every size in {5, 7, 9}', async () => {
+  // P4b-CellSize: widened the 3D size whitelist from
+  // {5, 7, 9} to {5, 7, 9, 11, 13, 15}. The load() shape
+  // (MazeData fields, walls3D cube, start3D/exit3D on
+  // passage cells) is unchanged across sizes — only the
+  // cube side length grows. The 3D RB and 3D Prim paths
+  // share this contract.
+  it('load() returns a 3D MazeData for every size in {5, 7, 9, 11, 13, 15} (P4b-CellSize widened)', async () => {
     const provider = new AlgorithmMazeProvider();
-    for (const size of [5, 7, 9] as const) {
+    for (const size of [5, 7, 9, 11, 13, 15] as const) {
       const data = await provider.load(v3Id(size, '0123456789abcdef'));
       expect(data.walls3D).toBeDefined();
       expect(data.walls3D!).toHaveLength(size);
@@ -709,9 +716,9 @@ describe('AlgorithmMazeProvider P4 — 3D voxel load', () => {
   // generated walls differ for the same seed.
   it('P4b-Prim: load() returns a 3D MazeData for every size in {5, 7, 9} via the 3d-prim algorithm', async () => {
     const provider = new AlgorithmMazeProvider();
-    for (const size of [5, 7, 9] as const) {
+    for (const size of [5, 7, 9, 11, 13, 15] as const) {
       const data = await provider.load(
-        encodeSeedV3({ algorithm: '3d-prim', size, mazeSeed: '0123456789abcdef' }, size),
+        encodeSeedV3({ algorithm: '3d-prim', size, mazeSeed: '0123456789abcdef' }),
       );
       expect(data.walls3D).toBeDefined();
       expect(data.walls3D!).toHaveLength(size);
@@ -750,7 +757,7 @@ describe('AlgorithmMazeProvider P4 — 3D voxel load', () => {
     const provider = new AlgorithmMazeProvider();
     const rbData = await provider.load(v3Id(7, '0123456789abcdef'));
     const primData = await provider.load(
-      encodeSeedV3({ algorithm: '3d-prim', size: 7, mazeSeed: '0123456789abcdef' }, 7),
+      encodeSeedV3({ algorithm: '3d-prim', size: 7, mazeSeed: '0123456789abcdef' }),
     );
     expect(primData.walls3D).not.toEqual(rbData.walls3D);
   });

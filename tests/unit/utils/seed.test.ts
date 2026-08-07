@@ -305,20 +305,28 @@ describe('encodeSeed / decodeSeed', () => {
   // (most specific 3-segment pattern), then v2, then v1.
   describe('v3 3D voxel seed (P4)', () => {
     it('encodeSeedV3 emits the documented v3 wire format', () => {
-      const id = encodeSeedV3(
-        { algorithm: '3d-recursive-backtracker', size: 7, mazeSeed: '0123456789abcdef' },
-        7,
-      );
+      const id = encodeSeedV3({
+        algorithm: '3d-recursive-backtracker',
+        size: 7,
+        mazeSeed: '0123456789abcdef',
+      });
       expect(id).toBe('algo-v3-3d-recursive-backtracker-7-0123456789abcdef');
     });
 
-    it('encodeSeedV3 round-trips every 3D size in {5, 7, 9}', () => {
-      for (const size of [5, 7, 9] as const) {
-        const id = encodeSeedV3(
-          { algorithm: '3d-recursive-backtracker', size, mazeSeed: '0000000000000001' },
+    it('encodeSeedV3 round-trips every 3D size in {5, 7, 9, 11, 13, 15} (P4b-CellSize widened)', () => {
+      // P4b-CellSize: the size whitelist widened from
+      // {5, 7, 9} to {5, 7, 9, 11, 13, 15}. The codec
+      // regex `(\d+)` and the runtime whitelist check
+      // both accept the new sizes; the round-trip contract
+      // is unchanged (encode → decode is identity for
+      // the same algorithm + size + hex).
+      for (const size of [5, 7, 9, 11, 13, 15] as const) {
+        const id = encodeSeedV3({
+          algorithm: '3d-recursive-backtracker',
           size,
-        );
-        expect(id).toMatch(/^algo-v3-3d-recursive-backtracker-(5|7|9)-[0-9a-f]{16}$/);
+          mazeSeed: '0000000000000001',
+        });
+        expect(id).toMatch(/^algo-v3-3d-recursive-backtracker-(5|7|9|11|13|15)-[0-9a-f]{16}$/);
         const decoded = decodeSeed(id);
         expect(decoded.algorithm).toBe('3d-recursive-backtracker');
         expect(decoded.size).toBe(size);
@@ -337,10 +345,11 @@ describe('encodeSeed / decodeSeed', () => {
     // `AlgorithmMazeProvider.load3D` (no codec changes
     // needed).
     it('P4b-Prim: encodeSeedV3 round-trips a 3d-prim id', () => {
-      const id = encodeSeedV3(
-        { algorithm: '3d-prim', size: 7, mazeSeed: '0123456789abcdef' },
-        7,
-      );
+      const id = encodeSeedV3({
+        algorithm: '3d-prim',
+        size: 7,
+        mazeSeed: '0123456789abcdef',
+      });
       expect(id).toBe('algo-v3-3d-prim-7-0123456789abcdef');
       const decoded = decodeSeed(id);
       expect(decoded.algorithm).toBe('3d-prim');
@@ -371,15 +380,17 @@ describe('encodeSeed / decodeSeed', () => {
       ).toThrow(InvalidSeedError);
     });
 
-    it.each([0, 1, 3, 4, 6, 8, 10, 11, 15, 50, -1, 1.5, '4', null])(
+    it.each([0, 1, 3, 4, 6, 8, 10, 12, 14, 16, 17, 19, 21, 50, -1, 1.5, '4', null])(
       'decodeSeed rejects v3 with out-of-range size %s',
       (bad) => {
         // String template coerces the size to a string; the codec
         // regex's (\d+) accepts the digits and the whitelist check
         // rejects the resulting integer. NaN / null / -1 / 1.5
         // either fall through the regex or coerce to a disallowed
-        // number; the test exercises both shapes. `5`, `7`, `9`
-        // are the only valid sizes so we exclude them.
+        // number; the test exercises both shapes.
+        // P4b-CellSize: the valid set is now {5, 7, 9, 11, 13, 15};
+        // 12/14/16/17/19/21 are bad (12/14/16 are even; 17/19/21
+        // are out-of-range for the current scope).
         const id = `algo-v3-3d-recursive-backtracker-${bad}-0123456789abcdef`;
         expect(() => decodeSeed(id)).toThrow(InvalidSeedError);
       },

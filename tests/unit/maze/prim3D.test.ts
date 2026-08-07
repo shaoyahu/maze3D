@@ -25,21 +25,22 @@ function prngFromHex(hex: string): () => number {
   return mulberry32(fnv1a(hex));
 }
 
-describe('isVoxel3DSize (P4a whitelist, reused by P4b-Prim)', () => {
-  // F-P4B-PRIM-WHITELIST: P4a set {5, 7, 9} is reused
-  // verbatim. P4b-CellSize (11/13/15) is a future scope
-  // that will widen this set; until then both P4a RB and
-  // P4b-Prim share one whitelist via re-export from
-  // `recursiveBacktracker3D.ts`.
-  it('P4a whitelist is {5, 7, 9} (unchanged by P4b-Prim)', () => {
-    expect(VALID_3D_SIZES).toEqual([5, 7, 9]);
+describe('isVoxel3DSize (P4a whitelist, widened by P4b-CellSize, reused by P4b-Prim)', () => {
+  // F-P4B-CELLSIZE-PRIM: P4b-CellSize widened the set to
+  // {5, 7, 9, 11, 13, 15}. P4b-Prim reuses the same set
+  // (the 3D algorithm family shares one whitelist via
+  // re-export from `recursiveBacktracker3D.ts`). P4a RB
+  // and P4b-Prim both ship in this scope; future 3D
+  // algorithms (P4b-Kruskal etc.) will also reuse it.
+  it('whitelist is {5, 7, 9, 11, 13, 15} (P4b-CellSize widened)', () => {
+    expect(VALID_3D_SIZES).toEqual([5, 7, 9, 11, 13, 15]);
   });
 
   it('isVoxel3DSize accepts the whitelist and rejects the rest', () => {
-    for (const n of [5, 7, 9]) {
+    for (const n of [5, 7, 9, 11, 13, 15]) {
       expect(isVoxel3DSize(n)).toBe(true);
     }
-    for (const n of [0, 1, 3, 4, 6, 8, 10, 11, 15, 50, -1, 1.5, NaN, Infinity, '5', null]) {
+    for (const n of [0, 1, 3, 4, 6, 8, 10, 12, 14, 16, 17, 19, 21, 50, -1, 1.5, NaN, Infinity, '5', null]) {
       expect(isVoxel3DSize(n as unknown)).toBe(false);
     }
   });
@@ -47,7 +48,10 @@ describe('isVoxel3DSize (P4a whitelist, reused by P4b-Prim)', () => {
 
 describe('generatePrim3D', () => {
   it('throws on an even or out-of-whitelist size (P4a invariant, reused)', () => {
-    for (const bad of [0, 1, 3, 4, 6, 8, 10, 11, 50]) {
+    // P4b-CellSize: bad list mirrors the recursiveBacktracker3D
+    // test (11/13/15 removed as valid; 17/19/21 stay in
+    // the future scope bucket).
+    for (const bad of [0, 1, 3, 4, 6, 8, 10, 12, 14, 16, 17, 19, 21, 50]) {
       expect(() => generatePrim3D(bad, prngFromHex('0123456789abcdef')))
         .toThrowError(/visualSize/);
     }

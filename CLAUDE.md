@@ -226,6 +226,56 @@ Type system 不会挡住"主动改 mapping"(exhaustive switch 仍过), 需 revie
 
 **P4a 跟 P4b-Prim 关系**:sibling 不是 alias — 同样 data layout + 性能 + reachability,但 outer loop 不同(RB = DFS, Prim = frontier)。同 seed 产生不同 walls(`'3d-recursive-backtracker-7-0123456789abcdef' !== '3d-prim-7-0123456789abcdef'` 在 wall pattern 上 byte-不同)。这个 contract 在 `algorithmMazeProvider.test.ts` 的 "3d-prim and 3d-recursive-backtracker produce DIFFERENT walls for the same seed" case pin 住。
 
+### 3D 多 cell size 11/13/15 (P4b-CellSize) — locked contracts
+
+**VALID_3D_SIZES 扩 6 sizes**:`[5, 7, 9, 11, 13, 15]`(`src/maze/generators/recursiveBacktracker3D.ts` + `src/utils/seed.ts` 2 处 lockstep)。P4a 锁 [5,7,9] (smallest three),P4b-CellSize 扩 [11,13,15] (P4a spec §15 预留的 medium sizes)。`isVoxel3DSize` 复用,自动接受新值,无需重写。**两处 whitelist 必须 lockstep** — `decodeSeed` 用 `seed.ts` 那份 runtime check,`generateXxx3D` 用 generator 那份 build-time check;只改一边会破 wire format 跟 generator contract。
+
+**Cell 数量级**:
+- 5³ = 125 cells (5×5×5)
+- 7³ = 343 cells
+- 9³ = 729 cells
+- 11³ = 1331 cells
+- 13³ = 2197 cells
+- 15³ = 3375 cells (P4a spec §15 留的 5s budget 上限)
+
+**3D 性能预算锁**(`tests/unit/maze/cellsize.perf.test.ts` 6 case 实测):
+
+| visualSize | cells | budget | 5/7/9 推算 |
+|---|---|---|---|
+| 5 | 125 | (50ms, P4a) | 1x baseline |
+| 7 | 343 | (200ms, P4a) | 4x cells, 4x time |
+| 9 | 729 | (1s, P4a) | 5.8x cells, 5x time |
+| **11** | **1331** | **1.5s** | 1.8x 9³ cells, 1.5x 9³ time (P4b) |
+| **13** | **2197** | **3s** | 1.65x 11³ cells, 2x 11³ time (P4b) |
+| **15** | **3375** | **5s** | 1.54x 13³ cells, 1.67x 13³ time (P4b, capped P4a spec §15) |
+
+P4b 实际跑出来 **4ms 总 (6 个 case)** — 比 budget 宽松 100x+。O(N) 算法形态锁住 perf;15³ 仅 ~1.7k cuboid meshes,1 帧 < 1ms draw call。
+
+**Draw call 警告**:15³ = 1687 cuboid meshes per frame。P4a 注释说"commodity hardware < 1000 draw calls" — 15³ 接近 2x budget,某些 GPU 可能掉帧。**P4c+ 优化候选**:InstancedMesh (一个 draw call per geometry 渲染所有 cuboid) 或 octree culling(只画玩家可见的 cuboid)。
+
+**3D 算法 + 3D size 正交**:3D RB (P4a) 和 3D Prim (P4b-Prim) 都接受 6 sizes (`VALID_3D_SIZES` re-exported from `recursiveBacktracker3D.ts`)。`AlgorithmMazeProvider.load3D` dispatch 走 `algorithm` literal,`size` 是独立参数,3D 算法集 × 3D size 集 = 2 × 6 = 12 种合法 seed。
+
+**Codec lockstep**:`algo-v3-{algorithm}-{size}-{hex}`,size 是字符串部分,codec regex `(\d+)` + runtime whitelist check 共同接受 6 sizes。`isProcedural` 4 处 (App.tsx + gameUrl.ts build/parse) lockstep 已加 v3 prefix (P4a 修过),size 是字符串部分不影响 prefix gate。
+
+**为什么 P4b-CellSize 不需要新 generator**:`generateRecursiveBacktracker3D` 和 `generatePrim3D` 的算法形态 O(N) over `visualSize³` cells — visualSize=15 跟 visualSize=9 一样是同样的算法,只是外层循环跑更多次。Algorithm 形态不动,只动 `VALID_3D_SIZES` 单数组 + 测试 whitelist case 改 6 sizes。
+
+**Perf 算法形态对比**:
+- 3D RB = O(N) cells (stack-based DFS, stack.push/pop O(1))
+- 3D Prim = O(N) cells (frontier-based random pick, swap-and-pop O(1))
+- 3D Kruskal = O(N α(N)) (union-find, ~O(N))
+- 3D Aldous-Broder = O(N²) 期望 (随机游走) — P4b 候选,15³ = 3375 cells,O(N²) = 11M ops,**会超 5s budget**
+- 3D Wilson's = O(N²) 期望 — 同上
+- 3D Cellular Automata = O(N × steps) 迭代 — 取决于 steps,通常 O(N) per step × 5+ steps
+
+P4b-CellSize 锁的 5s budget 只对 O(N) 家族有效。**未来 3D Aldous-Broder / 3D CA 候选需要重新算 budget** (可能需要 17/19/21 缩到 15/13/11 或重设 budget 到 30s)。
+
+**测试**(`tests/unit/maze/cellsize.perf.test.ts` 新建 6 case + 4 个 test file 改 whitelist case):
+- `recursiveBacktracker3D.test.ts` whitelist case 改 6 sizes
+- `prim3D.test.ts` 同上
+- `seed.test.ts` v3 codec round-trip 6 sizes + it.each bad list 改写
+- `algorithmMazeProvider.test.ts` 3D load 6 sizes × 2 算法
+- `cellsize.perf.test.ts` 6 case (3 sizes × 2 algorithms × 1.5s/3s/5s budget)
+
 ## 测试
 
 ```

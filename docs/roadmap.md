@@ -10,11 +10,11 @@
 
 | 字段 | 值 |
 |---|---|
-| 活跃增量 | **P4b-Prim 3D Prim 第二算法(2026-08-07 session 实施;3D Randomized Prim generator `src/maze/generators/prim3D.ts` + Algorithm 联合加 `'3d-prim'` + AlgorithmMazeProvider.load3D 加分支 + seed v3 加 '3d-prim' 到 whitelist + 11 case prim3D.test.ts + 1 case seed v3 + 2 case algorithmMazeProvider;typecheck 0/vitest 1711 pass+1 skip;修 2 真 bug:start cell 越界(用 maxIdx 替代 logicalSize)+ parallel `visited` 数组越界(cellKey 跨界乘法错位,改用 walls 数组判断);待用户 commit)** |
-| 已完成 | P2-2 14/14 ✅ + P2-3 14/14 ✅ + P2-4a 16/16 ✅ + P2-4b 20/20 ✅ + P2-5 16/16 ✅ + P2-6 10/10 ✅ + P2-7 8/8 ✅ + P2-9 ✅ + P2-10 11/11 ✅ + P2-11 16/16 ✅ + P2-13 ✅ + P2-14 ✅ + P2-15 24/24 ✅ + P2-16 ✅ + P2-17 ✅ + P2-18 ✅ + P2-19 ✅ + P2-20 ✅ + P2-21 ✅ + P3-1 ✅ + P3-2 ✅ + P3-3 ✅ + P4a ✅ + **P4b-Prim ✅ (2026-08-07, session 实施;3 文件/+14 case)** |
-| 下一个任务 | 等用户决策:commit P4b-Prim → 或继续 P4b-CellSize (11/13/15) / P4b-Lerp (0.1s tween) / P4b-Minimap (top-down 3D) — ship-each 节奏 |
+| 活跃增量 | **P4b-CellSize 3D 多 cell size 11/13/15(2026-08-07 session 实施;VALID_3D_SIZES [5,7,9] → [5,7,9,11,13,15] lockstep 2 处(seed.ts + recursiveBacktracker3D.ts)+ isVoxel3DSize 复用 + 4 个 test file whitelist case 改 6 sizes + 新建 cellsize.perf.test.ts 6 case(3 sizes × 2 algorithms × 1.5s/3s/5s budget 实测 4ms);typecheck 0/vitest 1721 pass+1 skip;待用户 commit)** |
+| 已完成 | P2-2 14/14 ✅ + P2-3 14/14 ✅ + P2-4a 16/16 ✅ + P2-4b 20/20 ✅ + P2-5 16/16 ✅ + P2-6 10/10 ✅ + P2-7 8/8 ✅ + P2-9 ✅ + P2-10 11/11 ✅ + P2-11 16/16 ✅ + P2-13 ✅ + P2-14 ✅ + P2-15 24/24 ✅ + P2-16 ✅ + P2-17 ✅ + P2-18 ✅ + P2-19 ✅ + P2-20 ✅ + P2-21 ✅ + P3-1 ✅ + P3-2 ✅ + P3-3 ✅ + P4a ✅ + P4b-Prim ✅ + **P4b-CellSize ✅ (2026-08-07, session 实施;5 文件/+10 case)** |
+| 下一个任务 | 等用户决策:commit P4b-CellSize → 或继续 P4b-Lerp (0.1s tween) / P4b-Minimap (3D top-down minimap) — ship-each 节奏 |
 | 最后更新 | 2026-08-07 |
-| 最近 commit | 待提交 — P4a 3D 体素迷宫 MVP (eded76d) 已 push;P4b-Prim 增量在 working tree 等待用户 commit |
+| 最近 commit | 待提交 — P4b-Prim 3D Prim 第二算法 (abb6f94) 已 push;P4b-CellSize 增量在 working tree 等待用户 commit |
 
 **约束**：
 - 一次只做一个任务（见下方「总任务列表」）
@@ -78,6 +78,7 @@
 | P3-3 | HUD 0.5s 红色 vignette overlay 与 P3-2 同步(WarningFlashOverlay.tsx + gameStore warningFlashUntil/triggerId + GameBridge.onWarningFlashState callback + 复用 invulnerable-fade keyframe(0.5s linear forwards);0.5s 锁 WARNING_FLASH_DURATION_SEC;只 hole-down 触发,bridge 写 wall-clock timestamp `Date.now()/1000 + 0.5`;trigger id bump 重启 CSS animation;8 test 覆盖 5 store + 3 component) | P1 | P3-2 | S | `docs/increments/p3-3-warning-flash-hud/` | ✅ done (2026-08-06,session 实施) |
 | P4a | 3D 体素迷宫 MVP(3D Recursive Backtracker generator + MazeData.walls3D + 3D BFS reachability isReachable3D + seed v3 codec `algo-v3-3d-recursive-backtracker-{5,7,9}-{hex}` + AlgorithmMazeProvider.load3D 路由 + 3D Scene 渲染 cuboid per wall cell + InputManager.getMove3D 6 邻居 WASD+Space/C + Game.tick3DMovement cell-based collision + 3D exit check at exit3D cell + MazeData.start3D?/exit3D? 可选字段;Algorithm union 加 `'3d-recursive-backtracker'`;3D RB 不通过 ALGORITHM_REGISTRY(签名不兼容 `CellType[][][]` vs `CellType[][]`);walls3D 出现走 3D 路径,否则 2D;P4a 不做 enemy/tutorial/parchment/3D 移动 lerp/3D 多 cell size,留 P4b) | P1 | P3-3 | L | `docs/increments/p4-3d-voxel-mazes/` | ✅ done (2026-08-06,session 实施;5 文件/+约 25 case;typecheck 0 / vitest 1695+1 skip / build 886ms) |
 | P4b-Prim | 3D Prim 第二算法(1:1 翻译 2D Prim 升 6 邻居 + frontier + swap-and-pop;Algorithm union 加 `'3d-prim'`;AlgorithmMazeProvider.load3D 加分支;seed v3 加 '3d-prim' 到 whitelist;复用 P4a 3D 数据布局 + thick-wall + VALID_3D_SIZES + 性能预算;3D RB 跟 3D Prim 是 sibling 不是 alias,同 seed 产生不同 walls;修 2 真 bug — start cell 越界(用 maxIdx 替代 logicalSize)+ parallel `visited` 数组越界(cellKey 跨界乘法错位,改用 walls 数组判断)) | P1 | P4a | S | `docs/increments/p4b-3d-prim/` | ✅ done (2026-08-07, session 实施;3 文件/+14 case;typecheck 0 / vitest 1711+1 skip) |
+| P4b-CellSize | 3D 多 cell size 11/13/15(VALID_3D_SIZES 扩 `[5,7,9,11,13,15]` lockstep 2 处 — seed.ts runtime check + recursiveBacktracker3D.ts build-time check;3D RB + 3D Prim 共享 whitelist 通过 re-export;isVoxel3DSize 复用;性能预算 11³ < 1.5s / 13³ < 3s / 15³ < 5s 实测 4ms;O(N) 算法形态锁住 perf;15³ = ~1687 cuboid draw calls 接近 P4a 1000 budget 上限,P4c+ 候选 InstancedMesh / octree culling;codec `algo-v3-{3d-rb|3d-prim}-{5|7|9|11|13|15}-{hex}` 12 种合法 seed;`tests/unit/maze/cellsize.perf.test.ts` 6 case) | P1 | P4b-Prim | S | `docs/increments/p4b-3d-cellsize/` | ✅ done (2026-08-07, session 实施;5 文件/+10 case;typecheck 0 / vitest 1721+1 skip) |
 
 > **P2-1 已删除**：原计划"多关卡 JSON（中/大尺寸）"被 P2-3 算法生成取代。MVP 保留 `level-small.json` 作为"教学关"，`level-tiny.json` 留 E2E。
 > **P2-4 拆分**：原"敌人 + 编辑器"X-Large 拆成 P2-4a（敌人+survive mode，依赖 P2-3）和 P2-4b（编辑器，独立）。

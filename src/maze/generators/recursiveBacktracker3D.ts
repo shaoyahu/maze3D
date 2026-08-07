@@ -35,11 +35,16 @@
 import type { CellType } from '../types';
 
 // P4: 3D size whitelist mirrors the 2D MAZE_SIZE_VALUES but in odd
-// integers (5 / 7 / 9). Larger sizes (11 / 13 / 15) are P4b+
-// work; the MVP ships the smallest three because the
-// wall-count per cell grows fast and 9 already draws ~700 cuboids
-// (729 cells, half walls).
-const VALID_3D_SIZES = [5, 7, 9] as const;
+// integers. P4a ships 5 / 7 / 9 (the smallest three — wall-count
+// per cell grows fast and 9 already draws ~700 cuboids / 729
+// cells). P4b-CellSize widens this set to 11 / 13 / 15 — the
+// P4a spec §15 budget (5s) is large enough to cover 15³
+// (3375 cells, ~1687 cuboids) under the O(N) 3D RB / 3D Prim
+// family. The whitelist order is preserved (smallest → largest)
+// so a `for (const size of VALID_3D_SIZES)` consumer iterates
+// in increasing visual-size order. P4b-CellSize §4 perf
+// budget: 11³ < 1.5s, 13³ < 3s, 15³ < 5s.
+const VALID_3D_SIZES = [5, 7, 9, 11, 13, 15] as const;
 export type Voxel3DSize = (typeof VALID_3D_SIZES)[number];
 
 export function isVoxel3DSize(n: unknown): n is Voxel3DSize {

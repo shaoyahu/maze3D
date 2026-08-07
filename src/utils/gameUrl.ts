@@ -171,7 +171,7 @@ export function parseGameSearchParams(
   // `algorithm.startsWith('3d-')` check is the same predicate
   // `AlgorithmMazeProvider.load` uses to dispatch to `load3D`.
   const seedId = decoded.algorithm.startsWith('3d-')
-    ? encodeSeedV3(decoded, decoded.size)
+    ? encodeSeedV3(decoded)
     : decoded.levelCount && decoded.levelCount > 1
       ? encodeSeedV2(decoded, decoded.levelCount)
       : encodeSeed(decoded);
@@ -219,14 +219,16 @@ export function buildGameSearchParams(
   // is the canonical name for it because every historical best
   // record is on the v1 codec).
   // P4: v3 (3D voxel) gets its own encoder branch. The size is
-  // a 3D visualSize (5/7/9), not the 2D MazeSize (15/30/50), so
-  // we route through `encodeSeedV3(seed, size)` instead of
-  // `encodeSeed(seed)` (which would emit a wire-invalid v1 id
-  // with the 3D `3d-` prefixed algorithm name).
+  // a 3D visualSize (5/7/9/11/13/15), not the 2D MazeSize
+  // (15/30/50), so we route through `encodeSeedV3(seed)` instead
+  // of `encodeSeed(seed)` (which would emit a wire-invalid v1
+  // id with the 3D `3d-` prefixed algorithm name). v3 has its
+  // own narrow shape because the 3D sizes don't satisfy the
+  // 2D `MazeSize` constraint on the shared `Seed` interface.
   if (isProcedural && options.seed) {
     const seed = options.seed;
     if (seed.algorithm.startsWith('3d-')) {
-      params.set(SEED_QUERY, encodeSeedV3(seed, seed.size));
+      params.set(SEED_QUERY, encodeSeedV3(seed));
     } else if (seed.levelCount && seed.levelCount > 1) {
       params.set(SEED_QUERY, encodeSeedV2(seed, seed.levelCount));
     } else {

@@ -26,15 +26,23 @@ function prngFromHex(hex: string): () => number {
 }
 
 describe('isVoxel3DSize / VALID_3D_SIZES', () => {
-  it('whitelist is exactly {5, 7, 9}', () => {
-    expect(VALID_3D_SIZES).toEqual([5, 7, 9]);
+  // F-P4B-CELLSIZE: P4b-CellSize widened the whitelist from
+  // {5, 7, 9} to {5, 7, 9, 11, 13, 15} (P4a spec §15 reserved
+  // 11/13/15 as a future scope). The shape is still
+  // ascending-sorted, smallest → largest. The "all odd
+  // integers" invariant holds (11/13/15 are all odd); the
+  // `isVoxel3DSize` test reuses the same 6 entries below
+  // and a representative set of out-of-range even / large
+  // / NaN / null / non-numeric inputs.
+  it('whitelist is exactly {5, 7, 9, 11, 13, 15} (P4b-CellSize widened)', () => {
+    expect(VALID_3D_SIZES).toEqual([5, 7, 9, 11, 13, 15]);
   });
 
   it('isVoxel3DSize accepts the whitelist and rejects the rest', () => {
-    for (const n of [5, 7, 9]) {
+    for (const n of [5, 7, 9, 11, 13, 15]) {
       expect(isVoxel3DSize(n)).toBe(true);
     }
-    for (const n of [0, 1, 3, 4, 6, 8, 10, 11, 15, 50, -1, 1.5, NaN, Infinity, '5', null]) {
+    for (const n of [0, 1, 3, 4, 6, 8, 10, 12, 14, 16, 17, 19, 21, 50, -1, 1.5, NaN, Infinity, '5', null]) {
       expect(isVoxel3DSize(n as unknown)).toBe(false);
     }
   });
@@ -42,7 +50,10 @@ describe('isVoxel3DSize / VALID_3D_SIZES', () => {
 
 describe('generateRecursiveBacktracker3D', () => {
   it('throws on an even or out-of-whitelist size (F-P4-1 invariant)', () => {
-    for (const bad of [0, 1, 3, 4, 6, 8, 10, 11, 50]) {
+    // P4b-CellSize: the bad list now covers 0..16 with 11/13/15
+    // removed (they're valid). 17/19/21 stay in the bad list
+    // as "future scope" (not yet shipped).
+    for (const bad of [0, 1, 3, 4, 6, 8, 10, 12, 14, 16, 17, 19, 21, 50]) {
       expect(() => generateRecursiveBacktracker3D(bad, prngFromHex('0123456789abcdef')))
         .toThrowError(/visualSize/);
     }
