@@ -66,6 +66,147 @@ const ARROW_HALF_BASE =0.28;
 const ARROW_LENGTH =0.44;
 const ARROW_POINTS = `0,${-ARROW_LENGTH} ${-ARROW_HALF_BASE},${ARROW_LENGTH *0.4} ${ARROW_HALF_BASE},${ARROW_LENGTH *0.4}`;
 
+// P4b-Panorama: 3-strip container layout. The 120×120 minimap
+// container is split into 3 equal-height rows (40px each), one
+// per y-layer the player might care about (top neighbor, current,
+// bottom neighbor). The split is fixed (40+40+40 = 120) — see
+// spec Q2. The bottom-border on each strip is the 1px gray
+// separator from spec Q5; the top strip's top border + the
+// bottom strip's bottom border hit the container edge, so we
+// keep them as 1px for visual consistency (the 1px of overlap
+// with the container border is invisible against the dark
+// rgba(20, 20, 28, 0.85) background).
+const STRIP_HEIGHT_PX = 40;
+const STRIP_SEPARATOR = '1px solid rgba(0, 0, 0, 0.3)';
+
+// P4b-Panorama: strip-level rendering shape. The middle strip
+// (current y) renders the full overlay stack (walls + exit +
+// visited + cone + arrow + off-layer exit hint). Top and bottom
+// strips render walls only at 50% fill-opacity — they exist
+// for spatial context ("what's up / down") not as primary
+// gameplay surfaces (the player isn't physically there, so no
+// arrow / cone / visited overlay).
+interface YStripProps {
+  walls2D: CellType[][];
+  viewBox: string;
+  // 1.0 for the current (middle) strip, 0.5 for top/bottom.
+  opacity: number;
+  // Current strip only: includes the player arrow, view cone,
+  // visited cells overlay, and off-layer exit hint.
+  isCurrent: boolean;
+  // P3-1 layer-flip opacity flash (only the current strip
+  // carries the visited-cells overlay, so only it gets the
+  // transition wrapper). Adjacent strips don't render visited
+  // cells at all.
+  visitedForLevel?: ReadonlySet<string>;
+  visitedOverlayOpacity?: number;
+  currentLayer?: number;
+  exitPos?: { x: number; z: number } | null;
+  playerGridX?: number;
+  playerGridZ?: number;
+  yawDeg?: number;
+  conePoints?: string;
+  exitHint?: { symbol: '↑' | '↓'; offset: number } | null;
+  // Whether to draw the 1px separator below this strip. The
+  // bottom strip (the last in the stack) skips it (the
+  // container's bottom border is the visual end).
+  showSeparator: boolean;
+}
+
+// P4b-Panorama: one y-layer strip. The component is React.memo'd
+// so a re-render of the parent (caused by y-level polling) only
+// re-renders the strips whose `walls2D` actually changed
+// (reference equality). Adjacent strips that share the same
+// `walls2D` reference across renders skip reconciliation
+// entirely. The 50% fill-opacity for non-current strips is
+// applied at the SVG group level (`<g style={{ opacity }}>`) so
+// the `currentLayer` `data-testid` and the strip's children
+// are all uniformly dimmed.
+const YStrip = memo(function YStrip(props: YStripProps) {
+  return (
+    <div
+      data-testid="minimap-strip"
+      data-y-layer={props.isCurrent ? props.currentLayer : 'adjacent'}
+      style={{
+        position: 'relative',
+        width: '100%',
+        height: `${STRIP_HEIGHT_PX}px`,
+        borderBottom: props.showSeparator ? STRIP_SEPARATOR : 'none',
+        boxSizing: 'border-box',
+        flex: '0 0 auto',
+      }}
+    >
+      <svg
+        viewBox={props.viewBox}
+        width="100%"
+        height="100%"
+        preserveAspectRatio="xMidYMid meet"
+        style={{ display: 'block' }}
+      >
+        <g style={{ opacity: props.opacity }}>
+          <StaticMaze
+            walls2D={props.walls2D}
+            exitPos={props.isCurrent ? props.exitPos ?? null : null}
+            pickups={[]}
+          />
+        </g>
+        {props.isCurrent && (
+          <>
+            {/* P3-1: visited cells for the current layer. The
+             <g> wrapper carries the layer-flip opacity transition
+             (0.1s) so the swap from the previous level's set to
+             the new one doesn't pop. The transition applies only
+             on the current strip (adjacent strips don't render
+             visited cells at all per Q7). */}
+            <g
+              style={{
+                opacity: props.visitedOverlayOpacity ?? 1,
+                transition: 'opacity 0.1s linear',
+              }}
+              data-testid="minimap-visited-wrap"
+            >
+              <VisitedCells
+                level={props.currentLayer ?? 0}
+                visited={props.visitedForLevel ?? EMPTY_VISITED}
+              />
+            </g>
+            <polygon
+              points={props.conePoints}
+              fill={COLOR_VIEW_CONE}
+              transform={`translate(${props.playerGridX} ${props.playerGridZ}) rotate(${props.yawDeg})`}
+              data-testid="view-cone"
+            />
+            <polygon
+              points={ARROW_POINTS}
+              fill="var(--accent)"
+              stroke="rgba(0, 0, 0, 0.6)"
+              strokeWidth="0.06"
+              transform={`translate(${props.playerGridX} ${props.playerGridZ}) rotate(${props.yawDeg})`}
+              data-testid="player-arrow"
+            />
+            {props.exitHint && (
+              <text
+                data-testid="minimap-exit-hint"
+                x={props.playerGridX}
+                y={(props.playerGridZ ?? 0) + props.exitHint.offset}
+                fill="var(--accent)"
+                fontSize="0.6"
+                fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+                textAnchor="middle"
+                dominantBaseline="middle"
+                transform={`rotate(${props.yawDeg ?? 0} ${props.playerGridX} ${(props.playerGridZ ?? 0) + props.exitHint.offset})`}
+                style={{ pointerEvents: 'none' }}
+              >
+                {props.exitHint.symbol} exit
+              </text>
+            )}
+          </>
+        )}
+      </svg>
+    </div>
+  );
+});
+
 export interface MinimapProps {
  maze: MazeData;
  gameRef: MutableRefObject<Game | null>;
@@ -409,6 +550,63 @@ export function Minimap({ maze, gameRef }: MinimapProps) {
  {yLevelLabel}
  </div>
  )}
+ {is3D ? (
+ // P4b-Panorama: 3-strip 堆叠. Top + middle + bottom, each
+ // 40px tall. Adjacent strips (top/bottom) are conditionally
+ // rendered — out-of-bounds y-layers (currentLayer=0 has no
+ // bottom; currentLayer=visualSize-1 has no top) leave a blank
+ // space in the container. The current strip carries the full
+ // overlay stack (exit + visited + cone + arrow + off-layer
+ // hint); adjacent strips carry walls only at 50% fill-opacity.
+ // P4b-Panorama: 1px 灰分隔线通过每个 strip 的
+ // `border-bottom` 渲染 (除了最底部 strip),容器内 3 strip
+ // 视觉上明显分开。
+ <div
+ data-testid="minimap-panorama"
+ style={{
+ display: 'flex',
+ flexDirection: 'column',
+ width: '100%',
+ height: '100%',
+ }}
+ >
+ {currentLayer + 1 < (maze.walls3D?.length ?? 0) && (
+ <YStrip
+ walls2D={(maze.walls3D?.[currentLayer + 1] as CellType[][]) ?? []}
+ viewBox={viewBox}
+ opacity={0.5}
+ isCurrent={false}
+ showSeparator={true}
+ />
+ )}
+ <YStrip
+ walls2D={(maze.walls3D?.[currentLayer] as CellType[][]) ?? []}
+ viewBox={viewBox}
+ opacity={1}
+ isCurrent={true}
+ showSeparator={currentLayer - 1 >= 0}
+ visitedForLevel={visitedForLevel}
+ visitedOverlayOpacity={overlayOpacity}
+ currentLayer={currentLayer}
+ exitPos={exitPos2D}
+ playerGridX={playerGridX}
+ playerGridZ={playerGridZ}
+ yawDeg={yawDeg}
+ conePoints={conePoints}
+ exitHint={exitHint}
+ />
+ {currentLayer - 1 >= 0 && (
+ <YStrip
+ walls2D={(maze.walls3D?.[currentLayer - 1] as CellType[][]) ?? []}
+ viewBox={viewBox}
+ opacity={0.5}
+ isCurrent={false}
+ showSeparator={false}
+ />
+ )}
+ </div>
+ ) : (
+ // 2D path: 单 SVG 全高 (跟 P2-3 / P3-1 既有行为一致)。
  <svg
  viewBox={viewBox}
  width="100%"
@@ -442,32 +640,8 @@ export function Minimap({ maze, gameRef }: MinimapProps) {
  transform={`translate(${playerGridX} ${playerGridZ}) rotate(${yawDeg})`}
  data-testid="player-arrow"
  />
- {/* P4b-Minimap: off-layer exit hint. Rendered last so the
- text sits on top of the maze + arrow (no z-fighting with
- the visited overlay). The text is translated by
- `(playerGridX, playerGridZ + offset)` so it follows the
- player through cell hops; `offset = ±1.5` puts it just
- outside the player arrow's apex without overlapping it.
- Rotated by `yawDeg` so the text follows the player's
- facing — useful when the player is rotating to "look at"
- the hint as they move vertically. */}
- {exitHint && (
- <text
- data-testid="minimap-exit-hint"
- x={playerGridX}
- y={playerGridZ + exitHint.offset}
- fill="var(--accent)"
- fontSize="0.6"
- fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
- textAnchor="middle"
- dominantBaseline="middle"
- transform={`rotate(${yawDeg} ${playerGridX} ${playerGridZ + exitHint.offset})`}
- style={{ pointerEvents: 'none' }}
- >
- {exitHint.symbol} exit
- </text>
- )}
  </svg>
+ )}
  </div>
  );
 }

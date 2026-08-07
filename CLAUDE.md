@@ -428,6 +428,68 @@ P4b-CellSize 锁的 5s budget 只对 O(N) 家族有效。**未来 3D Aldous-Brod
 - `tick3DTween` 完成时 fire `onLevelChange(yCell)` (Space press 0→1)
 - `startLevel` 3D path fire 初始 `onLevelChange(start3D.y)` (跟 2D path 互斥 dispatch)
 
+### 3D 全景 minimap — 3 y-layer 堆叠 (P4b-Panorama) — locked contracts
+
+**3D minimap 升级为 3 strip 堆叠** (120×120 容器拆 40+40+40):
+- **上 strip (40px)**: `walls3D[currentLayer + 1]` — 50% fill-opacity (玩家 y+1 视野)
+- **中 strip (40px)**: `walls3D[currentLayer]` — 100% opacity + 玩家 arrow + view cone + visited cells + 出口 rect (玩家当前 y)
+- **下 strip (40px)**: `walls3D[currentLayer - 1]` — 50% fill-opacity (玩家 y-1 视野)
+- 越界 strip 不渲染 (currentLayer=0 没下层,currentLayer=visualSize-1 没上层,留白)
+- 1px 灰横线分隔 (`border-bottom: '1px solid rgba(0,0,0,0.3)'`,最底 strip 跳过)
+- 玩家 y 变化 → 3 strip 整体滚动,中间 strip 永远对应当前 y
+
+**3 strip 用 3 个独立 `<svg>` 元素** (不是 1 个 SVG 3 个 group):
+- 每个 strip 独立 `viewBox="0 0 w d"`,独立 `preserveAspectRatio="xMidYMid meet"`
+- `YStrip` 组件用 `React.memo` 包装,引用相等时跳过 reconciliation
+- 3 SVG 元素比 1 SVG 3 group 简单 (每个 strip 独立,无需 group transform 算 offset)
+- 1px 分隔线用 CSS `border-bottom` 而不是 SVG stroke (跨 3 SVG 边界,简单)
+
+**当前 y strip 满色 / 相邻 50% opacity**:
+- 满色: 中间 strip 是主视图 (玩家位置),强化"现在在哪"
+- 50%: 上下相邻是 "context" (知道上面 / 下面有什么),退到背景
+- opacity 应用在 `<g style={{ opacity }}>` 包裹 StaticMaze,所有 rect 统一 dim
+- 不是"远端更透明"动态渐变 (本 scope 锁 50% 固定,简单可读)
+
+**出口 / visited / arrow 只在当前 y strip**:
+- 玩家物理位置在当前 y,arrow / cone / visited 都在当前 y 渲染
+- 上下相邻 strip 只画 walls,不画 visited (玩家没走过那里)
+- 出口 dispatch 跟 P4b-Minimap 一致 — 同层 rect / off-layer "↑/↓ exit" text (只在当前 strip 渲染)
+- off-layer exit hint 方向 (↑/↓) 跟 strip 视觉位置对齐 (上 strip 在屏幕上方)
+
+**`<svg>` 数量 = 3** (3D 模式) vs **1** (2D 模式):
+- 2D path 走 P2-3 / P3-1 既有单 SVG 全高路径 (跟既有渲染同形)
+- 3D path 走 P4b-Panorama 3 strip 堆叠路径
+- 互斥 dispatch (`is3D ? <panorama> : <single-svg>`)
+
+**YStrip 组件 React.memo**:
+- props `walls2D` 引用相等时跳过 reconciliation
+- 玩家 y 翻格时 (10Hz poll) 3 个 strip 都重渲染,但引用相等的 strip 不 diff
+- 50% / 100% opacity 通过 `<g>` 包裹,避免 rect 单独算 opacity
+
+**P4b-Minimap y-level 标签 "L{n}/{total}" 保留**:
+- 容器右上角,绝对定位,跟 P4b-Panorama 1 strip 路径同位置
+- 当前 y 的 1-indexed display
+- 跟 HUD `LevelIndicator` chip (P4b-HudLayer) 数字部分同步
+
+**复用 P4b-Minimap / P4b-HudLayer 锁的 contracts**:
+- `getPlayerY()` accessor + `PlayerSnapshot.y` + `Y_EPSILON` 早出 (P4b-Minimap 锁)
+- `bridge.onLevelChange(yCell)` 推 y-cell (P4b-HudLayer 锁)
+- 出口 dispatch 同层 rect / off-layer "↑/↓ exit" text (P4b-Minimap 锁)
+- 2D minimap 走 P4b-Minimap 单层路径,3D minimap 走 P4b-Panorama 3 strip 路径,互斥 dispatch
+- 120×120 容器尺寸 (P2-3 锁) 不动
+- 1px 灰分隔线 (本 scope 锁)
+
+**性能**:
+- 3 strip × ≤ 225 rect (visualSize=15) = ≤ 675 rect 总数
+- React.memo 跳过引用相等的 strip
+- 10Hz poll 抓 y 触发 minimap 重渲染
+- 实测影响 < 1ms / frame
+
+**测试**(`tests/component/Minimap.Panorama.test.tsx` 新建 9 case + 既有 `Minimap.3D.test.tsx` 8 case + 既有 `minimap.test.tsx` 31 case 全部不动):
+- `Minimap.Panorama.test.tsx` (NEW, 9 case): 3 strip 渲染 / 越界 strip 隐藏 (currentLayer=0 / =visualSize-1) / 50% vs 100% opacity / 出口 off-layer hint 只在当前 strip / 同层 exit rect 只在当前 strip / y-level 标签保留 / visited cells 只在当前 strip / 3 SVG 元素数
+- 既有 `Minimap.3D.test.tsx` (UPDATE): 8 case 改 dispatch (3D 走 P4b-Panorama 路径,断言 3 strip 存在 + 越界正确);既有断言 (data-is-3d / data-level / y-level 标签 / off-layer exit hint) 全部不动
+- 既有 `minimap.test.tsx` (UPDATE): 2D 路径完全不动,31 case 全部 pass
+
 ## 测试
 
 ```
