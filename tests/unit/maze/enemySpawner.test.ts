@@ -173,4 +173,36 @@ describe('injectEnemySpawns', () => {
       expect(spawns.map((s) => s.level)).toEqual([0, 1, 0, 1, 0, 1]);
     });
   });
+
+  // P3-1 fix-progressive-max: the LevelSelect "渐进上限" input
+  // threads through as `options.spawnSchedule.max` and caps the
+  // total number of concurrent enemies on the field. The runtime
+  // should always honor the user-set cap, even when `count`
+  // (= initial enemyCount) would otherwise ask for more.
+  describe('progressive-spawn cap (P3-1 fix-progressive-max)', () => {
+    it('spawnSchedule.max=3 caps out.length at 3 even when count=10', () => {
+      const spawns = injectEnemySpawns(openMaze, 10, { spawnSchedule: { max: 3 } });
+      expect(spawns).toHaveLength(3);
+    });
+
+    it('spawnSchedule.max undefined / omitted → no cap (back-compat with P2 callers)', () => {
+      // The pre-fix callers don't pass `spawnSchedule` at all. The
+      // fix must preserve their behavior — `count` still drives the
+      // out.length ceiling, capped only by ENEMY_COUNT_MAX (10).
+      const spawns = injectEnemySpawns(openMaze, 7);
+      expect(spawns).toHaveLength(7);
+    });
+
+    it('spawnSchedule.max=0 (or negative) → no cap (treated as "unset")', () => {
+      // The LevelSelect input clamps to [1, 20] so a 0/negative
+      // value is only reachable via a hand-crafted caller or a
+      // future regression. The runtime should be defensive: treat
+      // 0/negative as "cap not set" rather than 0-spawn (which
+      // would silently disable survive mode).
+      const spawns0 = injectEnemySpawns(openMaze, 5, { spawnSchedule: { max: 0 } });
+      expect(spawns0).toHaveLength(5);
+      const spawnsNeg = injectEnemySpawns(openMaze, 5, { spawnSchedule: { max: -3 } });
+      expect(spawnsNeg).toHaveLength(5);
+    });
+  });
 });

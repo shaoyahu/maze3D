@@ -520,6 +520,15 @@ export interface SpawnSchedule {
   intervalSec: number;
   onPickup: boolean;
   enabled: boolean;
+  // P3-1 fix-progressive-max: cap on the *concurrent* enemy count
+  // on the field. The LevelSelect "渐进上限" input is the
+  // canonical user entry point — it lives on `StartLevelOptions`
+  // as `progressiveMax` and is round-tripped through the URL
+  // (`?progressive=1&progressiveMax=5`). Required field (not
+  // optional) so the type system surfaces every consumer that
+  // needs to forward it; DEFAULT gives the value at every
+  // construction site.
+  max: number;
 }
 
 export type EnemyAggression = 'easy' | 'medium' | 'hard';
@@ -610,17 +619,38 @@ export const SURVIVE_SECONDS_VALUES = [30, 60, 90, 120] as const;
 export type SurviveSeconds = (typeof SURVIVE_SECONDS_VALUES)[number];
 export const SURVIVE_SECONDS_DEFAULT: SurviveSeconds = 90;
 
+// P2-6: progressive-spawn 上限输入框约束. The runtime SPAWN_SCHEDULE_DEFAULT
+// already hard-codes `enabled: true` but does not bound the progressive
+// upper cap (engine-side it's clamped per-tick). The UI exposes a max
+// input that mirrors ENEMY_COUNT_MIN/MAX/DEFAULT naming. Declared
+// BEFORE `SPAWN_SCHEDULE_DEFAULT` because the default's `max` field
+// reads this constant at module-init time (the old "constants after
+// the consumer" order would TDZ on first import).
+//
+// P3-1 fix-progressive-max: the default + the URL clamp range
+// (PROGRESSIVE_MAX_MIN..PROGRESSIVE_MAX_MAX in gameUrl.ts) are the
+// same source of truth the LevelSelect input consults. The default
+// is 10; the URL upper cap is 20 (so a hand-crafted deep link can
+// ask for a higher cap than the default). The previous spec said
+// "UI mirrors ENEMY_COUNT_MAX = 10", but a long survive level can
+// reasonably want more than 10 concurrent enemies; the URL clamp
+// at 20 is the relaxed upper bound. Both constants are pinned
+// here so a future tweak is a one-line edit.
+export const SPAWN_PROGRESSIVE_MAX_DEFAULT = 10;
+export const SPAWN_PROGRESSIVE_MAX_MIN = 1;
+export const SPAWN_PROGRESSIVE_MAX_MAX = 20;
+
 export const SPAWN_SCHEDULE_DEFAULT: SpawnSchedule = {
   intervalSec: 15,
   onPickup: true,
   enabled: true,
+  // P3-1 fix-progressive-max: same constant the LevelSelect input
+  // boxes are initialized to. Keeping a single source of truth
+  // means a future bump of the default (e.g. 10 → 12) only edits
+  // this one line — the URL parser's clamp and the input's clamp
+  // both re-read the same number.
+  max: SPAWN_PROGRESSIVE_MAX_DEFAULT,
 };
-
-// P2-6: progressive-spawn 上限输入框约束. The runtime SPAWN_SCHEDULE_DEFAULT
-// already hard-codes `enabled: true` but does not bound the progressive
-// upper cap (engine-side it's clamped per-tick). The UI exposes a max
-// input that mirrors ENEMY_COUNT_MIN/MAX/DEFAULT naming.
-export const SPAWN_PROGRESSIVE_MAX_DEFAULT = 10;
 
 export function clampEnemyCount(value: number | undefined): number {
   if (value === undefined || Number.isNaN(value)) return ENEMY_COUNT_DEFAULT;

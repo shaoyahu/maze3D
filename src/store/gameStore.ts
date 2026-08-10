@@ -322,7 +322,17 @@ export const useGameStore = create<GameState>((set, get) => ({
       // return []` short-circuit, but the explicit branch is the
       // documented contract — same rationale as Game.startLevel.
       const injectedEnemies = mode === 'survive'
-        ? injectEnemySpawns(maze, requestedEnemyCount, { levelCount: maze.levelCount ?? 1 })
+        ? injectEnemySpawns(maze, requestedEnemyCount, {
+            levelCount: maze.levelCount ?? 1,
+            // P3-1 fix-progressive-max: thread the user's
+            // `options.spawnSchedule` into the inject call so the
+            // LevelSelect "渐进上限" input actually caps the
+            // initial batch. The Game.startLevel call site (engine
+            // side) does the same threading; both sites must
+            // stay in lockstep so the store-side `currentEnemyCount`
+            // and the scene-side `injectedMaze.enemies` agree.
+            spawnSchedule: options?.spawnSchedule,
+          })
         : [];
       // F-2026-06-17-C-H-3: mirror Game.startLevel — drop any
       // previously-injected gen-* enemies before counting. Without

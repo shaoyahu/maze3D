@@ -40,7 +40,7 @@ import type { EnemySpawn, MazeData } from './types';
 export function injectEnemySpawns(
   maze: MazeData,
   count: number | undefined,
-  options?: { levelCount?: number },
+  options?: { levelCount?: number; spawnSchedule?: { max?: number } },
 ): EnemySpawn[] {
   const target = clampEnemyCount(count);
   if (target === 0) return [];
@@ -51,6 +51,16 @@ export function injectEnemySpawns(
   // path: every enemy is left level-less).
   const levelCount = options?.levelCount ?? 1;
   const useLevelDistribution = levelCount >= 2;
+
+  // P3-1 fix-progressive-max: the LevelSelect "渐进上限" input
+  // threads through as `options.spawnSchedule.max`. We take the
+  // min(target, max) so a user-set cap of 3 trumps an `enemyCount`
+  // ask of 10 — the runtime never puts more concurrent enemies on
+  // the field than the progressive cap allows. `undefined` /
+  // non-positive falls through to `target` (back-compat with the
+  // P2-era callers that don't know about progressive).
+  const max = options?.spawnSchedule?.max;
+  const effective = max !== undefined && max > 0 ? Math.min(target, max) : target;
 
   const w = maze.size.width;
   const d = maze.size.depth;
@@ -84,7 +94,7 @@ export function injectEnemySpawns(
   candidates.sort((a, b) => (a.x - b.x) || (a.z - b.z));
 
   const out: EnemySpawn[] = [];
-  for (let i = 0; i < candidates.length && out.length < target; i++) {
+  for (let i = 0; i < candidates.length && out.length < effective; i++) {
     const c = candidates[i];
     const neighbor = findWalkableNeighbor(maze, c.x, c.z);
     // Skip island cells — without a walkable neighbor the Enemy would

@@ -9,6 +9,7 @@ import {
   SURVIVE_SECONDS_VALUES,
   SURVIVE_SECONDS_DEFAULT,
   SPAWN_SCHEDULE_DEFAULT,
+  SPAWN_PROGRESSIVE_MAX_DEFAULT,
   clampEnemyCount,
   enemyChaseMultiplier,
   isValidSurviveSeconds,
@@ -132,11 +133,18 @@ describe('P2-4a enemy constants', () => {
     expect(SURVIVE_SECONDS_DEFAULT).toBe(90);
   });
 
-  it('defaults the spawn schedule to intervalSec=15, onPickup=true, enabled=true', () => {
+  it('defaults the spawn schedule to intervalSec=15, onPickup=true, enabled=true, max=SPAWN_PROGRESSIVE_MAX_DEFAULT', () => {
+    // P3-1 fix-progressive-max: the `max` field is the new
+    // progressive-spawn upper cap (defaulted from
+    // `SPAWN_PROGRESSIVE_MAX_DEFAULT = 10`). The assertion is
+    // keyed off the constant rather than the literal `10` so a
+    // future bump of the default (e.g. 10 → 12) only edits
+    // types.ts and the test follows.
     expect(SPAWN_SCHEDULE_DEFAULT).toEqual({
       intervalSec: 15,
       onPickup: true,
       enabled: true,
+      max: SPAWN_PROGRESSIVE_MAX_DEFAULT,
     });
   });
 });

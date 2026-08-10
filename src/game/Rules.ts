@@ -253,17 +253,28 @@ export interface SpawnTriggerResult {
 // cap at 10, so even a flurry of pickups past the cap must not push
 // past it. `enabled: false` short-circuits everything.
 export function shouldProgressSpawn(input: SpawnTriggerInput): SpawnTriggerResult {
+  // P3-1 fix-progressive-max (P2 follow-up): the per-tick cap
+  // is the user-set `schedule.max` (defaulted to
+  // `SPAWN_PROGRESSIVE_MAX_DEFAULT` = 10), not the global
+  // `ENEMY_COUNT_MAX`. The old hardcoded `ENEMY_COUNT_MAX`
+  // meant a "渐进上限=3" UI pick would be honored at the
+  // initial `injectEnemySpawns` call (the Session's first
+  // batch) but silently reverted to the global cap as soon
+  // as the per-tick progressive trigger fired. Both sites
+  // now use the same `schedule.max` field.
+  const cap = input.schedule.max ?? ENEMY_COUNT_MAX;
   if (!input.enabled) return { triggered: false, reason: null, nextEnemyCount: input.currentEnemyCount };
-  if (input.currentEnemyCount >= ENEMY_COUNT_MAX) {
+  if (input.currentEnemyCount >= cap) {
     return { triggered: false, reason: null, nextEnemyCount: input.currentEnemyCount };
   }
   if (input.schedule.onPickup && input.pickupCount > input.lastPickupCount) {
     // F-N5: spawn N enemies for N pickups collected in this tick, capped
-    // by the remaining headroom under ENEMY_COUNT_MAX. Previously this
+    // by the remaining headroom under `schedule.max`. Previously this
     // hardcoded +1, dropping the delta — 3 pickups in one frame spawned
-    // only 1 enemy.
+    // only 1 enemy. The `cap` swap (P3-1 fix-progressive-max)
+    // mirrors the early-return guard above.
     const spawns = Math.min(
-      ENEMY_COUNT_MAX - input.currentEnemyCount,
+      cap - input.currentEnemyCount,
       input.pickupCount - input.lastPickupCount,
     );
     return {
@@ -276,7 +287,7 @@ export function shouldProgressSpawn(input: SpawnTriggerInput): SpawnTriggerResul
     return {
       triggered: true,
       reason: 'time',
-      nextEnemyCount: Math.min(ENEMY_COUNT_MAX, input.currentEnemyCount + 1),
+      nextEnemyCount: Math.min(cap, input.currentEnemyCount + 1),
     };
   }
   return { triggered: false, reason: null, nextEnemyCount: input.currentEnemyCount };

@@ -249,6 +249,66 @@ describe('buildGameSearchParams', () => {
     expect(built.get(GAME_URL_QUERY_KEYS.ENEMIES_QUERY)).toBeNull();
   });
 
+  // P3-1 fix-progressive-max: `?progressiveMax=N` round-trips
+  // alongside `?progressive=…` so the LevelSelect "渐进上限"
+  // input is preserved through deep-link sharing. The clamp range
+  // is [1, 20] — out-of-range values are clamped, non-finite are
+  // rejected as `bad-progressive-max`.
+  it('parses ?progressiveMax=5 and round-trips through buildGameSearchParams', () => {
+    const built = buildGameSearchParams(VALID_SEED_ID, {
+      mode: 'survive',
+      spawnSchedule: { ...SPAWN_SCHEDULE_DEFAULT, max: 5 },
+    });
+    expect(built.get(GAME_URL_QUERY_KEYS.PROGRESSIVE_MAX_QUERY)).toBe('5');
+    const parsed = parseGameSearchParams(built);
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) {
+      expect(parsed.parsed.options.spawnSchedule?.max).toBe(5);
+    }
+  });
+
+  it('clamps out-of-range progressiveMax (negative / > 20) into [1, 20]', () => {
+    // The lenient-bad-input policy the other numeric queries
+    // (`survive` / `enemies`) use: out-of-range values are
+    // clamped, never rejected. A 0 or negative value falls back
+    // to PROGRESSIVE_MAX_MIN (= 1); a value > 20 falls back to
+    // PROGRESSIVE_MAX_MAX (= 20).
+    const builtLow = buildGameSearchParams(VALID_SEED_ID, {
+      mode: 'survive',
+      spawnSchedule: { ...SPAWN_SCHEDULE_DEFAULT, max: 0 },
+    });
+    // The build step writes the raw `max` (0) into the URL.
+    // The parser then clamps it on read.
+    const parsedLow = parseGameSearchParams(builtLow);
+    expect(parsedLow.ok).toBe(true);
+    if (parsedLow.ok) {
+      expect(parsedLow.parsed.options.spawnSchedule?.max).toBe(1);
+    }
+
+    const builtHigh = buildGameSearchParams(VALID_SEED_ID, {
+      mode: 'survive',
+      spawnSchedule: { ...SPAWN_SCHEDULE_DEFAULT, max: 999 },
+    });
+    const parsedHigh = parseGameSearchParams(builtHigh);
+    expect(parsedHigh.ok).toBe(true);
+    if (parsedHigh.ok) {
+      expect(parsedHigh.parsed.options.spawnSchedule?.max).toBe(20);
+    }
+  });
+
+  it('rejects non-finite progressiveMax values (bad-progressive-max)', () => {
+    // A hand-crafted URL like `?progressiveMax=abc` should not
+    // be silently clamped to 1 — that would mask a typo and
+    // silently change the cap. NaN / Infinity / non-numeric
+    // strings are rejected as a bad-progressive-max error so
+    // the caller can fall back to a fresh level.
+    const parsed = parseGameSearchParams(new URLSearchParams('seed=algo-v1-kruskal-30-0123456789abcdef&progressiveMax=abc'));
+    expect(parsed.ok).toBe(false);
+    if (!parsed.ok) {
+      expect(parsed.error).toBe('bad-progressive-max');
+    }
+  });
+
   it('uses encodeSeed to canonicalize the seed id even when the caller pre-built one', () => {
     // Caller passes a procedurally-shaped seed via options.seed; the id
     // parameter is the same raw string. buildGameSearchParams re-encodes

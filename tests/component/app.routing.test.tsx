@@ -125,7 +125,7 @@ describe('buildGameSearchParams round-trip (smoke)', () => {
       mode: 'survive',
       surviveSeconds: 60,
       enemyCount: 4,
-      spawnSchedule: { intervalSec: 15, onPickup: true, enabled: false },
+      spawnSchedule: { intervalSec: 15, onPickup: true, enabled: false, max: 10 },
     });
     const qs = `?${params.toString()}`;
     expect(qs).toContain('seed=algo-v1-kruskal-15-fedcba9876543210');

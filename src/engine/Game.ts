@@ -30,13 +30,14 @@ import type {
   InventorySlot,
   MazeData,
   Pickup,
+  SpawnSchedule,
   StartLevelOptions,
   TrapKind,
   VictoryType,
   VerticalTransition,
   SurviveSeconds,
 } from '../maze/types';
-import { enemyChaseMultiplier, normalizeSurviveSeconds, SURVIVE_SECONDS_DEFAULT } from '../maze/types';
+import { enemyChaseMultiplier, normalizeSurviveSeconds, SPAWN_SCHEDULE_DEFAULT, SURVIVE_SECONDS_DEFAULT } from '../maze/types';
 
 // Module-level scratch objects to avoid per-frame allocation in the hot
 // update() path. Updated in place each frame; never store the references
@@ -864,6 +865,14 @@ export class Game {
   }
   private currentMode: VictoryType = 'reach-exit';
   private currentSurviveSeconds: SurviveSeconds = SURVIVE_SECONDS_DEFAULT;
+  // P3-1 fix-progressive-max (P2 follow-up): mirror of the
+  // `options.spawnSchedule` snapshot. Used by the engine's
+  // `startLevel` to thread the runtime cap into
+  // `injectEnemySpawns` (the per-tick progressive spawn
+  // trigger reads the store-side copy via
+  // `applySpawnTrigger` instead, so this field is only
+  // needed at the inject call site).
+  private currentSpawnSchedule: SpawnSchedule = { ...SPAWN_SCHEDULE_DEFAULT };
   private input?: InputManager;
   private loop?: Loop;
   private remainingPickups: Pickup[] = [];
@@ -1085,6 +1094,14 @@ export class Game {
     // when currentMode === 'survive', but storing it is harmless and
     // avoids a special case in UI consumers).
     this.currentSurviveSeconds = normalizeSurviveSeconds(options?.surviveSeconds);
+    // P3-1 fix-progressive-max: snapshot the runtime
+    // spawnSchedule so the `injectEnemySpawns` call site
+    // below can honor `max`. Without this, the
+    // `options.spawnSchedule.max` value would be silently
+    // dropped at the inject boundary and the player's "渐进
+    // 上限" UI input would have no effect on the initial
+    // enemy batch.
+    this.currentSpawnSchedule = options?.spawnSchedule ?? { ...SPAWN_SCHEDULE_DEFAULT };
     // P2-5 FR-18/FR-19/FR-21: enemy injection is hard-gated to survive mode.
     // Hand-crafted maze.enemies (FR-21) flow through unchanged in any mode.
     // F-project-review-2026-06-13-A-L1: the mode-based `count` clamp below
@@ -1099,7 +1116,18 @@ export class Game {
       ? options?.enemyCount
       : 0;
     const generated = this.currentMode === 'survive'
-      ? injectEnemySpawns(maze, requestedEnemyCount, { levelCount: maze.levelCount ?? 1 })
+      ? injectEnemySpawns(maze, requestedEnemyCount, {
+          levelCount: maze.levelCount ?? 1,
+          // P3-1 fix-progressive-max (P2 follow-up): thread the
+          // runtime `spawnSchedule` into `injectEnemySpawns` so the
+          // LevelSelect "渐进上限" input actually caps the
+          // initial batch. Without this, the UI value would be
+          // silently dropped at the inject site (the spec's
+          // `options.spawnSchedule.max` is the canonical
+          // contract; see gameStore.startLevel for the
+          // matching call site).
+          spawnSchedule: this.currentSpawnSchedule,
+        })
       : [];
     // F-2026-06-17-C-H-3: drop any previously-injected gen-* enemies
     // before merging the new batch. Without this, the retry / next-level

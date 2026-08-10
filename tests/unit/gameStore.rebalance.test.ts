@@ -64,7 +64,7 @@ describe('gameStore.startLevel P2-5 rebalance', () => {
     ];
     useGameStore.getState().startLevel(
       makeMaze({ enemies: handCrafted }),
-      { mode: 'reach-exit', enemyCount: 3, spawnSchedule: { intervalSec: 15, onPickup: true, enabled: true } },
+      { mode: 'reach-exit', enemyCount: 3, spawnSchedule: { intervalSec: 15, onPickup: true, enabled: true, max: 10 } },
     );
     expect(useGameStore.getState().currentEnemyCount).toBe(1);
   });
@@ -78,7 +78,7 @@ describe('gameStore.startLevel P2-5 rebalance', () => {
   it('progressiveEnemyCount stays at 0 in reach-exit even after a long tick (F-N6)', () => {
     useGameStore.getState().startLevel(
       makeMaze(),
-      { mode: 'reach-exit', enemyCount: 3, spawnSchedule: { intervalSec: 15, onPickup: true, enabled: true } },
+      { mode: 'reach-exit', enemyCount: 3, spawnSchedule: { intervalSec: 15, onPickup: true, enabled: true, max: 10 } },
     );
     expect(useGameStore.getState().progressiveEnemyCount).toBe(0);
     // 30s elapsed: well past the 15s interval trigger; in survive mode this
@@ -90,10 +90,32 @@ describe('gameStore.startLevel P2-5 rebalance', () => {
   it('progressiveEnemyCount stays at 0 in time-trial even after a long tick (F-N6)', () => {
     useGameStore.getState().startLevel(
       makeMaze(),
-      { mode: 'time-trial', enemyCount: 5, spawnSchedule: { intervalSec: 15, onPickup: true, enabled: true } },
+      { mode: 'time-trial', enemyCount: 5, spawnSchedule: { intervalSec: 15, onPickup: true, enabled: true, max: 10 } },
     );
     expect(useGameStore.getState().progressiveEnemyCount).toBe(0);
     useGameStore.getState().tick(30);
     expect(useGameStore.getState().progressiveEnemyCount).toBe(0);
+  });
+
+  // P3-1 fix-progressive-max: the `options.spawnSchedule.max`
+  // value must be honored by the engine's `injectEnemySpawns`
+  // call at the store's startLevel site (the mirror of
+  // Game.startLevel). Without this test, a regression that
+  // drops the `spawnSchedule` arg from the inject call would
+  // silently let the user-set cap fall through to the global
+  // ENEMY_COUNT_MAX (10), defeating the UI's "渐进上限"
+  // input.
+  it('P3-1 fix-progressive-max: store threads options.spawnSchedule.max into injectEnemySpawns (capped initial batch)', () => {
+    useGameStore.getState().startLevel(makeMaze(), {
+      mode: 'survive',
+      enemyCount: 10,
+      spawnSchedule: { intervalSec: 15, onPickup: true, enabled: true, max: 3 },
+    });
+    // The injected batch is capped at `max` (3), not the
+    // `enemyCount` (10). `currentEnemyCount` mirrors the
+    // engine's `injectedMaze.enemies.length` + hand-crafted.
+    // The maze has 0 hand-crafted enemies, so the total is
+    // exactly the injected count.
+    expect(useGameStore.getState().currentEnemyCount).toBe(3);
   });
 });

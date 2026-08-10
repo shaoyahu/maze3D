@@ -4,6 +4,8 @@ import {
   ENEMY_COUNT_MAX,
   LEVEL_COUNT_VALUES,
   SPAWN_PROGRESSIVE_MAX_DEFAULT,
+  SPAWN_PROGRESSIVE_MAX_MAX,
+  SPAWN_PROGRESSIVE_MAX_MIN,
   SPAWN_SCHEDULE_DEFAULT,
   SURVIVE_SECONDS_DEFAULT,
   SURVIVE_SECONDS_MAX,
@@ -139,17 +141,22 @@ interface ValidationContext {
   surviveSeconds: number;
   enemyCount: number;
   progressive: boolean;
+  // P3-1 fix-progressive-max: the "渐进上限" input value, threaded
+  // into `spawnSchedule.max` by `buildOptions`. Same clamp range
+  // [1, 20] the input enforces on every keystroke; the runtime
+  // here trusts the value as long as it's a positive integer.
+  progressiveMax: number;
   seedInput: string;
   randomSeed: string;
   // P2-19: only consulted when levelSource === 'seed'; ignored on the
   // 'random' path (which still uses algorithmForMode(mode) so the
   // mode→algorithm default mapping is preserved).
   selectedAlgorithm: Algorithm;
-  // P3-1: layer count for the seed-input path. `random` mode
-  // intentionally stays single-layer for now (the spec places the
-  // level count dropdown next to the algorithm dropdown, which is
-  // only visible in seed mode). `levelCount === 1` keeps the v1
-  // codec so existing best records / URLs round-trip unchanged.
+  // P3-1: layer count for the random + seed procedural paths. The
+  // dropdown is rendered for both (and only disabled on the
+  // teaching / custom rails), so `validateSelection` honors it on
+  // both. `levelCount === 1` keeps the v1 codec so every existing
+  // single-layer best record / shared URL round-trips unchanged.
   levelCount: LevelCount;
 }
 
@@ -237,7 +244,16 @@ function validateSelection(ctx: ValidationContext): Validation {
 }
 
 function buildOptions(ctx: ValidationContext, seed: Seed): StartLevelOptions {
-  const spawnSchedule: SpawnSchedule = { ...SPAWN_SCHEDULE_DEFAULT, enabled: ctx.progressive };
+  // P3-1 fix-progressive-max: thread `ctx.progressiveMax` into
+  // `spawnSchedule.max` so the runtime `injectEnemySpawns` cap
+  // honors the LevelSelect "渐进上限" input. The DEFAULT's `max`
+  // is the same constant the input is initialized to, so an
+  // un-touched form just round-trips the default.
+  const spawnSchedule: SpawnSchedule = {
+    ...SPAWN_SCHEDULE_DEFAULT,
+    enabled: ctx.progressive,
+    max: ctx.progressiveMax,
+  };
   const opts: StartLevelOptions = {
     mode: ctx.mode,
     enemyCount: ctx.enemyCount,
@@ -467,6 +483,7 @@ export function LevelSelect({
     surviveSeconds: surviveSecondsInput,
     enemyCount,
     progressive,
+    progressiveMax,
     seedInput,
     randomSeed,
     selectedAlgorithm,
@@ -1031,13 +1048,25 @@ export function LevelSelect({
                             <input
                               data-testid="progressive-max-input"
                               type="number"
-                              min={1}
-                              max={ENEMY_COUNT_MAX}
+                              // P3-1 fix-progressive-max: the upper
+                              // bound is `SPAWN_PROGRESSIVE_MAX_MAX`
+                              // (= 20) not `ENEMY_COUNT_MAX` (= 10).
+                              // The two are different concepts:
+                              // `ENEMY_COUNT_MAX` is the initial
+                              // "开局初始数量" cap (≤ 10 makes sense
+                              // for a single wave); the progressive
+                              // cap can be higher because it's the
+                              // long-term ceiling, not the initial
+                              // count. Using the same number for both
+                              // was the silent inconsistency the URL
+                              // clamp range caught.
+                              min={SPAWN_PROGRESSIVE_MAX_MIN}
+                              max={SPAWN_PROGRESSIVE_MAX_MAX}
                               value={progressiveMax}
                               onChange={(e) => {
                                 const n = Number(e.target.value);
                                 if (Number.isNaN(n)) return;
-                                setProgressiveMax(Math.max(1, Math.min(ENEMY_COUNT_MAX, n)));
+                                setProgressiveMax(Math.max(SPAWN_PROGRESSIVE_MAX_MIN, Math.min(SPAWN_PROGRESSIVE_MAX_MAX, n)));
                               }}
                               aria-label={t('levels.config.progressiveMaxAria')}
                               className="console-stepper__input"

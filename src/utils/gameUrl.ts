@@ -27,6 +27,8 @@
 import {
   ENEMY_COUNT_MAX,
   ENEMY_COUNT_MIN,
+  SPAWN_PROGRESSIVE_MAX_MAX,
+  SPAWN_PROGRESSIVE_MAX_MIN,
   SPAWN_SCHEDULE_DEFAULT,
   SURVIVE_SECONDS_MAX,
   SURVIVE_SECONDS_MIN,
@@ -46,6 +48,14 @@ const MODE_QUERY = 'mode';
 const SURVIVE_QUERY = 'survive';
 const ENEMIES_QUERY = 'enemies';
 const PROGRESSIVE_QUERY = 'progressive';
+// P3-1 fix-progressive-max: the LevelSelect "渐进上限" input is
+// round-tripped through the URL as `?progressiveMax=N` (lockstep
+// with `?progressive=0|1`). The clamp range is the same one
+// the input enforces (`SPAWN_PROGRESSIVE_MAX_MIN..MAX` in
+// types.ts), so a hand-crafted URL with an out-of-range value
+// falls into the same lenient-bad-input policy the other
+// `?progressive=…` branch uses (clamp + use, never reject).
+const PROGRESSIVE_MAX_QUERY = 'progressiveMax';
 
 // Reasons the parser rejects a /game URL. Strings are user-visible (they
 // flow through to a LevelLoadError surfaced by App), so they are kept short
@@ -58,7 +68,8 @@ export type GameUrlError =
   | 'bad-survive'
   | 'bad-enemies'
   | 'bad-size'
-  | 'bad-progressive';
+  | 'bad-progressive'
+  | 'bad-progressive-max';
 
 export interface ParsedGameUrl {
   // Procedural levels carry the encoded algo-v1-... id; non-procedural
@@ -108,6 +119,29 @@ function readOptions(params: URLSearchParams): { ok: true; options: StartLevelOp
     }
     const enabled = progressiveRaw === '1';
     options.spawnSchedule = { ...SPAWN_SCHEDULE_DEFAULT, enabled };
+  }
+
+  // P3-1 fix-progressive-max: parse `?progressiveMax=N` (lockstep
+  // with `?progressive=…`). A non-finite value (NaN / Infinity)
+  // is a bad-progressive-max error; an out-of-range value is
+  // clamped into [PROGRESSIVE_MAX_MIN, PROGRESSIVE_MAX_MAX] using
+  // the same lenient-bad-input policy as the other numeric
+  // queries (`survive` / `enemies`). The clamped value is then
+  // overlaid on top of any spawnSchedule the `?progressive=…`
+  // branch above just constructed (or onto a fresh default if
+  // that branch didn't fire), so the two params stay in lockstep.
+  const progressiveMaxRaw = params.get(PROGRESSIVE_MAX_QUERY);
+  if (progressiveMaxRaw !== null) {
+    const n = Number(progressiveMaxRaw);
+    if (!Number.isFinite(n)) {
+      return { ok: false, error: 'bad-progressive-max' };
+    }
+    const clamped = Math.max(SPAWN_PROGRESSIVE_MAX_MIN, Math.min(SPAWN_PROGRESSIVE_MAX_MAX, Math.trunc(n)));
+    options.spawnSchedule = {
+      ...SPAWN_SCHEDULE_DEFAULT,
+      ...(options.spawnSchedule ?? {}),
+      max: clamped,
+    };
   }
 
   return { ok: true, options };
@@ -250,6 +284,16 @@ export function buildGameSearchParams(
     // would fall back to SPAWN_SCHEDULE_DEFAULT (enabled: true) —
     // silently re-enabling progressive on every page load.
     params.set(PROGRESSIVE_QUERY, options.spawnSchedule.enabled ? '1' : '0');
+    // P3-1 fix-progressive-max: write the cap in lockstep with
+    // `?progressive=…`. The DEFAULT carries `max:
+    // SPAWN_PROGRESSIVE_MAX_DEFAULT` (= 10), so the param is
+    // always emitted; a future bump of the default would just
+    // shift the value the URL hands back to the parser, with no
+    // round-trip drift. (Round-tripping only when the value
+    // differs from DEFAULT would be cleaner but loses the "URL
+    // self-documents" property the other progressive fields
+    // preserve.)
+    params.set(PROGRESSIVE_MAX_QUERY, String(options.spawnSchedule.max));
   }
   return params;
 }
@@ -262,6 +306,7 @@ export const GAME_URL_QUERY_KEYS = {
   SURVIVE_QUERY,
   ENEMIES_QUERY,
   PROGRESSIVE_QUERY,
+  PROGRESSIVE_MAX_QUERY,
 } as const;
 
 // Re-exports for callers that want the size guard inline.
