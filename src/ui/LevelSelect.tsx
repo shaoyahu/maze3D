@@ -171,7 +171,24 @@ function validateSelection(ctx: ValidationContext): Validation {
   }
   if (ctx.levelSource === 'random') {
     const seed: Seed = {
-      algorithm: algorithmForMode(ctx.mode),
+      // P3-1 fix-random-algo-selector: the algorithm dropdown
+      // is now visible on the random rail too (it used to be
+      // `showSeedFields`-locked, which made it impossible to
+      // override `algorithmForMode(mode)` from the random
+      // path). The state is still reset on every mode change
+      // (P2-19's useEffect at line 400), so the first time the
+      // user lands on this rail the dropdown shows the mode's
+      // default — same UX as before. Manual overrides now
+      // take effect.
+      //
+      // (The P2-19 historical comment "intentionally left on
+      // algorithmForMode(mode) so the mode→algorithm default
+      // mapping is preserved" is now stale: the rail is the
+      // one that shows the algorithm dropdown, so the user's
+      // `selectedAlgorithm` (initialized to
+      // `algorithmForMode(mode)` on every mode change) IS the
+      // source of truth, not `algorithmForMode(mode)` directly.)
+      algorithm: ctx.selectedAlgorithm,
       size: ctx.selectedSize,
       mazeSeed: ctx.randomSeed,
       // P3-1: random mode honors `levelCount` too — the dropdown is
@@ -467,6 +484,15 @@ export function LevelSelect({
 
   const showSublevel = levelSource === 'teaching' || levelSource === 'custom';
   const showProceduralFields = levelSource === 'random' || levelSource === 'seed';
+  // P3-1 fix-random-algo-selector: the algorithm picker used to
+  // be locked to `showSeedFields` (= only the seed rail). The
+  // `showProceduralFields` alias below broadens the gate to
+  // random + seed so the dropdown is visible on both rails. The
+  // existing `showSeedFields` variable is preserved because it's
+  // still the right gate for the hex-input field (a literal hex
+  // is only meaningful on the seed-input rail, not the
+  // auto-generated random rail).
+  const showAlgorithmPicker = showProceduralFields;
   const showSeedFields = levelSource === 'seed';
   const isSurvive = mode === 'survive';
 
@@ -1041,7 +1067,17 @@ export function LevelSelect({
                   <div>
                     <div className="console-proc__seed-label">{t('levels.brief.algorithm')}</div>
                     <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--accent)' }}>
-                      {algorithmForMode(mode)}
+                      {/* P3-1 fix-random-algo-selector: the brief
+                          now reflects `selectedAlgorithm` (which the
+                          user can override on both random + seed)
+                          instead of `algorithmForMode(mode)` (the
+                          P2-19 default that ignored manual
+                          overrides on the random rail). The first
+                          time the user lands on a rail, the state
+                          is still `algorithmForMode(mode)` thanks
+                          to the useEffect at line 400, so the brief
+                          matches the dropdown's initial value. */}
+                      {selectedAlgorithm}
                     </div>
                   </div>
                   <div>
@@ -1071,18 +1107,25 @@ export function LevelSelect({
                 </div>
               </div>
 
-              {showSeedFields ? (
+              {showAlgorithmPicker ? (
                 <section
-                  data-testid="specified-seed-section"
+                  data-testid="algorithm-picker-section"
                   className="console-proc__panel"
-                  style={{ gridColumn: '1 / -1', display: 'flex' }}
+                  style={{ display: 'flex', flexDirection: 'column' }}
                 >
-                  <h3 className="console-proc__panel-title">{t('levels.panel.seedInput')}</h3>
-                  {/* P2-19: algorithm picker for the seed path. The 4 legacy
-                      algorithms (P2-3) sit alongside the 4 new ones; the
-                      default is `algorithmForMode(mode)` and the picker
-                      resets whenever `mode` changes. */}
                   <div className="console-proc__seed-label">{t('levels.algorithm.label')}</div>
+                  {/* P3-1 fix-random-algo-selector: the picker is
+                      now in its own sibling section visible on
+                      BOTH random + seed (the old `showSeedFields`
+                      gate locked it to the seed-input rail only).
+                      Mode-change reset behavior is preserved
+                      (P2-19's useEffect at line 400 snaps
+                      `selectedAlgorithm` back to
+                      `algorithmForMode(mode)`), so the first time
+                      the user lands on a rail they see the
+                      familiar default — manual overrides are now
+                      picked up by the random branch of
+                      `validateSelection`. */}
                   <Dropdown<Algorithm>
                     testId="algorithm-select"
                     className="console-select"
@@ -1095,6 +1138,23 @@ export function LevelSelect({
                     onChange={(v) => setSelectedAlgorithm(v)}
                     optionTestId={(opt) => `algorithm-${opt.value}`}
                   />
+                </section>
+              ) : null}
+
+              {showSeedFields ? (
+                <section
+                  data-testid="specified-seed-section"
+                  className="console-proc__panel"
+                  style={{ gridColumn: '1 / -1', display: 'flex' }}
+                >
+                  <h3 className="console-proc__panel-title">{t('levels.panel.seedInput')}</h3>
+                  {/* P3-1 fix-random-algo-selector: the algorithm
+                      picker is now in a sibling section (the
+                      `showAlgorithmPicker` block below) so the
+                      random rail can also see + use it. The
+                      seed-input panel itself only renders the hex
+                      field + reuse button now, keeping its visual
+                      scope tight. */}
                   {/* P3-1: layer count dropdown was moved out of the
                       seed-input panel in H3 fix. The dropdown now
                       lives in a sibling section visible across

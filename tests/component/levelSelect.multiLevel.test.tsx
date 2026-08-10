@@ -285,6 +285,55 @@ describe('LevelSelect random mode honors levelCount (P3-1 UX fix)', () => {
   });
 });
 
+describe('LevelSelect random mode honors levelCount (P3-1 UX fix)', () => {
+  // UX fix: the level count dropdown is visible on the random rail
+  // (line 787+ in LevelSelect.tsx renders it for `teaching` /
+  // `random` / `seed`, only `custom` skips it), but the previous
+  // `validateSelection` random branch always used `encodeSeed` (v1)
+  // and silently dropped the user's layer pick. These two tests
+  // pin the contract: random + levelCount=2 → v2 id, random +
+  // levelCount=1 → v1 id (no best-record regression).
+
+  function goToRandomPath(): void {
+    const src = screen.getByTestId('level-source-select') as HTMLSelectElement;
+    fireEvent.change(src, { target: { value: 'random' } });
+  }
+
+  it('random + levelCount=2 → onPick yields a v2 id carrying the layer count', () => {
+    const onPick = vi.fn();
+    render(<ConfirmProvider><LevelSelect available={[]} onPick={onPick} onBack={() => {}} /></ConfirmProvider>);
+    goToRandomPath();
+
+    fireEvent.change(screen.getByTestId('level-count-select'), { target: { value: '2' } });
+    fireEvent.click(screen.getByTestId('start-button'));
+
+    expect(onPick).toHaveBeenCalledTimes(1);
+    const [id] = onPick.mock.calls[0];
+    // v2 format: algo-v2-{algorithm}-{size}-{N}-{hex}, with N=2.
+    // The exact algorithm + size + hex are determined by
+    // algorithmForMode(mode) + the default 30 + a fresh random hex
+    // on the random rail — we assert the shape, not the literals,
+    // so a future algorithmForMode tweak doesn't break this test.
+    expect(id).toMatch(/^algo-v2-[a-z-]+-\d+-2-[0-9a-f]{16}$/);
+  });
+
+  it('random + levelCount=1 → onPick yields a v1 id (back-compat with existing single-layer best records)', () => {
+    const onPick = vi.fn();
+    render(<ConfirmProvider><LevelSelect available={[]} onPick={onPick} onBack={() => {}} /></ConfirmProvider>);
+    goToRandomPath();
+
+    // Default levelCount is 1, but the test sets it explicitly to
+    // document the back-compat contract: even with the dropdown
+    // visible, picking 1 must still produce a v1 id.
+    fireEvent.change(screen.getByTestId('level-count-select'), { target: { value: '1' } });
+    fireEvent.click(screen.getByTestId('start-button'));
+
+    expect(onPick).toHaveBeenCalledTimes(1);
+    const [id] = onPick.mock.calls[0];
+    expect(id).toMatch(/^algo-v1-[a-z-]+-\d+-[0-9a-f]{16}$/);
+  });
+});
+
 describe('LevelSelect levelCount dropdown is teaching-aware (H3 fix)', () => {
   // H3 fix (architect review): the levelCount dropdown is rendered
   // in a sibling section visible across teaching / random / seed.
@@ -375,5 +424,146 @@ describe('LevelSelect levelCount dropdown is teaching-aware (H3 fix)', () => {
 
     expect((screen.getByTestId('level-count-select') as HTMLSelectElement).value).toBe('1');
     expect(screen.getByTestId('level-count-disabled-hint')).toBeInTheDocument();
+  });
+});
+
+describe('LevelSelect progressiveMax threads into spawnSchedule.max (P3-1 fix-progressive-max)', () => {
+  // P3-1 fix-progressive-max: the "渐进上限" input on the
+  // procedural panel used to be a dead state — `buildOptions`
+  // constructed `spawnSchedule` from `SPAWN_SCHEDULE_DEFAULT` and
+  // only overlaid `enabled`, never the `max` field. This describe
+  // pins the contract: changing the input now flows through to
+  // `options.spawnSchedule.max` and lands in the URL via the
+  // gameUrl codec.
+  //
+  // The input only renders when the user is in `survive` mode
+  // (the only mode where the progressive toggle is shown) — same
+  // gate as the `progressive-spawn` checkbox. The two tests
+  // below start by clicking the `mode-survive` segmented option
+  // so the input is in the DOM.
+
+  function goToRandomSurvive(): void {
+    const src = screen.getByTestId('level-source-select') as HTMLSelectElement;
+    fireEvent.change(src, { target: { value: 'random' } });
+    // The mode picker renders twice (a hidden Dropdown and a
+    // visible segmented control with role="tablist"). The
+    // scoped query pins the click to the visible segmented
+    // button so we don't accidentally hit the Dropdown's
+    // hidden option row.
+    const tablist = screen.getByRole('tablist');
+    fireEvent.click(within(tablist).getByTestId('mode-survive'));
+  }
+
+  function goToSeedSurvive(hex: string): void {
+    goToSeedPath(hex);
+    const tablist = screen.getByRole('tablist');
+    fireEvent.click(within(tablist).getByTestId('mode-survive'));
+  }
+
+  it('progressiveMax=3 (random + survive) → onPick options.spawnSchedule.max === 3', () => {
+    const onPick = vi.fn();
+    render(<ConfirmProvider><LevelSelect available={[]} onPick={onPick} onBack={() => {}} /></ConfirmProvider>);
+    goToRandomSurvive();
+
+    // The "渐进上限" input only shows on the survive mode
+    // (the only mode the progressive spawn toggle / max are
+    // gated on). Default value is
+    // SPAWN_PROGRESSIVE_MAX_DEFAULT (10); we override to 3
+    // to make the round-trip the only thing under test.
+    const maxInput = screen.getByTestId('progressive-max-input') as HTMLInputElement;
+    fireEvent.change(maxInput, { target: { value: '3' } });
+
+    fireEvent.click(screen.getByTestId('start-button'));
+
+    expect(onPick).toHaveBeenCalledTimes(1);
+    const [, options] = onPick.mock.calls[0];
+    expect(options.spawnSchedule?.max).toBe(3);
+  });
+
+  it('progressiveMax=7 (seed + survive) → onPick options.spawnSchedule.max === 7', () => {
+    // Same contract on the seed rail — the input is the
+    // LevelSelect-level "渐进上限" regardless of the active
+    // source, so both random + seed must honor it.
+    const onPick = vi.fn();
+    render(<ConfirmProvider><LevelSelect available={[]} onPick={onPick} onBack={() => {}} /></ConfirmProvider>);
+    goToSeedSurvive(ENCODE_HEX);
+
+    const maxInput = screen.getByTestId('progressive-max-input') as HTMLInputElement;
+    fireEvent.change(maxInput, { target: { value: '7' } });
+
+    fireEvent.click(screen.getByTestId('start-button'));
+
+    expect(onPick).toHaveBeenCalledTimes(1);
+    const [, options] = onPick.mock.calls[0];
+    expect(options.spawnSchedule?.max).toBe(7);
+  });
+});
+
+describe('LevelSelect random rail exposes the algorithm picker (P3-1 fix-random-algo-selector)', () => {
+  // P3-1 fix-random-algo-selector: the algorithm-select dropdown
+  // used to be locked behind `showSeedFields` (only visible on
+  // the seed-input rail), and the random branch of
+  // `validateSelection` hardcoded `algorithmForMode(mode)`,
+  // ignoring the user's `selectedAlgorithm` state. Both halves of
+  // the bug are fixed: the dropdown is now in a sibling section
+  // visible on random + seed, and the random branch reads
+  // `ctx.selectedAlgorithm`.
+
+  function goToRandomPath(): void {
+    const src = screen.getByTestId('level-source-select') as HTMLSelectElement;
+    fireEvent.change(src, { target: { value: 'random' } });
+  }
+
+  it('algorithm-select is present on the random rail (was previously hidden)', () => {
+    render(<ConfirmProvider><LevelSelect available={[]} onPick={() => {}} onBack={() => {}} /></ConfirmProvider>);
+    goToRandomPath();
+
+    // The dropdown is now in `algorithm-picker-section`; the
+    // data-testid stays `algorithm-select` so existing tests
+    // and the P2-19 wiring still find it. This is the
+    // gate-rewrite half of the fix: the random rail now sees
+    // the dropdown.
+    expect(screen.getByTestId('algorithm-picker-section')).toBeInTheDocument();
+    expect(screen.getByTestId('algorithm-select')).toBeInTheDocument();
+  });
+
+  it('random + user-picked algorithm=eller → onPick yields an id carrying `algorithm=eller`', () => {
+    // The validateSelection half of the fix: even though the
+    // mode is still time-trial (whose default algorithm is
+    // recursive-backtracker per `algorithmForMode`), the user's
+    // manual override in the dropdown is now honored.
+    const onPick = vi.fn();
+    render(<ConfirmProvider><LevelSelect available={[]} onPick={onPick} onBack={() => {}} /></ConfirmProvider>);
+    goToRandomPath();
+
+    fireEvent.change(screen.getByTestId('algorithm-select'), { target: { value: 'eller' } });
+    fireEvent.click(screen.getByTestId('start-button'));
+
+    expect(onPick).toHaveBeenCalledTimes(1);
+    const [id] = onPick.mock.calls[0];
+    // v1 format puts the algorithm between `algo-v1-` and `-{size}-{hex}`.
+    expect(id).toMatch(/^algo-v1-eller-\d+-[0-9a-f]{16}$/);
+  });
+
+  it('random default mode=time-trial → onPick algorithm=prim (algorithmForMode default still wins on first paint)', () => {
+    // Belt-and-suspenders for the mode-change reset behavior:
+    // when the user doesn't touch the algorithm dropdown on
+    // the random rail, the seed's algorithm should still be
+    // `algorithmForMode('time-trial')` (= `prim` per the P2-3
+    // mapping; `recursive-backtracker` is the `reach-exit`
+    // default). The P2-19 useEffect at LevelSelect.tsx:400
+    // snaps `selectedAlgorithm` to `algorithmForMode(mode)` on
+    // every mode change, so the first time the user lands on
+    // the random rail the brief and the wire id both show the
+    // familiar default.
+    const onPick = vi.fn();
+    render(<ConfirmProvider><LevelSelect available={[]} onPick={onPick} onBack={() => {}} /></ConfirmProvider>);
+    goToRandomPath();
+
+    fireEvent.click(screen.getByTestId('start-button'));
+
+    expect(onPick).toHaveBeenCalledTimes(1);
+    const [id] = onPick.mock.calls[0];
+    expect(id).toMatch(/^algo-v1-prim-\d+-[0-9a-f]{16}$/);
   });
 });
