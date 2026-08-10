@@ -1506,17 +1506,98 @@ export class Game {
       const cellX = Math.floor(this.player.position.x / cs);
       const cellZ = Math.floor(this.player.position.z / cs);
       const t = findTransitionAt(this.transitions, this.playerLevel, cellX, cellZ);
-      if (t && t.level !== t.toLevel) {
+      // P3-1d: ladder is opt-out of the walk-onto path. A
+      // ladder transition's `toLevel` defaults to `level - 1`
+      // (per the editor's placeTransition helper) so the
+      // `t.level !== t.toLevel` guard below would let it slip
+      // through and fire `startActiveTransition` on the same
+      // frame the player walks onto the cell — which would
+      // bypass the explicit Space/KeyC press. The ladder
+      // trigger logic further down this block (still inside
+      // the `if (this.transitions.length > 0)` guard) is the
+      // only path that fires a ladder transition.
+      if (t && t.level !== t.toLevel && t.kind !== 'ladder') {
         // P3-2: `hole-down` triggers a 0.5s warning phase before the
-        // 0.4s fall; all other kinds (stair-up/-down, hole-up, ladder)
-        // skip straight to `activeTransition` because they're either
-        // visible the whole time (stairs) or stationery (ladder) and
-        // don't need a telegraph. The kind gate is in `startWarningFlash`
+        // 0.4s fall; all other kinds (stair-up/-down, hole-up)
+        // skip straight to `activeTransition` because they're
+        // visible the whole time (stairs) and don't need a
+        // telegraph. The kind gate is in `startWarningFlash`
         // too, but routing it here keeps the call sites obvious.
         if (t.kind === 'hole-down') {
           this.startWarningFlash(t);
         } else {
           this.startActiveTransition(t);
+        }
+      }
+      // P3-1d: ladder is the only transition kind that fires on
+      // explicit key input, not walk-onto. The player must be
+      // STANDING on a ladder cell AND must be pressing Space (up)
+      // or KeyC (down) on the same frame. The `activeTransition`
+      // guard is the same as the walk-onto path: a tween in
+      // flight cannot be re-triggered. We explicitly skip the
+      // walk-onto path for `kind === 'ladder'` (the data's
+      // `toLevel` defaults to `level - 1` per the editor's
+      // placeTransition helper, but the player's intent — Space
+      // vs KeyC — is the only thing that determines the actual
+      // direction at runtime).
+      if (!this.activeTransition) {
+        const ladder = findTransitionAt(
+          this.transitions,
+          this.playerLevel,
+          cellX,
+          cellZ,
+        );
+        if (ladder && ladder.kind === 'ladder') {
+          const req = this.input?.getLadderRequest();
+          if (req) {
+            // P3-1d: the player's key press is the only source
+            // of truth for direction. Space = "climb up one
+            // layer", KeyC = "climb down one layer". The
+            // ladder's `toLevel` field is ignored at runtime —
+            // the editor's placeTransition helper defaults it
+            // to `level - 1`, but a hand-crafted level could
+            // set any value, and the player can only climb in
+            // the direction they're pressing. (We don't
+            // respect `toLevel` because the ladder's "direction"
+            // is a runtime choice, not a data attribute.)
+            //
+            // When both keys are pressed simultaneously, prefer
+            // "up" (Space) over "down" (KeyC) — the player's
+            // typical intent is to escape upward, and a
+            // simultaneous press is rare enough that the
+            // disambiguation is mostly cosmetic.
+            const targetLevel = req.up
+              ? this.playerLevel + 1
+              : req.down
+                ? this.playerLevel - 1
+                : null;
+            if (
+              targetLevel !== null &&
+              targetLevel >= 0 &&
+              targetLevel < (this.currentMaze?.levelCount ?? 1)
+            ) {
+              // Construct a derivative transition (don't mutate
+              // `this.transitions` — the source data is the
+              // editor / generator's responsibility, the
+              // engine just consumes it). The same
+              // `startActiveTransition` helper as the walk-onto
+              // path uses — it only reads `toLevel`, `x`, `z`,
+              // `kind`, and the kind gate above doesn't apply
+              // because we re-route the call here.
+              const tween = {
+                ...ladder,
+                toLevel: targetLevel,
+                // The destination cell reuses the ladder's
+                // source (x, z) — the editor's ladder tool's
+                // `toX`/`toZ` default to the same cell, and a
+                // player climbing a ladder typically lands
+                // back on the same column.
+                toX: ladder.toX ?? ladder.x,
+                toZ: ladder.toZ ?? ladder.z,
+              };
+              this.startActiveTransition(tween);
+            }
+          }
         }
       }
     }

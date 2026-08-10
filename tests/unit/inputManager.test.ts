@@ -208,6 +208,47 @@ describe('InputManager', () => {
     });
   });
 
+  // P3-1d: 2D ladder request. The bindings reuse the 3D
+  // `getMove3D` y-axis keys (Space = up, KeyC = down) so
+  // the muscle memory is consistent across the two play
+  // styles. The actual trigger only fires when the player
+  // is standing on a ladder cell; this test pins the
+  // InputManager half (the keypress → flag plumbing).
+  describe('P3-1d — getLadderRequest (2D ladder input)', () => {
+    it('reports no ladder request initially', () => {
+      expect(im.getLadderRequest()).toEqual({ up: false, down: false });
+    });
+
+    it('Space keydown sets up=true; keyup sets it back to false', () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space' }));
+      expect(im.getLadderRequest()).toEqual({ up: true, down: false });
+      window.dispatchEvent(new KeyboardEvent('keyup', { code: 'Space' }));
+      expect(im.getLadderRequest()).toEqual({ up: false, down: false });
+    });
+
+    it('KeyC keydown sets down=true; keyup sets it back to false', () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyC' }));
+      expect(im.getLadderRequest()).toEqual({ up: false, down: true });
+      window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyC' }));
+      expect(im.getLadderRequest()).toEqual({ up: false, down: false });
+    });
+
+    it('Space + KeyC pressed together return both flags true (engine picks "up" as the priority)', () => {
+      // The InputManager half is independent on purpose —
+      // both flags are true when both keys are held. The
+      // engine's ladder trigger logic decides what to do
+      // (current decision: prefer `up` over `down` since
+      // the ladder's `toLevel` represents the up direction
+      // by editor / generator convention). Pinning both
+      // flags here guards against a future InputManager
+      // refactor that short-circuits the "both keys"
+      // case at the wrong layer.
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space' }));
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyC' }));
+      expect(im.getLadderRequest()).toEqual({ up: true, down: true });
+    });
+  });
+
   // F-A-architecture-M8: InputManager's constructor adds 4 listeners
   // (keydown, keyup on window; mousemove, pointerlockchange on document).
   // dispose() must remove exactly those 4 — same event type, same target,

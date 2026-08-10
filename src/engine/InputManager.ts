@@ -129,6 +129,31 @@ export class InputManager {
     return { dx, dy, dz };
   }
 
+  // P3-1d: 2D ladder request. Space asks for "climb up one
+  // layer" and KeyC asks for "climb down one layer" — same
+  // bindings the 3D `getMove3D` uses for its y-axis neighbors,
+  // because the ladders are mutually exclusive with 3D mode
+  // (ladders only exist on 2D multi-layer levels) and reusing
+  // the bindings keeps the muscle memory consistent across
+  // the two play styles. The actual trigger only fires when
+  // the player is standing on a ladder cell; a Space press
+  // while on a non-ladder cell is a no-op (no other 2D
+  // behavior is bound to Space, so the player won't notice
+  // anything until they walk onto a ladder).
+  //
+  // The two booleans are independent on purpose — a player
+  // who presses both Space and KeyC at the same frame gets
+  // both `up: true` and `down: true`, and the engine's
+  // ladder-trigger logic decides what to do (current
+  // decision: prefer `up` over `down`, since "going up" is
+  // the ladder's primary affordance).
+  getLadderRequest(): { up: boolean; down: boolean } {
+    return {
+      up: this.keys.has('Space'),
+      down: this.keys.has('KeyC'),
+    };
+  }
+
   consumeMouseDelta(): MouseDelta {
     // F-L3: cap the returned delta to ±π per axis. Without this, a
     // backgrounded tab returning to foreground can fire a single

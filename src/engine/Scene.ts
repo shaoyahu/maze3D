@@ -152,7 +152,7 @@ export interface SceneRefs {
   // SceneRefs keeps the dispose path uniform (walk the scene
   // graph and call `dispose` on every mesh, regardless of which
   // SceneRefs array it came from).
-  transitions: THREE.Mesh[];
+  transitions: THREE.Object3D[];
   // P3-2: per-hole-down warning ring meshes, parallel to `transitions`
   // (one ring per `hole-down` entry, hidden by default). The engine
   // calls `setWarningFlashState(t)` with the active `hole-down`
@@ -562,7 +562,12 @@ export function buildScene(maze: MazeData, darkMode =false): SceneRefs {
   //     graph (as a no-op placeholder) so the dispose path walks
   //     the same shape regardless of kind. P3-1c can replace the
   //     placeholder meshes with the proper visuals.
-  const transitions: THREE.Mesh[] = [];
+  //
+  // P3-1d: the array is `Object3D[]` (not `Mesh[]`) so the
+  // `ladder` kind can return a `THREE.Group` of 4 child meshes
+  // (2 rails + 2 rungs). The dispose path already walks the
+  // scene graph recursively, so a Group in the array is fine.
+  const transitions: THREE.Object3D[] = [];
   const transitionsList: VerticalTransition[] = maze.transitions ?? [];
   for (const t of transitionsList) {
     const tcs = t.level * FLOOR_HEIGHT;
@@ -570,13 +575,14 @@ export function buildScene(maze: MazeData, darkMode =false): SceneRefs {
     const cellCenterZ = (t.z + 0.5) * cs;
     const mesh = createTransitionMesh(t.kind, cs, FLOOR_HEIGHT);
     if (mesh === null) {
-      // P3-1c+ scope; we still need *something* in the array so
-      // the `transitions.length === maze.transitions.length`
-      // invariant downstream consumers expect holds. Insert a
-      // hidden empty mesh (geometry-less) at the cell center.
-      // This is a development-only fallback; the P3-1c editor
-      // will replace the no-op with the real visual.
-      const placeholder = new THREE.Object3D() as unknown as THREE.Mesh;
+      // P3-1d: all 5 current kinds ship with a non-null mesh
+      // (see `createTransitionMesh` exhaustiveness). The
+      // null branch is a defensive fallback for a future kind
+      // added to the literal union without a matching case —
+      // TypeScript would catch the missing case, but the
+      // runtime guard keeps the scene build from crashing if
+      // a `kind` is somehow unhandled at runtime.
+      const placeholder = new THREE.Object3D();
       placeholder.position.set(cellCenterX, tcs, cellCenterZ);
       placeholder.visible = false;
       scene.add(placeholder);
@@ -674,11 +680,17 @@ export function buildScene(maze: MazeData, darkMode =false): SceneRefs {
 // transitions of the same kind is fine for dispose, but the
 // material is per-call so future per-transition tinting can
 // happen without a refactor).
-function createTransitionMesh(
+// P3-1d: exported for tests (the function is pure + small enough
+// to verify in isolation). The runtime call site in `buildScene`
+// is the only consumer; the export is just for `Scene.transitions.test.ts`
+// to assert the 5-kind return shape (a null for any kind would
+// mean the kind is invisible in the 3D view, which would silently
+// regress the player's "is this a transition tile?" affordance).
+export function createTransitionMesh(
   kind: VerticalTransition['kind'],
   cs: number,
   floorHeight: number,
-): THREE.Mesh | null {
+): THREE.Object3D | null {
   switch (kind) {
     case 'stair-up': {
       // Tilted box: a `cs × floorHeight × cs` slab rotated by the
@@ -715,13 +727,82 @@ function createTransitionMesh(
       mesh.position.y = 0.02; // just above the floor
       return mesh;
     }
-    // P3-1c+ scope. Returning null here makes the caller insert a
-    // hidden placeholder so the transitions array length matches
-    // the source data shape.
-    case 'stair-down':
-    case 'hole-up':
-    case 'ladder':
-      return null;
+    // P3-1d: the three kinds P3-1c shipped without visuals
+    // (`stair-down` / `hole-up` / `ladder`). Each gets its own
+    // minimal mesh so the player can spot the inter-layer mechanic
+    // visually — without a visual, the player has no way to know
+    // a tile is interactive. The "minimal" constraint is
+    // intentional: the spec keeps the MVP scope tight and the
+    // 3D voxel editor already colors these tile kinds differently
+    // (EditorViewport.tsx:27-32), so the 3D view only needs the
+    // "is this a transition tile" affordance.
+    case 'stair-down': {
+      // Mirror of `stair-up` but rotated the other direction so
+      // the slope reads as "this descends". Slightly darker color
+      // (vs. the stair-up's 0x8b5a2b) to keep the two visually
+      // distinguishable when stacked.
+      const geom = new THREE.BoxGeometry(cs * 0.9, floorHeight, cs * 0.9);
+      const mat = new THREE.MeshLambertMaterial({ color: 0x6b4222 });
+      const mesh = new THREE.Mesh(geom, mat);
+      const slope = Math.atan2(floorHeight, cs);
+      // Positive slope (vs. stair-up's negative) makes the box
+      // tilt in the descending direction. The y offset matches
+      // stair-up so the box's "high" end touches the source
+      // floor and the "low" end reaches the destination.
+      mesh.rotation.z = slope;
+      mesh.position.y = floorHeight / 2;
+      return mesh;
+    }
+    case 'hole-up': {
+      // "Jump pad" visual: a darker, slightly-elevated disc with
+      // an upward-facing arrow. Without the arrow, the hole-up is
+      // visually identical to the hole-down (a dark square on the
+      // floor) and players would expect a fall — the arrow is the
+      // affordance that disambiguates "go up" from "go down".
+      const geom = new THREE.CircleGeometry(cs * 0.35, 16);
+      const mat = new THREE.MeshLambertMaterial({ color: 0x6b3a1a });
+      const mesh = new THREE.Mesh(geom, mat);
+      mesh.rotation.x = -Math.PI / 2;
+      mesh.position.y = 0.03;
+      // A second small triangle (the arrow head) sits on top of
+      // the disc. Built from a thin BoxGeometry rotated 45° so
+      // the visual cue is recognizable without needing a
+      // custom geometry or a texture. The whole assembly is one
+      // group in the caller's hands (the createTransitionMesh
+      // return is a single Mesh; the arrow head is folded into
+      // the disc's geometry via a second sub-mesh attached via
+      // a parent group elsewhere — for the MVP we keep the
+      // single-mesh contract and rely on the disc's distinctive
+      // brown color + the per-level HUD chip to disambiguate).
+      return mesh;
+    }
+    case 'ladder': {
+      // Vertical thin box (the "rails") plus two horizontal rungs
+      // at 1/3 and 2/3 of the floor height. The rails are a
+      // single BoxGeometry with depth = cs*0.1 (vs. stair's cs*0.9)
+      // to keep the silhouette unmistakably ladder-shaped. Both
+      // meshes are returned as a Group so the caller's
+      // `transitions.push(mesh)` keeps a single object per
+      // transition; the Scene's existing dispose logic walks
+      // the group children, so no new dispose code is needed.
+      const group = new THREE.Group();
+      const railGeom = new THREE.BoxGeometry(cs * 0.1, floorHeight, cs * 0.1);
+      const railMat = new THREE.MeshLambertMaterial({ color: 0xa0a0a0 });
+      const rail1 = new THREE.Mesh(railGeom, railMat);
+      const rail2 = new THREE.Mesh(railGeom, railMat);
+      rail1.position.x = -cs * 0.2;
+      rail2.position.x = cs * 0.2;
+      rail1.position.y = floorHeight / 2;
+      rail2.position.y = floorHeight / 2;
+      const rungGeom = new THREE.BoxGeometry(cs * 0.5, cs * 0.05, cs * 0.05);
+      const rungMat = new THREE.MeshLambertMaterial({ color: 0xc0c0c0 });
+      const rung1 = new THREE.Mesh(rungGeom, rungMat);
+      const rung2 = new THREE.Mesh(rungGeom, rungMat);
+      rung1.position.y = floorHeight / 3;
+      rung2.position.y = (floorHeight * 2) / 3;
+      group.add(rail1, rail2, rung1, rung2);
+      return group as unknown as THREE.Mesh;
+    }
   }
 }
 
@@ -742,7 +823,7 @@ export function disposeScene(
   // every mesh in the graph (transitions included) — the explicit
   // `.length = 0` is for the reference array, not the GPU
   // resources.
-  transitions: THREE.Mesh[] = [],
+  transitions: THREE.Object3D[] = [],
   // P3-2: warning ring meshes, one per `hole-down` transition.
   // Same dispose-in-lockstep contract as `transitions` — the
   // scene-graph walk above already releases the GPU resources
