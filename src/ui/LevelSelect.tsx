@@ -174,8 +174,19 @@ function validateSelection(ctx: ValidationContext): Validation {
       algorithm: algorithmForMode(ctx.mode),
       size: ctx.selectedSize,
       mazeSeed: ctx.randomSeed,
+      // P3-1: random mode honors `levelCount` too — the dropdown is
+      // visible on this rail (line 787+ in this file) so a user
+      // picking "2 层" reasonably expects 2 layers, not a silent
+      // downgrade to 1. Same v1/v2 split as the seed path below:
+      // `levelCount === 1` keeps the v1 codec for back-compat with
+      // every existing best record / shared URL; `>= 2` encodes as
+      // v2 which carries the level count in the wire id.
+      levelCount: ctx.levelCount,
     };
-    return { valid: true, id: encodeSeed(seed), options: buildOptions(ctx, seed) };
+    const id = ctx.levelCount > 1
+      ? encodeSeedV2(seed, ctx.levelCount)
+      : encodeSeed(seed);
+    return { valid: true, id, options: buildOptions(ctx, seed) };
   }
   if (ctx.levelSource === 'seed') {
     if (!HEX_RE.test(ctx.seedInput)) return { valid: false, reason: 'invalid seed' };
@@ -356,12 +367,11 @@ export function LevelSelect({
   const [selectedAlgorithm, setSelectedAlgorithm] = useState<Algorithm>(
     () => algorithmForMode('time-trial'),
   );
-  // P3-1: layer count pick for the seed-input path. Default 1 keeps
-  // the UX back-compat: every existing single-layer flow keeps
-  // producing v1 ids. Pasting a full v2 id into the seed field
-  // (handled in handleSeedInputChange below) is the only path that
-  // bumps this to a higher value via UI; the dropdown is the
-  // explicit "I want N layers" entry point.
+  // P3-1: layer count pick for the random + seed procedural paths. The
+  // dropdown is rendered for both (and only disabled on the
+  // teaching / custom rails), so `validateSelection` honors it on
+  // both. `levelCount === 1` keeps the v1 codec so every existing
+  // single-layer best record / shared URL round-trips unchanged.
   const [levelCount, setLevelCount] = useState<LevelCount>(1);
 
   const customLevels = useLevelStore((s) => s.customLevels);

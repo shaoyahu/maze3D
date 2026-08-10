@@ -236,6 +236,55 @@ describe('LevelSelect seed input parses pasted v1/v2 ids (P3-1c workstream 2)', 
   });
 });
 
+describe('LevelSelect random mode honors levelCount (P3-1 UX fix)', () => {
+  // UX fix: the level count dropdown is visible on the random rail
+  // (line 787+ in LevelSelect.tsx renders it for `teaching` /
+  // `random` / `seed`, only `custom` skips it), but the previous
+  // `validateSelection` random branch always used `encodeSeed` (v1)
+  // and silently dropped the user's layer pick. These two tests
+  // pin the contract: random + levelCount=2 → v2 id, random +
+  // levelCount=1 → v1 id (no best-record regression).
+
+  function goToRandomPath(): void {
+    const src = screen.getByTestId('level-source-select') as HTMLSelectElement;
+    fireEvent.change(src, { target: { value: 'random' } });
+  }
+
+  it('random + levelCount=2 → onPick yields a v2 id carrying the layer count', () => {
+    const onPick = vi.fn();
+    render(<ConfirmProvider><LevelSelect available={[]} onPick={onPick} onBack={() => {}} /></ConfirmProvider>);
+    goToRandomPath();
+
+    fireEvent.change(screen.getByTestId('level-count-select'), { target: { value: '2' } });
+    fireEvent.click(screen.getByTestId('start-button'));
+
+    expect(onPick).toHaveBeenCalledTimes(1);
+    const [id] = onPick.mock.calls[0];
+    // v2 format: algo-v2-{algorithm}-{size}-{N}-{hex}, with N=2.
+    // The exact algorithm + size + hex are determined by
+    // algorithmForMode(mode) + the default 30 + a fresh random hex
+    // on the random rail — we assert the shape, not the literals,
+    // so a future algorithmForMode tweak doesn't break this test.
+    expect(id).toMatch(/^algo-v2-[a-z-]+-\d+-2-[0-9a-f]{16}$/);
+  });
+
+  it('random + levelCount=1 → onPick yields a v1 id (back-compat with existing single-layer best records)', () => {
+    const onPick = vi.fn();
+    render(<ConfirmProvider><LevelSelect available={[]} onPick={onPick} onBack={() => {}} /></ConfirmProvider>);
+    goToRandomPath();
+
+    // Default levelCount is 1, but the test sets it explicitly to
+    // document the back-compat contract: even with the dropdown
+    // visible, picking 1 must still produce a v1 id.
+    fireEvent.change(screen.getByTestId('level-count-select'), { target: { value: '1' } });
+    fireEvent.click(screen.getByTestId('start-button'));
+
+    expect(onPick).toHaveBeenCalledTimes(1);
+    const [id] = onPick.mock.calls[0];
+    expect(id).toMatch(/^algo-v1-[a-z-]+-\d+-[0-9a-f]{16}$/);
+  });
+});
+
 describe('LevelSelect levelCount dropdown is teaching-aware (H3 fix)', () => {
   // H3 fix (architect review): the levelCount dropdown is rendered
   // in a sibling section visible across teaching / random / seed.
