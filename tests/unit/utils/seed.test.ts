@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import {
   encodeSeed,
   encodeSeedV2,
-  encodeSeedV3,
   decodeSeed,
   fallbackRandomHexSeed,
   fnv1a,
@@ -294,131 +293,16 @@ describe('encodeSeed / decodeSeed', () => {
       ).toThrow(InvalidSeedError);
     });
   });
-
-  // P4: v3 codec for 3D voxel mazes. The wire format is
-  //   algo-v3-{algorithm}-{size}-{hex}
-  // where `algorithm` is one of the 3D-prefixed literals
-  // (currently only `3d-recursive-backtracker`) and `size` is
-  // one of {5, 7, 9}. v3 ids don't carry `levelCount` — a
-  // 3D cube is by definition a single voxel mass, never a
-  // stack of layers. `decodeSeed` tries the v3 regex first
-  // (most specific 3-segment pattern), then v2, then v1.
-  describe('v3 3D voxel seed (P4)', () => {
-    it('encodeSeedV3 emits the documented v3 wire format', () => {
-      const id = encodeSeedV3({
-        algorithm: '3d-recursive-backtracker',
-        size: 7,
-        mazeSeed: '0123456789abcdef',
-      });
-      expect(id).toBe('algo-v3-3d-recursive-backtracker-7-0123456789abcdef');
-    });
-
-    it('encodeSeedV3 round-trips every 3D size in {5, 7, 9, 11, 13, 15} (P4b-CellSize widened)', () => {
-      // P4b-CellSize: the size whitelist widened from
-      // {5, 7, 9} to {5, 7, 9, 11, 13, 15}. The codec
-      // regex `(\d+)` and the runtime whitelist check
-      // both accept the new sizes; the round-trip contract
-      // is unchanged (encode → decode is identity for
-      // the same algorithm + size + hex).
-      for (const size of [5, 7, 9, 11, 13, 15] as const) {
-        const id = encodeSeedV3({
-          algorithm: '3d-recursive-backtracker',
-          size,
-          mazeSeed: '0000000000000001',
-        });
-        expect(id).toMatch(/^algo-v3-3d-recursive-backtracker-(5|7|9|11|13|15)-[0-9a-f]{16}$/);
-        const decoded = decodeSeed(id);
-        expect(decoded.algorithm).toBe('3d-recursive-backtracker');
-        expect(decoded.size).toBe(size);
-        expect(decoded.mazeSeed).toBe('0000000000000001');
-        expect(decoded.levelCount).toBeUndefined();
-      }
-    });
-
-    // P4b-Prim: 3D Prim codec round-trip. Same wire format
-    // as P4a RB (`algo-v3-{algorithm}-{size}-{hex}`); the
-    // only delta is the algorithm literal. The whitelist
-    // (`VALID_3D_ALGORITHMS`) auto-accepts any `3d-`
-    // prefixed literal, so adding a new 3D algorithm to
-    // the registry is a one-line change in `seed.ts` + a
-    // sibling dispatch case in
-    // `AlgorithmMazeProvider.load3D` (no codec changes
-    // needed).
-    it('P4b-Prim: encodeSeedV3 round-trips a 3d-prim id', () => {
-      const id = encodeSeedV3({
-        algorithm: '3d-prim',
-        size: 7,
-        mazeSeed: '0123456789abcdef',
-      });
-      expect(id).toBe('algo-v3-3d-prim-7-0123456789abcdef');
-      const decoded = decodeSeed(id);
-      expect(decoded.algorithm).toBe('3d-prim');
-      expect(decoded.size).toBe(7);
-      expect(decoded.mazeSeed).toBe('0123456789abcdef');
-      expect(decoded.levelCount).toBeUndefined();
-    });
-
-    it('decodeSeed routes a v3 id through the v3 branch (algorithm + 3D size)', () => {
-      const id = 'algo-v3-3d-recursive-backtracker-9-fedcba9876543210';
-      const decoded = decodeSeed(id);
-      expect(decoded).toEqual({
-        algorithm: '3d-recursive-backtracker',
-        size: 9,
-        mazeSeed: 'fedcba9876543210',
-        // v3 has no levelCount slot — the renderer picks the 3D
-        // path off `walls3D` presence, not levelCount.
-      });
-    });
-
-    it('decodeSeed rejects v3 with a non-3D algorithm (only 3d- prefix is valid)', () => {
-      // A v3 id carrying a 2D algorithm name (e.g. 'recursive-backtracker')
-      // must be rejected because the v3 whitelist only accepts the 3d-
-      // prefixed literals. The v1/v2 regexes wouldn't match a v3 id
-      // (different prefix), so the v3 branch is the only failure surface.
-      expect(() =>
-        decodeSeed('algo-v3-recursive-backtracker-7-0123456789abcdef'),
-      ).toThrow(InvalidSeedError);
-    });
-
-    it.each([0, 1, 3, 4, 6, 8, 10, 12, 14, 16, 17, 19, 21, 50, -1, 1.5, '4', null])(
-      'decodeSeed rejects v3 with out-of-range size %s',
-      (bad) => {
-        // String template coerces the size to a string; the codec
-        // regex's (\d+) accepts the digits and the whitelist check
-        // rejects the resulting integer. NaN / null / -1 / 1.5
-        // either fall through the regex or coerce to a disallowed
-        // number; the test exercises both shapes.
-        // P4b-CellSize: the valid set is now {5, 7, 9, 11, 13, 15};
-        // 12/14/16/17/19/21 are bad (12/14/16 are even; 17/19/21
-        // are out-of-range for the current scope).
-        const id = `algo-v3-3d-recursive-backtracker-${bad}-0123456789abcdef`;
-        expect(() => decodeSeed(id)).toThrow(InvalidSeedError);
-      },
-    );
-
-    it('decodeSeed rejects v3 with a malformed hex mazeSeed', () => {
-      expect(() =>
-        decodeSeed('algo-v3-3d-recursive-backtracker-7-not-hex-aaaaaa'),
-      ).toThrow(InvalidSeedError);
-    });
-
-    it('decodeSeed rejects a v3 id with extra junk segments', () => {
-      // 6 segments instead of v3's expected 4 (algo-v3-alg-size-hex).
-      expect(() =>
-        decodeSeed('algo-v3-3d-recursive-backtracker-7-2-0123456789abcdef'),
-      ).toThrow(InvalidSeedError);
-    });
-  });
 });
 
 // ---------------------------------------------------------------------------
-// F-D-quality-D-3: deterministic fallback for environments without
-// crypto.getRandomValues. The caller passes Date.now() so the function
-// stays pure (no system clock inside); the LevelSelect fallback path is
-//   crypto.getRandomValues || fallbackRandomHexSeed(Date.now())
-// — using mulberry32 seeded by fnv1a(timeMs) gives a 16-hex string that
-// is deterministic across browsers (no Math.random()), different per call
-// (Date.now() advances), and reproducible for tests via injected timeMs.
+// P4 refactor-fp2d: the `v3 3D voxel seed (P4)` describe block
+// is removed in lockstep with the v3 codec deletion. The 3D
+// mode the user now sees is a first-person view of 2D
+// multi-layer data, so there's no `algo-v3-…` wire format
+// and no v3 codec test. The 2D multi-layer codec (v1 / v2)
+// is the only procedural format left; its tests are above
+// this block.
 // ---------------------------------------------------------------------------
 describe('fallbackRandomHexSeed (F-D-quality-D-3)', () => {
   it('returns 16 lowercase hex chars', () => {
