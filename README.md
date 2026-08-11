@@ -360,7 +360,7 @@ src/
 │   │   ├── Button.tsx
 │   │   ├── Dialog.tsx
 │   │   ├── Dropdown.tsx
-│   │   ├── Minimap.tsx           #   2D top-down + 3D panorama (3 strip 堆叠)
+│   │   ├── Minimap.tsx           #   2D top-down minimap(2D / fp3d view 共享)
 │   │   ├── HealthBar.tsx
 │   │   ├── InventoryBar.tsx
 │   │   ├── Timer.tsx
@@ -407,7 +407,7 @@ src/
 - **引擎 / UI 隔离**：`src/engine/` 不允许 `import` 任何 React 模块；UI 通过 `useGameStore` 订阅运行时状态。
 - **生成器纯函数**：`src/maze/generators/*` 接受 `(size, prng)`，输出 `walls: CellType[][]`，不依赖 React / Zustand，便于单测。
 - **种子自描述**：`algo-v{N}-{algorithm}-{size}[-{levels}]-{hex}` 把算法、版本、尺寸、层数、16 位熵打包到一个字符串里，可以原样回放到 `AlgorithmMazeProvider.load()` 复现完全相同的迷宫。
-- **2D / 3D 互斥 dispatch**：3D 路径通过 `maze.walls3D !== undefined` 检测；2D 路径用 `walls + transitions`；同一个 `Game` 实例不会同时跑两套渲染。
+- **3D 模式 dispatch**：`?view=fp3d` URL query 切第一人称视角（`?view=2d` 或缺省走 2D top-down,back-compat 干净）。3D 模式渲染**同一份** 2D 多层数据（`walls: CellType[][]` + `levelCount` + `transitions`,P3-1 锁的 contract 完整保留），**没有**独立的 3D 数据结构 / 算法 / 移动模型。`new Game(bridge, view)` 把 view 锁到 Game 实例上,`buildScene(maze, darkMode, view)` 唯一 view-specific 差异是 `view === 'fp3d'` 时 `playerMarker.visible = false`(第一人称看不到脚下)。
 - **URL 是规范**：`/game` 的查询串是关卡身份的唯一来源；`gameUrl.ts` 在边界处显式校验 `isMazeSize` / `isVictoryType` / `normalizeSurviveSeconds`，校验失败回退到默认。
 - **校验在边界**：所有从 `localStorage` 或 URL 读出的数据都会经过 `isBestRecord` / `isValidSeed` 等显式校验函数，校验失败时丢弃而不是静默吞错。
 - **编辑器输出与手写关卡同构**：编辑器导出同样使用 `MazeData` schema，外层包 `ExportEnvelope { schemaVersion: 1, level: MazeData }`。
