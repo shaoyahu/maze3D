@@ -39,8 +39,9 @@ import {
   type SpawnSchedule,
   type StartLevelOptions,
   type VictoryType,
+  type ViewMode,
 } from '../maze/types';
-import { decodeSeed, encodeSeed, encodeSeedV2, encodeSeedV3 } from './seed';
+import { decodeSeed, encodeSeed, encodeSeedV2 } from './seed';
 
 const SEED_QUERY = 'seed';
 const ID_QUERY = 'id';
@@ -56,6 +57,18 @@ const PROGRESSIVE_QUERY = 'progressive';
 // falls into the same lenient-bad-input policy the other
 // `?progressive=…` branch uses (clamp + use, never reject).
 const PROGRESSIVE_MAX_QUERY = 'progressiveMax';
+// P4 refactor-fp2d: `?view=2d|fp3d` switches between 2D
+// top-down rendering and the new first-person 3D mode (which
+// still consumes the v1/v2 2D multi-layer data, just rendered
+// with a perspective camera). Default is `2d` for back-compat
+// with every URL minted before this branch landed.
+const VIEW_QUERY = 'view';
+const VIEW_DEFAULT: ViewMode = '2d';
+const VIEW_VALUES: readonly ViewMode[] = ['2d', 'fp3d'];
+
+export function isViewMode(v: unknown): v is ViewMode {
+  return typeof v === 'string' && (VIEW_VALUES as readonly string[]).includes(v);
+}
 
 // Reasons the parser rejects a /game URL. Strings are user-visible (they
 // flow through to a LevelLoadError surfaced by App), so they are kept short
@@ -69,13 +82,19 @@ export type GameUrlError =
   | 'bad-enemies'
   | 'bad-size'
   | 'bad-progressive'
-  | 'bad-progressive-max';
+  | 'bad-progressive-max'
+  | 'bad-view';
 
 export interface ParsedGameUrl {
   // Procedural levels carry the encoded algo-v1-... id; non-procedural
   // levels carry the raw level id. Exactly one is set.
   id: string;
   options: StartLevelOptions;
+  // P4 refactor-fp2d: the rendering mode the Game should boot
+  // with. Lives at the same level as `id` because view is not a
+  // per-level rule (it doesn't go into rules.victory) — it's a
+  // presentation toggle that the user picks from LevelSelect.
+  view: ViewMode;
 }
 
 // F-project-review-2026-06-14: read the mode / survive / enemies /
@@ -147,6 +166,23 @@ function readOptions(params: URLSearchParams): { ok: true; options: StartLevelOp
   return { ok: true, options };
 }
 
+// P4 refactor-fp2d: parse `?view=…` independently from the
+// options object. View is a presentation toggle (not a
+// per-level rule), so it doesn't belong in StartLevelOptions —
+// it sits on ParsedGameUrl as a sibling of `id` and is consumed
+// by GameCanvas when it dispatches which Game class to build.
+// The lenient policy is "invalid value falls back to 2d, no
+// error" so a stale `?view=foo` link doesn't break the page;
+// the only strict failure is a non-finite / wrong-type value
+// (e.g. a number from a hand-crafted URL), which is rare
+// enough to merit a `bad-view` error for the error-boundary UI.
+function readView(params: URLSearchParams): { ok: true; view: ViewMode } | { ok: false; error: GameUrlError } {
+  const raw = params.get(VIEW_QUERY);
+  if (raw === null) return { ok: true, view: VIEW_DEFAULT };
+  if (!isViewMode(raw)) return { ok: false, error: 'bad-view' };
+  return { ok: true, view: raw };
+}
+
 // F-project-review-2026-06-14: query-string parser. The shape mirrors the
 // URLSearchParams API but is bounded to known keys so a deep-link with
 // unexpected keys (e.g. ?<script>) is rejected at the boundary.
@@ -167,6 +203,10 @@ export function parseGameSearchParams(
   if (!optsResult.ok) return optsResult;
   const options = optsResult.options;
 
+  const viewResult = readView(params);
+  if (!viewResult.ok) return viewResult;
+  const view = viewResult.view;
+
   if (id !== null) {
     // Non-procedural: id is taken as-is. Empty string is treated as missing.
     if (id.length === 0) return { ok: false, error: 'missing-id' };
@@ -180,7 +220,7 @@ export function parseGameSearchParams(
     // the lenient-bad-input policy used by every other validation
     // branch in this parser.
     if (id.length > 256) return { ok: false, error: 'missing-id' };
-    return { ok: true, parsed: { id, options } };
+    return { ok: true, parsed: { id, options, view } };
   }
 
   // Procedural path. seed is non-null here per the both-seed-and-id gate.
@@ -198,43 +238,52 @@ export function parseGameSearchParams(
   // `levelCount` (i.e. it was a v1 id to begin with, or a v2 id
   // with the back-compat `levelCount=1` value — which decodes
   // identically so the codec-version swap is invisible).
-  // P4: v3 (3D voxel) is its own wire format. The 3D visualSize
-  // (5/7/9) and the 3d-prefixed algorithm name would both be
-  // rejected by the v1 whitelist, so we MUST re-encode via
-  // `encodeSeedV3` to keep the URL round-trippable. The
-  // `algorithm.startsWith('3d-')` check is the same predicate
-  // `AlgorithmMazeProvider.load` uses to dispatch to `load3D`.
-  const seedId = decoded.algorithm.startsWith('3d-')
-    ? encodeSeedV3(decoded)
-    : decoded.levelCount && decoded.levelCount > 1
+  //
+  // P4 refactor-fp2d: the v3 (3D voxel) wire format is removed.
+  // 3D mode is now a "first-person view of 2D multi-layer"
+  // rendering (P4 refactor spec), so 3D voxel seeds are no
+  // longer produced. An old v3 id (`algo-v3-…`) fails the v1
+  // /v2 regexes and lands in the `bad-seed` error path here.
+  // The view toggle is independent of the seed format: a v1 or
+  // v2 id with `view=fp3d` boots the same data in first-person
+  // rendering, and `view=2d` (default) is the historical
+  // top-down rendering.
+  const seedId =
+    decoded.levelCount && decoded.levelCount > 1
       ? encodeSeedV2(decoded, decoded.levelCount)
       : encodeSeed(decoded);
-  return { ok: true, parsed: { id: seedId, options } };
+  return { ok: true, parsed: { id: seedId, options, view } };
 }
 
 // F-project-review-2026-06-14: reverse direction. Builds the ?seed=&mode=...
 // query that round-trips the StartLevelOptions LevelSelect handed us. Used
 // when navigating from /levels to /game so the URL mirrors what the user
 // just configured.
+//
+// P4 refactor-fp2d: now also takes a `view` arg (the rendering mode
+// LevelSelect picked). view=fp3d writes `?view=fp3d`; the default
+// `2d` is omitted to keep the URL clean for the (much more common)
+// top-down case. view is a presentation toggle, not a per-level
+// rule, so it lives outside StartLevelOptions.
 export function buildGameSearchParams(
   id: string,
   options?: StartLevelOptions,
+  view: ViewMode = VIEW_DEFAULT,
 ): URLSearchParams {
   const params = new URLSearchParams();
   // P3-1: P3-1a added the algo-v2-… seed format (carries a level
   // count between `size` and the hex mazeSeed). v2 ids are still
   // procedural — they round-trip through `?seed=…` the same way v1
   // ids do — so the isProcedural gate has to accept both prefixes.
-  // P4: v3 (3D voxel mazes) joins the procedural gate. Same
-  // `?seed=…` round-trip contract as v1/v2; a future v4 (or any
-  // other not-yet-defined prefix) intentionally falls through to
-  // the `?id=…` branch, which is the conservative choice: a
-  // hand-crafted level id cannot collide with a future seed
-  // format. `parseGameSearchParams` still rejects unknown seed
-  // prefixes via `decodeSeed`, so a deep-link carrying
-  // `?seed=algo-v3-…` lands in the `bad-seed` error path either way
-  // (see the new gameUrl.test.ts case 'tamper').
-  const isProcedural = id.startsWith('algo-v1-') || id.startsWith('algo-v2-') || id.startsWith('algo-v3-');
+  // P4 refactor-fp2d: the v3 (3D voxel) prefix is removed. 3D
+  // mode is now a presentation toggle (`view=fp3d`) that
+  // consumes the same v1/v2 2D data, so the seed format space
+  // shrinks back to v1 + v2 only. A stale `algo-v3-…` id never
+  // reaches this function in normal flow (the JSON provider no
+  // longer emits it, and LevelSelect's procedural dropdown is
+  // 2D-only) — the `id.startsWith('algo-v3-')` branch was
+  // removed in lockstep with the v3 codec deprecation.
+  const isProcedural = id.startsWith('algo-v1-') || id.startsWith('algo-v2-');
   if (isProcedural) {
     params.set(SEED_QUERY, id);
   } else {
@@ -252,18 +301,9 @@ export function buildGameSearchParams(
   // between the two encoders except for the wire prefix, and v1
   // is the canonical name for it because every historical best
   // record is on the v1 codec).
-  // P4: v3 (3D voxel) gets its own encoder branch. The size is
-  // a 3D visualSize (5/7/9/11/13/15), not the 2D MazeSize
-  // (15/30/50), so we route through `encodeSeedV3(seed)` instead
-  // of `encodeSeed(seed)` (which would emit a wire-invalid v1
-  // id with the 3D `3d-` prefixed algorithm name). v3 has its
-  // own narrow shape because the 3D sizes don't satisfy the
-  // 2D `MazeSize` constraint on the shared `Seed` interface.
   if (isProcedural && options.seed) {
     const seed = options.seed;
-    if (seed.algorithm.startsWith('3d-')) {
-      params.set(SEED_QUERY, encodeSeedV3(seed));
-    } else if (seed.levelCount && seed.levelCount > 1) {
+    if (seed.levelCount && seed.levelCount > 1) {
       params.set(SEED_QUERY, encodeSeedV2(seed, seed.levelCount));
     } else {
       params.set(SEED_QUERY, encodeSeed(seed));
@@ -295,6 +335,13 @@ export function buildGameSearchParams(
     // preserve.)
     params.set(PROGRESSIVE_MAX_QUERY, String(options.spawnSchedule.max));
   }
+  // P4 refactor-fp2d: emit `?view=fp3d` when the user picked
+  // first-person 3D rendering. The default `2d` is intentionally
+  // omitted to keep historical URLs short and the top-down
+  // experience indistinguishable from a pre-refactor link.
+  if (view === 'fp3d') {
+    params.set(VIEW_QUERY, view);
+  }
   return params;
 }
 
@@ -307,6 +354,7 @@ export const GAME_URL_QUERY_KEYS = {
   ENEMIES_QUERY,
   PROGRESSIVE_QUERY,
   PROGRESSIVE_MAX_QUERY,
+  VIEW_QUERY,
 } as const;
 
 // Re-exports for callers that want the size guard inline.
