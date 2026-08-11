@@ -553,6 +553,52 @@ P4b-CellSize 锁的 5s budget 只对 O(N) 家族有效。**未来 3D Aldous-Brod
 - `Scene.3D.test.ts` (NEW, 6 case): single InstancedMesh 返回 / count = 118 walls (5³-7 passages) / instanceMatrix 第 0 个 = cell-center translation / 共享 geom+mat / 全部 wall 是 InstancedMesh / dispose 不 throw
 - `Game.3D.test.ts` (UPDATE): 1 case 改 `walls.length = 1` + `instanced.count = 117` (旧测试 117 错误,新 fixture 是 118)
 
+### P4 refactor-fp2d — locked contracts (2026-08-11, 推翻上面所有 P4 旧 contracts)
+
+**核心新 contract**:3D 模式 ≠ 6 方向自由移动的 3D 体素迷宫,3D 模式 = **第一人称视角渲染同一个 2D 多层迷宫**。玩家在 (x, z) 平面走,只能在 y 轴走 transition tile (stair / ladder / hole)。数据完全复用 2D 多层 (P3-1 锁的 `walls: CellType[][]` + `levelCount` + `transitions`)。
+
+**新 ViewMode type**(`src/maze/types.ts`):`type ViewMode = '2d' | 'fp3d'`。`2d` = 2D 顶视图 (历史默认,back-compat),`fp3d` = 第一人称 3D 视角。**没有任何 view-specific 的 maze 字段** — 同一个 MazeData 在 2d / fp3d 两种 view 下都能玩。
+
+**URL 协议**:`/game?seed=algo-v1-…&view=2d` 或 `?view=fp3d` (`fp3d` 写,`2d` 省略以保持 URL 干净)。`parseGameSearchParams` 读 view (locked contract in `src/utils/gameUrl.ts`),`buildGameSearchParams` 写 view (默认 `2d`)。`algo-v3-…` (3D voxel) seed format **完全作废** — 任何 v3 id 进 URL 都 fail `decodeSeed`,落 `bad-seed` 错误路径。
+
+**ViewMode 派发**:`new Game(bridge, viewMode)` (locked contract in `src/engine/Game.ts`)。`viewMode` 字段锁在 Game 实例上 (default `'2d'`,back-compat)。**唯一的 view-specific 行为差异是 mouse-look gate**:
+- `viewMode === 'fp3d'`:`update()` 调 `applyLook(player, mouseDelta)` 让玩家用鼠标转头 (camera yaw / pitch)
+- `viewMode === '2d'`:跳过 `applyLook`,camera 永远朝 -z 方向 (历史 top-down 行为)
+
+**Scene 渲染**:`buildScene(maze, darkMode, viewMode)` 第三个参数 (default `'2d'`)。locked contract:
+- 两种 view 用 **完全相同的 mesh tree** (多层 floor/ceiling, 3D wall box, 3D exit box, 3D pickup, 3D enemy, 2D door, transition meshes)
+- 唯一差别: `view === 'fp3d'` 时 `playerMarker.visible = false` (第一人称看不到自己脚下)
+- **没有 `buildScene3D` 了** — 3D voxel 整段删除
+- 相机位置 + 朝向由 Game.update + updatePlayerCamera 决定 (PerspectiveCamera 已经 60° FOV, 跟 view 无关)
+
+**InputManager**:`getMove3D()` + `Move3D` interface **完全删除**。3D 模式用 `getMove()` (WASD → x/z 标准化向量) + `getLadderRequest()` (Space/C ladder 上下层)。locked contract: **3D 模式不能用 Space/C 自由升空 / 下降** — 只能在 ladder cell 上按 Space/C 才能切换层。`ArrowUp/ArrowDown` 仍然只绑 2D z 轴 (2D path 锁的 contract 保留)。
+
+**算法 + seed codec**:
+- `Algorithm` 联合删除 `'3d-recursive-backtracker'` 和 `'3d-prim'` 字面量
+- `Seed` interface 不变 (still 2D 字段 only)
+- `encodeSeedV3` + `SeedV3` + `SEED_RE_V3` + `VALID_3D_SIZES` + `VALID_3D_ALGORITHMS` **全部删除**
+- 15 种 2D 算法 (P2-21 locked) 是**唯一**算法集
+- `MazeData` 删 `walls3D?` / `start3D?` / `exit3D?` 字段
+- 旧 `algo-v3-…` URL 进 `bad-seed` 错误路径,无 silent fallback (P4 refactor spec §8 错误处理决策)
+
+**Player**:
+- `createPlayer(startCell, cellSize, _mode?)` 单一 overload,不再有 `'3d'` overload
+- PlayerState shape: `{ position: {x, y, z}; yaw; pitch; speed; radius; currentLevel; inputLocked; transitionStartTime; transitionFromY; transitionToY; transitionDuration }`
+- `y` 由 `level * FLOOR_HEIGHT` 决定 (2D 路径定义),FP3D 模式 + 2D 模式共享
+
+**Engine 状态机**:`active3DTween` 字段 + `tick3DMovement` / `tick3DTween` 私有方法 **全部删除**。2D 模式的 `activeTransition` (P3-1 vertical transition) 是**唯一** tween slot — FP3D 模式通过 ladder / stair / hole 触发同一个 activeTransition,引擎不区分 view。
+
+**2D 模式全链路零回归**:
+- 2D JSON provider / 2D AlgorithmMazeProvider / 2D Game.update 分支 / 2D Scene.ts 渲染 / 2D HUD / 2D store 字段 —— **全部 ship 状态保留**
+- 1693 / 1694 tests pass (1 个历史 skip,跟 refactor 无关),零 2D 回归
+- 老 `algo-v3-…` URL fail `bad-seed` 错误 (P4 refactor spec §8 决策:不 silent fallback)
+
+**测试** (覆盖 P4 refactor-fp2d locked contracts):
+- `tests/unit/engine/Game.fp3d.test.ts` (NEW, 4 case): Game 接受 `view: '2d' | 'fp3d'` 参数,默认 '2d',2D 模式 back-compat
+- `tests/component/levelSelect.view.test.tsx` (NEW, 4 case): View segmented control 渲染 / 默认 2d / 点击切换 / onPick 转发 view
+- `tests/unit/utils/gameUrl.test.ts` (UPDATE): 加 6 case 测试 `view=2d` / `view=fp3d` round-trip / `view=foo` reject / `view=` 缺失 default 2d
+- 删: `Game.3D.test.ts` (5) + `Game.3D.tween.test.ts` (10) + `Scene.3D.test.ts` (6) + `Minimap.3D.test.tsx` (10) + `Minimap.Panorama.test.tsx` (8) + `inputManager.test.ts` getMove3D 段 (8) + `seed.test.ts` v3 段 (8) + `gameUrl.test.ts` v3 段 (2) + `algorithmMazeProvider.test.ts` P4-3D-voxel 段 (8) + 3 个 maze/generators 文件 (recursiveBacktracker3D.test + prim3D.test + cellsize.perf.test) = 共删 ~70 个 v3 / 3D voxel test case
+
 ## 测试
 
 ```
