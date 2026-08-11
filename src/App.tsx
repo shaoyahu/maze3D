@@ -274,10 +274,19 @@ function LevelsPage() {
         .filter(({ id }) => !id.startsWith('custom-'))
         .map(({ id, name, data }) => ({ id, name, data }))}
       error={error}
-      onPick={(id, options) => {
+      onPick={(id, options, view) => {
         // F-project-review-2026-06-14: build the /game URL from the id +
-        // options. push (not replace) so browser back returns to /levels.
-        const search = buildGameSearchParams(id, options);
+        // options + view. push (not replace) so browser back returns
+        // to /levels.
+        //
+        // P4 refactor-fp2d: `view` is the rendering mode the user
+        // picked at /levels (2D top-down or first-person 3D). The
+        // URL carries it as `?view=fp3d` when fp3d (the default
+        // `2d` is omitted to keep the URL clean for the much more
+        // common top-down case). The /game route's parser reads
+        // it into `ParsedGameUrl.view` and GameCanvas forwards
+        // it to the Game constructor.
+        const search = buildGameSearchParams(id, options, view ?? '2d');
         navigate({ pathname: '/game', search: `?${search.toString()}` });
       }}
       onBack={() => navigate(-1)}

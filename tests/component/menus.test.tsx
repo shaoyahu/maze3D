@@ -57,7 +57,11 @@ describe('menu components', () => {
     fireEvent.click(screen.getByTestId('start-button'));
     // Hand-crafted level: just the id, no StartLevelOptions.
     // P2-6: onPick is (id, options?) so the second arg is explicitly undefined.
-    expect(onPick).toHaveBeenCalledWith('a', undefined);
+    // P4 refactor-fp2d: onPick now also carries the view (2D top-down
+    // or first-person 3D); the test asserts the default 2D view
+    // because the LevelSelect view segmented control has its
+    // initial state = '2d'.
+    expect(onPick).toHaveBeenCalledWith('a', undefined, '2d');
     fireEvent.click(screen.getByText('返回'));
     expect(onBack).toHaveBeenCalled();
   });

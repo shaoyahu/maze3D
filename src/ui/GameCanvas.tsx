@@ -313,7 +313,18 @@ export function GameCanvas({ maze, options, view = '2d' }: { maze: MazeData; opt
           }, 3000);
         });
       }} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block' }} />
-      {screen === 'playing' && <Crosshair />}
+      {/* P4 refactor-fp2d: the crosshair is a first-person
+          cue, not a 2D cue. In 2D top-down the player sees
+          their own ring (Scene.ts playerMarker, hidden in
+          fp3d) so the on-screen crosshair would be a
+          redundant reticle on top of a redundant reticle.
+          Gating on `view === 'fp3d'` keeps the HUD as
+          clean as the engine state — fp3d has the crosshair
+          and no marker, 2D has the marker and no
+          crosshair. Same `screen === 'playing'` guard as
+          the legacy code so paused / game-over / win
+          overlays still cover it. */}
+      {screen === 'playing' && view === 'fp3d' && <Crosshair />}
       {screen === 'playing' && <Minimap maze={maze} gameRef={gameRef} />}
       {/* P2-11: tutorial banner — rendered only when this level has steps. The banner itself hides when currentStepId is null (tutorial finished), so we don't need a separate gate. */}
       {screen === 'playing' && maze.tutorialSteps && maze.tutorialSteps.length > 0 && <TutorialBanner />}
