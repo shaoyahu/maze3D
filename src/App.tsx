@@ -23,7 +23,7 @@ import { EditorMazeProvider } from './maze/EditorMazeProvider';
 import { AlgorithmMazeProvider } from './maze/AlgorithmMazeProvider';
 import { ConfirmProvider } from './ui/useConfirm';
 import { LevelLoadError, clampErrorValue } from './utils/errors';
-import type { MazeData, StartLevelOptions } from './maze/types';
+import type { MazeData, StartLevelOptions, ViewMode } from './maze/types';
 import { buildGameSearchParams, parseGameSearchParams } from './utils/gameUrl';
 import { useT } from './i18n';
 
@@ -325,6 +325,15 @@ function GamePage() {
 
   const [activeMaze, setActiveMaze] = useState<MazeData | null>(null);
   const [activeOptions, setActiveOptions] = useState<StartLevelOptions | undefined>(undefined);
+  // P4 refactor-fp2d: the rendering view (2D top-down or
+  // first-person 3D) is captured at the same time as the
+  // active maze so a refresh of the same URL keeps the
+  // view the user picked. Lives at the same scope as
+  // `activeMaze` because GameCanvas needs both to construct
+  // the Game instance. Default is '2d' so the variable is
+  // never undefined; the URL parser already collapses a
+  // missing `?view=` to '2d' at parseGameSearchParams time.
+  const [activeView, setActiveView] = useState<ViewMode>('2d');
   const [urlError, setUrlError] = useState<string | null>(null);
 
   // F-M2: monotonic token bumped on every startLevel / quitToMenu. Async
@@ -340,19 +349,42 @@ function GamePage() {
       // P2-3: ids starting with 'algo-v1-' are procedural seeds — we generate
       // the MazeData on demand via AlgorithmMazeProvider instead of looking
       // it up in the hand-crafted `levels` list. P3-1 added `algo-v2-…`
-      // (multi-level), P4 added `algo-v3-…` (3D voxel) — both go through
-      // the same `AlgorithmMazeProvider.load(id)` dispatch (the provider
-      // routes v3 ids to `load3D` internally). Anything else goes
-      // through the EditorMazeProvider (custom + built-in).
+      // (multi-level) — both go through the same
+      // `AlgorithmMazeProvider.load(id)` dispatch.
+      //
+      // P4 refactor-fp2d: the `algo-v3-…` (3D voxel) prefix is
+      // removed. 3D mode is now a first-person view of 2D
+      // multi-layer data (P4 refactor spec), so the procedural
+      // seed format space shrinks back to v1 + v2 only. A
+      // stale `algo-v3-…` id fails `decodeSeed` in the
+      // provider's load() and lands in the `bad-seed` error
+      // path. The 3D rendering toggle is now a separate
+      // `?view=fp3d` URL query, handled by GameCanvas.tsx when
+      // it builds the Game instance.
       const isProcedural =
         id.startsWith('algo-v1-') ||
-        id.startsWith('algo-v2-') ||
-        id.startsWith('algo-v3-');
+        id.startsWith('algo-v2-');
       const handleLoaded = (maze: MazeData) => {
         if (loadTokenRef.current !== myToken) return;
         useGameStore.getState().startLevel(maze, options);
         setActiveMaze(maze);
         setActiveOptions(options);
+        // P4 refactor-fp2d: capture the view from the parsed URL
+        // so GameCanvas can construct a Game with the right
+        // mouse-look gating. Reading from `parsed.parsed.view`
+        // (rather than re-parsing) is intentional — the URL
+        // parser already validated the value against the
+        // `isViewMode` whitelist, so this is the canonical
+        // "what view did the user pick" value. The
+        // `parsed.ok` guard is redundant at runtime (the
+        // enclosing useEffect already returned early on
+        // `!parsed.ok` before calling startLevel), but
+        // TypeScript can't narrow `parsed` across the
+        // useCallback boundary, so the guard gives the
+        // strict-typed read the narrowing it needs.
+        if (parsed.ok) {
+          setActiveView(parsed.parsed.view);
+        }
         setUrlError(null);
       };
       if (isProcedural) {
@@ -404,6 +436,9 @@ function GamePage() {
       setUrlError(`关卡 URL 不合法：${parsed.error}`);
       setActiveMaze(null);
       setActiveOptions(undefined);
+      // P4 refactor-fp2d: also clear the view on bad URL so a
+      // subsequent valid load doesn't inherit a stale value.
+      setActiveView('2d');
       return;
     }
     startLevel(parsed.parsed.id, parsed.parsed.options);
@@ -424,6 +459,10 @@ function GamePage() {
     useGameStore.getState().goToMenu();
     setActiveMaze(null);
     setActiveOptions(undefined);
+    // P4 refactor-fp2d: also reset the view so the next
+    // /game entry defaults to 2D (the user can re-pick
+    // first-person via the LevelSelect view toggle).
+    setActiveView('2d');
     // F-project-review-2026-06-14: replace (not push) so the user's
     // history entry for /game is collapsed and back returns to whatever
     // was before the game (e.g. /levels).
@@ -474,7 +513,7 @@ function GamePage() {
 
   return (
     <>
-      {activeMaze && <GameCanvas key={activeMaze.id} maze={activeMaze} options={activeOptions} />}
+      {activeMaze && <GameCanvas key={activeMaze.id} maze={activeMaze} options={activeOptions} view={activeView} />}
       {activeMaze && gameScreen === 'playing' && <HUD />}
       {activeMaze && gameScreen === 'paused' && (
         <>

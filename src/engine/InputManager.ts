@@ -2,14 +2,18 @@ import type { InventorySlot } from '../maze/types';
 
 export interface Move { x: number; z: number; }
 export interface MouseDelta { x: number; y: number; }
-// P4: 3D 6-neighbor movement. The 3D tick (`Game.tick3DMovement`)
-// reads this every frame to teleport the player to an adjacent
-// open cell. The shape is a one-hot triple (one of {dx, dy, dz}
-// is non-zero at a time when a single key is pressed); the
-// engine collapses a diagonal to whichever axis fires LAST in
-// the keydown → keyup ordering, which is the same fallback
-// behavior as the 2D `getMove()` for diagonal WASD.
-export interface Move3D { dx: number; dy: number; dz: number; }
+// P4 refactor-fp2d: the 3D 6-neighbor `Move3D` interface and
+// `getMove3D()` method are removed. The 3D mode the user now
+// sees is a first-person perspective camera rendering the
+// SAME 2D multi-layer data, so the player walks on the same
+// (x, z) plane the 2D path uses — `getMove()` (WASD → x/z
+// normalized vector) is the only move method, and layer
+// transitions go through `getLadderRequest()` (Space/C,
+// 2D multi-layer ladder) for the explicit up/down interaction.
+// Pressing Space/C outside a ladder cell is a no-op in both
+// views, so the 3D "free up/down" affordance is correctly
+// absent (the spec.md §1 locked contract: 3D mode ≠ 6-direction
+// free movement, 3D mode = first-person view of 2D multi-layer).
 
 // F-2026-06-30: P2-16 — logical action name + the key code bound to
 // it. Exported as a single constant so the GameCanvas useEffect and
@@ -105,41 +109,22 @@ export class InputManager {
     return { x, z };
   }
 
-  // P4: 3D 6-neighbor move. Reads WASD + Space + KeyC into a
-  // one-hot triple. Unlike the 2D `getMove()`, the values are
-  // NOT normalized — the 3D tick does cell-based collision
-  // (one cell at a time), so a normalized diagonal wouldn't
-  // map to a valid 6-neighbor. When two opposing keys are
-  // held (W+S), both deltas cancel and the player stays put;
-  // this matches the 2D behavior.
-  //
-  // Space and KeyC are the canonical 3D up / down keys. ArrowUp
-  // and ArrowDown are reserved for the 2D z- axis (so a player
-  // who hasn't realized they're in 3D can still walk forward /
-  // back). We deliberately don't reuse ArrowUp for 3D up to
-  // avoid silent re-binding on a level swap.
-  getMove3D(): Move3D {
-    let dx = 0, dy = 0, dz = 0;
-    if (this.keys.has('KeyW')) dz -= 1;
-    if (this.keys.has('KeyS')) dz += 1;
-    if (this.keys.has('KeyA')) dx -= 1;
-    if (this.keys.has('KeyD')) dx += 1;
-    if (this.keys.has('Space')) dy += 1;
-    if (this.keys.has('KeyC')) dy -= 1;
-    return { dx, dy, dz };
-  }
-
   // P3-1d: 2D ladder request. Space asks for "climb up one
-  // layer" and KeyC asks for "climb down one layer" — same
-  // bindings the 3D `getMove3D` uses for its y-axis neighbors,
-  // because the ladders are mutually exclusive with 3D mode
-  // (ladders only exist on 2D multi-layer levels) and reusing
-  // the bindings keeps the muscle memory consistent across
-  // the two play styles. The actual trigger only fires when
-  // the player is standing on a ladder cell; a Space press
-  // while on a non-ladder cell is a no-op (no other 2D
-  // behavior is bound to Space, so the player won't notice
-  // anything until they walk onto a ladder).
+  // layer" and KeyC asks for "climb down one layer". The
+  // actual trigger only fires when the player is standing on
+  // a ladder cell; a Space press while on a non-ladder cell
+  // is a no-op (no other 2D behavior is bound to Space, so
+  // the player won't notice anything until they walk onto a
+  // ladder).
+  //
+  // P4 refactor-fp2d: the 3D first-person view REUSES this
+  // same ladder API. The locked contract is "3D mode ≠ 6-
+  // direction free movement, 3D mode = first-person view of
+  // 2D multi-layer", so the only way to go up / down a layer
+  // in 3D is the same as in 2D top-down: walk onto a ladder
+  // cell and press Space (up) or KeyC (down). This keeps the
+  // muscle memory consistent across views and the gameplay
+  // identical.
   //
   // The two booleans are independent on purpose — a player
   // who presses both Space and KeyC at the same frame gets

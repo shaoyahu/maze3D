@@ -35,6 +35,7 @@ import type {
   TrapKind,
   VictoryType,
   VerticalTransition,
+  ViewMode,
   SurviveSeconds,
 } from '../maze/types';
 import { enemyChaseMultiplier, normalizeSurviveSeconds, SPAWN_SCHEDULE_DEFAULT, SURVIVE_SECONDS_DEFAULT } from '../maze/types';
@@ -706,9 +707,21 @@ export class Game {
     elapsed: number;
   } | null = null;
   private bridge: GameBridge;
+  // P4 refactor-fp2d: the rendering view (2D top-down or
+  // first-person 3D) is locked in at Game construction time.
+  // The view is a presentation toggle — the underlying
+  // physics, collision, and scene mesh tree are identical
+  // for both values; only the camera position / orientation
+  // and the player-marker visibility differ. The view is
+  // fed in from the `?view=…` URL query (see gameUrl.ts)
+  // via the GameCanvas useEffect that constructs the Game.
+  // Default is '2d' for back-compat with every URL minted
+  // before this branch landed.
+  private viewMode: ViewMode = '2d';
 
-  constructor(bridge: GameBridge) {
+  constructor(bridge: GameBridge, view: ViewMode = '2d') {
     this.bridge = bridge;
+    this.viewMode = view;
   }
 
   init(canvas: HTMLCanvasElement) {
@@ -864,7 +877,7 @@ export class Game {
     // F4: buildScene applies the palette exactly once based on the dark
     // mode flag, so the follow-up setDarkMode() (which would re-run
     // applyPalette a second time) is no longer needed.
-    this.sceneRefs = buildScene(injectedMaze, this.bridge.getCurrentDarkMode());
+    this.sceneRefs = buildScene(injectedMaze, this.bridge.getCurrentDarkMode(), this.viewMode);
     // P4 refactor-fp2d: the `walls3D !== undefined` dispatch
     // on `createPlayer` is gone. The 3D voxel `start3D` /
     // `mode: '3d'` overload is removed from Player.ts in
@@ -1133,10 +1146,27 @@ export class Game {
     // P2-11: capture mouse delta BEFORE applyLook consumes it, so we can
     // emit a tutorial event with this frame's exact rotation. The store
     // decides whether the cumulative rotation has crossed its threshold.
+    //
+    // P4 refactor-fp2d: applyLook is gated on `viewMode === 'fp3d'`.
+    // The 2D top-down view is functionally a "fixed-yaw, no-pitch"
+    // first-person camera — applying mouse-look there would let the
+    // player turn the world around without any visual feedback
+    // (the camera position is pinned to the player's feet, and
+    // mouse-look rotates the camera quaternion but doesn't move
+    // it, so the player would just see the world spin around their
+    // own head). The first-person 3D view is the only one where
+    // mouse-look produces the expected "look around the world"
+    // effect. consumeMouseDelta is still called every frame so
+    // the buffer doesn't accumulate — we just discard the value
+    // in 2D mode (the engine reads `this.input.consumeMouseDelta`
+    // at exactly one site, so this is the only place the buffer
+    // is drained).
     const mouseDelta = this.input.consumeMouseDelta();
-    applyLook(this.player, mouseDelta);
-    if (this.bridge.onTutorialEvent && (mouseDelta.x !== 0 || mouseDelta.y !== 0)) {
-      this.bridge.onTutorialEvent({ kind: 'mouse-look', deltaYaw: mouseDelta.x, deltaPitch: mouseDelta.y });
+    if (this.viewMode === 'fp3d') {
+      applyLook(this.player, mouseDelta);
+      if (this.bridge.onTutorialEvent && (mouseDelta.x !== 0 || mouseDelta.y !== 0)) {
+        this.bridge.onTutorialEvent({ kind: 'mouse-look', deltaYaw: mouseDelta.x, deltaPitch: mouseDelta.y });
+      }
     }
 
     // P2-11: edge-triggered key presses → `key-pressed` tutorial events.

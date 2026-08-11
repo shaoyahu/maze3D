@@ -9,11 +9,11 @@ import { Crosshair } from './components/Crosshair';
 import { TutorialBanner } from './components/TutorialBanner';
 import { Minimap } from './components/Minimap';
 import { ParchmentMap } from './components/ParchmentMap';
-import type { MazeData, StartLevelOptions } from '../maze/types';
+import type { MazeData, StartLevelOptions, ViewMode } from '../maze/types';
 import { useT } from '../i18n';
 import { OPEN_MAP_KEY } from '../engine/InputManager';
 
-export function GameCanvas({ maze, options }: { maze: MazeData; options?: StartLevelOptions }) {
+export function GameCanvas({ maze, options, view = '2d' }: { maze: MazeData; options?: StartLevelOptions; view?: ViewMode }) {
   const t = useT();
   const ref = useRef<HTMLCanvasElement>(null);
   const gameRef = useRef<Game | null>(null);
@@ -158,7 +158,7 @@ export function GameCanvas({ maze, options }: { maze: MazeData; options?: StartL
         }
       },
     };
-    const game = new Game(bridge);
+    const game = new Game(bridge, view);
     game.init(ref.current);
     gameRef.current = game;
     // Dev-only escape hatch: lets a human poke at the live engine from the
