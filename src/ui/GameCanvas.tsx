@@ -181,7 +181,18 @@ export function GameCanvas({ maze, options, view = '2d' }: { maze: MazeData; opt
       game.dispose();
       gameRef.current = null;
     };
-  }, []);
+    // P4 refactor-fp2d: `view` is in the deps array so a view
+    // toggle at /levels (without changing the maze id) tears
+    // down the existing Game and constructs a new one with
+    // the new `viewMode`. Without this dep, the App-level
+    // `key={activeMaze.id}` prop keeps the GameCanvas instance
+    // alive across view changes (the maze id is the same),
+    // and the existing Game would keep running with its
+    // constructor-time `view` — silently ignoring the toggle.
+    // The Effect 2 ([maze.id, restartKey]) handles the separate
+    // case of "same view, different maze" by calling
+    // `game.startLevel` on the live instance.
+  }, [view]);
 
   // Effect 2: (re)start the level whenever the maze changes or the store
   // signals a restart. Calling game.startLevel on the live instance is

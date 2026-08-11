@@ -442,6 +442,28 @@ function GamePage() {
     // bump first makes every (re-)run start with a fresh token.
     loadTokenRef.current++;
     if (!parsed.ok) {
+      // P4 refactor-fp2d: the v3 (3D voxel) wire format is
+      // removed, so a user with a `?seed=algo-v3-…` bookmark
+      // lands here. Per spec.md §8 / §10 / §11 ("老 v3 URL：
+      // 友好 fall back 到 2D + console.warn"), we don't show
+      // a red error page for the v3 case — the URL is the
+      // user's genuine intent, just no longer a valid wire
+      // format. The lenient path: console.warn + redirect
+      // to /levels (`replace: true` so the dead v3 URL
+      // doesn't pollute browser history). The detection
+      // narrows to the v3 prefix specifically — a generic
+      // `?seed=not-a-real-seed` is a genuine user mistake
+      // and still surfaces the red error panel.
+      const v3Seed = searchParams.get('seed');
+      if (parsed.error === 'bad-seed' && v3Seed?.startsWith('algo-v3-')) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          '[P4 refactor-fp2d] v3 (3D voxel) seed URL detected — falling back to /levels. ' +
+            'The 3D voxel wire format is removed; please pick a v1 or v2 level.',
+        );
+        navigate('/levels', { replace: true });
+        return;
+      }
       setUrlError(`关卡 URL 不合法：${parsed.error}`);
       setActiveMaze(null);
       setActiveOptions(undefined);
@@ -453,12 +475,12 @@ function GamePage() {
     startLevel(parsed.parsed.id, parsed.parsed.options);
     // Reset on unmount too: any in-flight load is invalidated by the
     // loadTokenRef bump in quitToMenu, but bumping here also covers the
-    // case where GamePage unmounts without going through quitToMenu
+    // case where GamePage unmounts without goingThrough quitToMenu
     // (e.g. user typed a new URL into the address bar).
     return () => {
       loadTokenRef.current++;
     };
-  }, [parsed, startLevel]);
+  }, [parsed, startLevel, navigate, searchParams]);
 
   const quitToMenu = () => {
     // F-M2: cancel any in-flight procedural load before flipping the UI
