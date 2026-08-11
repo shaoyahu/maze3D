@@ -20,34 +20,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
 import { Game, type GameBridge } from '../../../src/engine/Game';
 import { createCamera } from '../../../src/engine/Camera';
-import type { MazeData } from '../../../src/maze/types';
-
-// Minimal maze fixture: a 3×3 single-layer maze with start at (0,0)
-// and exit at (2,2), one pickup in the middle, no enemies, no
-// traps, no doors. The Game's physics tick only needs the
-// `start` / `exit` / `walls` fields to be well-typed; the
-// mouse-look path under test doesn't depend on the wall layout.
-function makeMaze(): MazeData {
-  return {
-    id: 'fp3d-test-maze',
-    name: 'FP3D test maze',
-    size: { width: 3, depth: 3 },
-    cellSize: 2,
-    start: { x: 0, z: 0 },
-    exit: { x: 2, z: 2 },
-    walls: [
-      [0, 1, 0],
-      [0, 0, 0],
-      [0, 1, 0],
-    ],
-    pickups: [],
-    rules: { initialTime: 60, maxHealth: 3, victory: 'reach-exit', timeOnPickup: 10 },
-    enemies: [],
-    traps: [],
-    doors: [],
-    levelCount: 1,
-  };
-}
 
 // Minimal GameBridge stub. Most callbacks are no-ops; we pin the
 // `isActiveLevel` and `isPlaying` accessors because Game.update

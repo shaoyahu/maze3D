@@ -23,11 +23,11 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { LevelSelect, type LevelDef } from '../../src/ui/LevelSelect';
 import { ConfirmProvider } from '../../src/ui/useConfirm';
 
-function renderLevelSelect(onPick = vi.fn()) {
+function renderLevelSelect(onPick = vi.fn(), onBack = vi.fn()) {
   const levels: LevelDef[] = [{ id: 'a', name: 'Alpha' }, { id: 'b', name: 'Beta' }];
   return render(
     <ConfirmProvider>
-      <LevelSelect available={levels} onPick={onPick} />
+      <LevelSelect available={levels} onPick={onPick} onBack={onBack} />
     </ConfirmProvider>,
   );
 }
