@@ -1,5 +1,6 @@
 import type { MazeData } from '../../maze/types';
 import { isReachable } from '../../maze/reachability';
+import { getCurrentLayerWalls } from '../../utils/perLayerWalls';
 import type { TVars } from '../../i18n';
 
 // F-2026-06-17-E-M-7: issues now carry an i18n key (and optional vars)
@@ -24,9 +25,17 @@ export interface ValidationIssue {
 // numerical order (1, 2, 3, 4, 5), each appearing at most once.
 export function validateDesign(level: MazeData): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
-  const { walls, start, exit, enemies, rules, tutorialSteps } = level;
+  const { start, exit, enemies, rules, tutorialSteps } = level;
+  // P5-editor-multilayer: the start / exit .level field selects the
+  // grid we run reachability against. P5-2 Phase 3 widens the BFS to
+  // walk across `walls2d` via `transitions`; for now (Phase 1) the
+  // single-layer BFS runs on the start's own layer and treats the
+  // exit as reachable only when it sits on the same layer. The
+  // helper handles the strict `walls xor walls2d` mutex for us.
+  const walls = getCurrentLayerWalls(level, start.level ?? 0);
+  const exitWalls = getCurrentLayerWalls(level, exit.level ?? 0);
   const startOnWall = walls[start.z]?.[start.x] === 1;
-  const exitOnWall = walls[exit.z]?.[exit.x] === 1;
+  const exitOnWall = exitWalls[exit.z]?.[exit.x] === 1;
 
   // F-2026-06-30: 'caught-by-enemy' is teaching-only. The Segmented
   // control already hides the option for non-tutorial levels, but if
@@ -45,7 +54,15 @@ export function validateDesign(level: MazeData): ValidationIssue[] {
   // Rule 1: exit reachable from start via open cells. Short-circuit the
   // BFS when either endpoint is on a wall — isReachable would just return
   // false and the actionable error (rule 4 / 5) covers the same cause.
-  if (!startOnWall && !exitOnWall && !isReachable(walls, start, exit)) {
+  // P5-2: when start.level !== exit.level the BFS would need to walk
+  // across `transitions` to verify reachability. Phase 1 keeps the
+  // single-layer BFS; Phase 3 widens the check. We short-circuit on
+  // cross-layer (returning false) so a multi-layer level still flags
+  // the "exit unreachable" warning until Phase 3 lands — better to
+  // surface a wrong warning than to silently mark a level valid
+  // that actually can't be solved.
+  const sameLayer = (start.level ?? 0) === (exit.level ?? 0);
+  if (sameLayer && !startOnWall && !exitOnWall && !isReachable(walls, start, exit)) {
     issues.push({
       severity: 'warning',
       messageKey: 'editor.validation.exitUnreachable',

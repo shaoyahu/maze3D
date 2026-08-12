@@ -220,7 +220,19 @@ export interface MazeData {
   // converts a logical 3D grid to its visual 3D grid; P4a's
   // Recursive Backtracker returns the visual 3D grid directly.
   walls3D?: CellType[][][];
-  walls: CellType[][];
+  // P5-editor-multilayer: `walls` is now optional. The validator
+  // enforces the contract `walls xor walls2d`: single-layer levels
+  // carry `walls` (the historical single 2D grid); multi-layer
+  // levels carry `walls2d` (one 2D grid per layer). The two are
+  // mutually exclusive. The editor's `addLevel` / `removeLevel`
+  // actions (P5-editor-multilayer) use `perLayerWalls.promote` /
+  // `perLayerWalls.collapse` to swap between the two shapes
+  // atomically. The engine reads `walls2d` first in
+  // `Scene.resolvePerLayerWalls` + `Game._grid.get`, so the
+  // multi-layer path doesn't need this field. The single-layer
+  // path (the historical default) still reads `walls` via
+  // `[walls]` collapse in the engine resolve fallback.
+  walls?: CellType[][];
   pickups: Pickup[];
   rules: LevelRules;
   enemies: EnemySpawn[];
@@ -261,6 +273,17 @@ export interface MazeData {
   // engine in P3-1b will read this array; P3-1a only owns the
   // validator (forward-compatible shape, lenient on missing fields).
   transitions?: VerticalTransition[];
+  // P5-1: optional per-layer wall grids. When set, the engine
+  // reads THIS (not `walls`) for multi-layer rendering. Shape:
+  // `CellType[][][]` of length `levelCount`, where each entry is a
+  // 2D grid matching `size.width × size.depth` with 0/1 cells.
+  // Required when `levelCount > 1` for hand-crafted JSON levels
+  // (the validator rejects `levelCount > 1` without `walls2d`),
+  // optional for single-layer (falls back to `[walls]`).
+  // Procedural levels (`AlgorithmMazeProvider`) populate the
+  // per-layer cache side-channel instead — this field is for
+  // hand-authored JSON and editor-exported custom levels.
+  walls2d?: CellType[][][];
 }
 
 // P3-1: per-layer data shape. The runtime engine in P3-1b will

@@ -13,8 +13,14 @@ function formatClock(ts: number): string {
 }
 
 function wallCount(level: MazeData): number {
+  // P5-editor-multilayer: count walls on the L0 grid (the status
+  // bar's "wall count" chip is a quick at-a-glance health metric,
+  // not a per-layer breakdown — the per-layer breakdown belongs
+  // in the per-layer tab tooltips landed in Phase 2). Falls back
+  // to `walls2d[0]` for multi-layer levels per the strict mutex.
+  const layerWalls = level.walls ?? level.walls2d![0]!;
   let n = 0;
-  for (const row of level.walls) {
+  for (const row of layerWalls) {
     for (const cell of row) {
       if (cell === 1) n++;
     }
@@ -124,6 +130,15 @@ export function EditorStatusBar(): React.ReactElement {
   const errorCount = issues.filter((i) => i.severity === 'error').length;
   const totalIssues = issues.length;
 
+  // P5-editor-multilayer (Task 9): multi-layer status text. Single
+  // layer keeps the historical "1 layer" label; multi-layer shows
+  // "Layer 1/3" so the user always knows which layer is current.
+  // Picked up from the store via two narrow selectors so a level
+  // edit (which mutates `level`) doesn't re-render this chip when
+  // neither the level count nor the current level changed.
+  const levelCount = useEditorStore((s) => s.level.levelCount ?? 1);
+  const currentLevel = useEditorStore((s) => s.currentLevel);
+
   const [popupOpen, setPopupOpen] = useState(false);
 
   return (
@@ -135,6 +150,23 @@ export function EditorStatusBar(): React.ReactElement {
         <span className="editor-chip__icon">{dirty ? '●' : '✓'}</span>
         <span>
           {dirty ? t('editor.status.dirty') : lastSavedAt != null ? t('editor.status.savedAt', { time: formatClock(lastSavedAt) }) : t('editor.status.notModified')}
+        </span>
+      </span>
+
+      {/* P5-editor-multilayer (Task 9): layer indicator chip. Lives
+          right after the dirty chip so the user always sees the
+          current layer at the leftmost position. Single-layer
+          levels keep the historical "1 layer" text; multi-layer
+          shows "Layer 1/3" (or local equivalent). */}
+      <span
+        data-testid="status-layer-indicator"
+        className={`editor-chip ${levelCount > 1 ? 'editor-chip--accent' : ''}`}
+      >
+        <span className="editor-chip__icon">▤</span>
+        <span>
+          {levelCount > 1
+            ? t('editor.status.layerIndicator.multi', { current: currentLevel + 1, total: levelCount })
+            : t('editor.status.layerIndicator.single')}
         </span>
       </span>
 

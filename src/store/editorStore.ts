@@ -45,6 +45,7 @@ import { exportLevel, parseImport } from '../maze/importExport';
 import { validateMaze } from '../maze/JsonMazeProvider';
 import { generateId } from '../utils/id';
 import { safeSetItem, MAX_DRAFT_BYTES } from './persist';
+import { getCurrentLayerWalls, promoteToMultiLayer, collapseToSingleLayer } from '../utils/perLayerWalls';
 
 // Re-export the EditorSelection union from editorHistory so the rest of
 // the editor codebase can import it from a single place. Keeping the
@@ -358,8 +359,37 @@ function inBounds(x: number, z: number, width: number, depth: number): boolean {
   );
 }
 
-function isFloor(level: MazeData, x: number, z: number): boolean {
-  return inBounds(x, z, level.size.width, level.size.depth) && level.walls[z]![x] === 0;
+function isFloor(level: MazeData, x: number, z: number, currentLevel = 0): boolean {
+  // P5-editor-multilayer: the editor's cell-click / placement actions
+  // only interact with the currently-active layer (L{currentLevel}).
+  // `currentLevel` is passed in by the action body (which already read
+  // it from the store) so this helper stays a pure function and
+  // doesn't have to import the store. Default 0 keeps back-compat
+  // for any external caller that doesn't know about multi-layer.
+  if (!inBounds(x, z, level.size.width, level.size.depth)) return false;
+  const layer = getCurrentLayerWalls(level, currentLevel);
+  return layer[z]?.[x] === 0;
+}
+
+// P5-editor-multilayer: write a mutated current-layer grid back into
+// the level, preserving the strict `walls xor walls2d` mutex. A
+// single-layer level (the 98% case) keeps writing to `walls`; a
+// multi-layer level replaces the matching entry in `walls2d` and
+// leaves `walls` undefined. The current layer's index comes from
+// the editor store (passed in by the caller) so this helper stays
+// a pure function.
+function setLayerWalls(
+  level: MazeData,
+  currentLevel: number,
+  nextLayerWalls: CellType[][],
+): MazeData {
+  if (level.walls2d !== undefined) {
+    const nextWalls2d = level.walls2d.map((w, i) =>
+      i === currentLevel ? nextLayerWalls : w,
+    );
+    return { ...level, walls2d: nextWalls2d };
+  }
+  return { ...level, walls: nextLayerWalls };
 }
 
 // F-2026-06-18: 4-neighbor adjacency test for enemy patrol-path nodes.
@@ -825,14 +855,19 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
       // F-P2-9: set-to-1. A click on an existing wall is now a no-op
       // (avoids redundant history entries and an unexpected "wall
       // disappears" surprise that the legacy toggle caused).
-      if (level.walls[z]![x] === 1) {
+      // P5-editor-multilayer: read the current layer's grid so the
+      // wall-stamp happens on the right layer (and no-op on the
+      // wall already painted there).
+      const { currentLevel } = get();
+      const layerWalls = getCurrentLayerWalls(level, currentLevel ?? 0);
+      if (layerWalls[z]?.[x] === 1) {
         set({ lastError: null, lastErrorKey: null });
         return;
       }
-      const nextWalls = level.walls.map((r, zi) =>
+      const nextLayerWalls = layerWalls.map((r, zi) =>
         zi === z ? r.map((c, xi) => (xi === x ? (1 as CellType) : c)) : r,
       );
-      const nextLevel: MazeData = { ...level, walls: nextWalls };
+      const nextLevel = setLayerWalls(level, currentLevel ?? 0, nextLayerWalls);
       set(commitLevel(get(), nextLevel));
     },
 
@@ -858,7 +893,12 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
         return;
       }
       // No-op on already-floor cells (avoid spurious history entries).
-      if (level.walls[z]![x] === 0) {
+      // P5-editor-multilayer: same per-layer read as placeWall — the
+      // erase only fires on the current layer, never on a different
+      // layer's wall.
+      const { currentLevel } = get();
+      const layerWalls = getCurrentLayerWalls(level, currentLevel ?? 0);
+      if (layerWalls[z]?.[x] === 0) {
         set({ lastError: null, lastErrorKey: null });
         return;
       }
@@ -871,10 +911,10 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
         set({ lastError: null, lastErrorKey: 'editor.lastError.eraseOnEntity' });
         return;
       }
-      const nextWalls = level.walls.map((r, zi) =>
+      const nextLayerWalls = layerWalls.map((r, zi) =>
         zi === z ? r.map((c, xi) => (xi === x ? (0 as CellType) : c)) : r,
       );
-      const nextLevel: MazeData = { ...level, walls: nextWalls };
+      const nextLevel = setLayerWalls(level, currentLevel ?? 0, nextLayerWalls);
       set(commitLevel(get(), nextLevel));
     },
 
@@ -918,13 +958,21 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
       // Auto-carve the cell if it's currently a wall — UX win so the user
       // can drop a start on top of an existing wall rather than getting a
       // silent reject. Mirrors the carve-on-resize behaviour.
-      let nextWalls = level.walls;
-      if (level.walls[z]![x] === 1) {
-        nextWalls = level.walls.map((r, zi) =>
+      // P5-editor-multilayer: read the current layer, then write the
+      // carved grid back through setLayerWalls so the result respects
+      // the strict `walls xor walls2d` mutex.
+      const { currentLevel } = get();
+      const layerWalls = getCurrentLayerWalls(level, currentLevel ?? 0);
+      let nextLayerWalls = layerWalls;
+      if (layerWalls[z]?.[x] === 1) {
+        nextLayerWalls = layerWalls.map((r, zi) =>
           zi === z ? r.map((c, xi) => (xi === x ? 0 : c)) : r,
         );
       }
-      const nextLevel: MazeData = { ...level, start: { x, z, level: level.start.level ?? 0 }, walls: nextWalls };
+      const nextLevel: MazeData = {
+        ...setLayerWalls(level, currentLevel ?? 0, nextLayerWalls),
+        start: { x, z, level: level.start.level ?? 0 },
+      };
       set(commitLevel(get(), nextLevel));
     },
 
@@ -962,13 +1010,20 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
       }
       // Auto-carve the cell if it's currently a wall so the user can drop
       // an exit on top of a wall instead of getting a silent reject.
-      let nextWalls = level.walls;
-      if (level.walls[z]![x] === 1) {
-        nextWalls = level.walls.map((r, zi) =>
+      // P5-editor-multilayer: same per-layer carve as placeStart —
+      // exit lands on the current layer's grid, other layers untouched.
+      const { currentLevel } = get();
+      const layerWalls = getCurrentLayerWalls(level, currentLevel ?? 0);
+      let nextLayerWalls = layerWalls;
+      if (layerWalls[z]?.[x] === 1) {
+        nextLayerWalls = layerWalls.map((r, zi) =>
           zi === z ? r.map((c, xi) => (xi === x ? 0 : c)) : r,
         );
       }
-      const nextLevel: MazeData = { ...level, exit: { x, z, level: level.exit.level ?? 0 }, walls: nextWalls };
+      const nextLevel: MazeData = {
+        ...setLayerWalls(level, currentLevel ?? 0, nextLayerWalls),
+        exit: { x, z, level: level.exit.level ?? 0 },
+      };
       set(commitLevel(get(), nextLevel));
     },
 
@@ -1069,10 +1124,14 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
         { x, z },
         { x: secondX, z },
       ];
-      let nextWalls = level.walls;
+      // P5-editor-multilayer: per-layer carve — the enemy lives on
+      // the current layer's grid, so we walk / carve only that
+      // layer. Other layers are untouched.
+      const { currentLevel } = get();
+      let nextLayerWalls = getCurrentLayerWalls(level, currentLevel ?? 0);
       for (const { x: cx, z: cz } of carveSet) {
-        if (nextWalls[cz]![cx] === 1) {
-          nextWalls = nextWalls.map((r, zi) =>
+        if (nextLayerWalls[cz]?.[cx] === 1) {
+          nextLayerWalls = nextLayerWalls.map((r, zi) =>
             zi === cz ? r.map((c, xi) => (xi === cx ? 0 : c)) : r,
           );
         }
@@ -1086,7 +1145,10 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
           { x: secondX, z },
         ],
       };
-      const nextLevel: MazeData = { ...level, walls: nextWalls, enemies: [...level.enemies, newEnemy] };
+      const nextLevel: MazeData = {
+        ...setLayerWalls(level, currentLevel ?? 0, nextLayerWalls),
+        enemies: [...level.enemies, newEnemy],
+      };
       // Auto-select the freshly placed enemy so the user lands in the
       // path-planning UX (panel opens, subsequent clicks add path nodes).
       set({
@@ -1227,16 +1289,22 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
       }
       // Carve the new path node — same reason as placeEnemy: a
       // path node on a wall fails validateMaze and breaks auto-save.
-      let nextWalls = level.walls;
-      if (nextWalls[nz]![nx] === 1) {
-        nextWalls = nextWalls.map((r, zi) =>
+      // P5-editor-multilayer: per-layer carve; see placeEnemy for the
+      // shape (read current layer, mutate, write back via setLayerWalls).
+      const { currentLevel } = get();
+      let nextLayerWalls = getCurrentLayerWalls(level, currentLevel ?? 0);
+      if (nextLayerWalls[nz]?.[nx] === 1) {
+        nextLayerWalls = nextLayerWalls.map((r, zi) =>
           zi === nz ? r.map((c, xi) => (xi === nx ? 0 : c)) : r,
         );
       }
       const nextEnemies = level.enemies.map((e) =>
         e.id === enemyId ? { ...e, path: [...e.path, { x: nx, z: nz }] } : e,
       );
-      const nextLevel: MazeData = { ...level, walls: nextWalls, enemies: nextEnemies };
+      const nextLevel: MazeData = {
+        ...setLayerWalls(level, currentLevel ?? 0, nextLayerWalls),
+        enemies: nextEnemies,
+      };
       set(commitLevel(get(), nextLevel, { kind: 'enemy', id: enemyId }));
     },
 
@@ -1632,7 +1700,26 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
       const maxLevel = LEVEL_COUNT_VALUES[LEVEL_COUNT_VALUES.length - 1] ?? 6;
       if (current >= maxLevel) return;
       const next = current + 1;
-      const nextLevel: MazeData = { ...level, levelCount: next };
+      // P5-editor-multilayer: addLevel must produce a `walls2d`
+      // array of `next` layers, with the new top layer a clone of
+      // the current top (P5-2 decision A2 — "addLevel 克隆当前
+      // layer"). On the first call (single-layer → 2-layer) we go
+      // through `promoteToMultiLayer` to atomically swap the
+      // `walls xor walls2d` shape; on subsequent calls we just
+      // append a deep-cloned copy. The strict mutex means we end
+      // up with `walls` undefined and `walls2d` populated, which
+      // the runtime + engine + round-trip JSON all expect.
+      let nextLevel: MazeData;
+      if (level.walls2d) {
+        // Already multi-layer: clone the top layer and append.
+        const topLayer = level.walls2d[level.walls2d.length - 1]!;
+        const clonedTop = topLayer.map((row) => row.slice());
+        nextLevel = { ...level, walls2d: [...level.walls2d, clonedTop], levelCount: next };
+      } else {
+        // Single-layer: promote to multi-layer, dropping `walls`.
+        const promoted = promoteToMultiLayer(level, { clone: 'clone' });
+        nextLevel = { ...promoted, levelCount: next };
+      }
       // F-2026-06-12-B2: commit so undo/redo capture the structural
       // change. dirty is re-derived from the new hash; the saved
       // baseline (lastSavedHash) is unchanged so the new top layer
@@ -1654,6 +1741,31 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
       const current = level.levelCount ?? 1;
       if (current <= 1) return;
       const removed = current - 1;
+      // P5-editor-multilayer: dropping the top layer mutates
+      // `walls2d` in lockstep with `levelCount`. The
+      // `walls xor walls2d` mutex forces a `collapseToSingleLayer`
+      // when only one layer remains — the surviving L0 grid is
+      // moved from `walls2d[0]` to the legacy `walls` field so
+      // every single-layer consumer (Minimap, LevelSelect thumb,
+      // ParchmentMap, editor preview) keeps reading the same
+      // shape without a fallback branch.
+      let nextLevel: MazeData;
+      if (level.walls2d) {
+        const trimmedWalls2d = level.walls2d.slice(0, -1);
+        if (trimmedWalls2d.length === 1) {
+          // Last multi-layer → single-layer collapse: drop
+          // walls2d entirely, keep L0 grid on `walls`.
+          nextLevel = collapseToSingleLayer({ ...level, walls2d: trimmedWalls2d });
+        } else {
+          nextLevel = { ...level, walls2d: trimmedWalls2d };
+        }
+      } else {
+        // No-op for a single-layer level (the early-return above
+        // already guarded `current <= 1`, so this branch is dead
+        // in practice — kept as a defensive shape-preserving
+        // pass-through).
+        nextLevel = level;
+      }
       const filteredPickups = level.pickups.filter((p) => (p.level ?? 0) !== removed);
       const filteredTraps = level.traps.filter((t) => (t.level ?? 0) !== removed);
       const filteredDoors = level.doors.filter((d) => (d.level ?? 0) !== removed);
@@ -1661,8 +1773,8 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
       const filteredTransitions = (level.transitions ?? []).filter(
         (tr) => tr.level !== removed && tr.toLevel !== removed,
       );
-      const nextLevel: MazeData = {
-        ...level,
+      nextLevel = {
+        ...nextLevel,
         levelCount: removed,
         pickups: filteredPickups,
         traps: filteredTraps,
@@ -1818,10 +1930,16 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
         // guards used by placeErase are unnecessary here.
         const { x, z } = selection;
         if (!inBounds(x, z, level.size.width, level.size.depth)) return;
-        const walls = level.walls.map((r, zi) =>
+        // P5-editor-multilayer: the deleted wall belongs to the
+        // current layer (the viewport only renders the active
+        // layer's cells), so we rebuild the grid through
+        // setLayerWalls to preserve the strict mutex.
+        const { currentLevel } = get();
+        const layerWalls = getCurrentLayerWalls(level, currentLevel ?? 0);
+        const nextLayerWalls = layerWalls.map((r, zi) =>
           zi === z ? r.map((c, xi) => (xi === x ? 0 : c)) : r,
         );
-        nextLevel = { ...level, walls };
+        nextLevel = setLayerWalls(level, currentLevel ?? 0, nextLayerWalls);
       } else if (selection.kind === 'transition') {
         // P3-1c: delete the selected vertical transition. The
         // properties panel calls deleteSelected() (same as for

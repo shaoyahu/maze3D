@@ -188,8 +188,22 @@ const WALL_CENTER_Y = WALL_HEIGHT / 2; // 1.2m — wall mesh center y above the 
 // multi-layer data side-channel; the rest of `buildScene` treats
 // `perLayerWalls` as an opaque `CellType[][][]` of length
 // `levelCount`.
+//
+// P5-1: hand-crafted multi-layer JSON (teaching levels, editor
+// exports) now carry `maze.walls2d` directly. We check that
+// first so the engine reads the canonical per-layer grid from
+// MazeData instead of from the procedural provider's side cache.
+// Cache miss / single-layer still falls back to `[maze.walls]`
+// (the historical back-compat path).
 function resolvePerLayerWalls(maze: MazeData): CellType[][][] {
   const levelCount = maze.levelCount ?? 1;
+  // P5-1: hand-authored multi-layer levels (e.g.
+  // teaching-multilayer-01) carry walls2d in the MazeData itself.
+  // Read it directly so the engine doesn't have to re-route through
+  // the procedural provider's per-layer cache side-channel.
+  if (maze.walls2d && maze.walls2d.length === levelCount) {
+    return maze.walls2d;
+  }
   const cached = getPerLayerWallsByLevelId(maze.id);
   if (cached && cached.length === levelCount) {
     return cached;
@@ -198,7 +212,10 @@ function resolvePerLayerWalls(maze: MazeData): CellType[][][] {
   // is the back-compat path for hand-crafted levels (which never
   // hit the provider's cache) and for any caller that builds a
   // SceneRefs without going through `AlgorithmMazeProvider.load`.
-  return [maze.walls];
+  // The non-null assertion is safe: the `walls xor walls2d` mutex
+  // (P5-2 decision A5) guarantees that a `MazeData` reaching this
+  // function without a procedural cache hit has `walls` set.
+  return [maze.walls!];
 }
 
 export function buildScene(maze: MazeData, darkMode =false): SceneRefs {

@@ -50,7 +50,7 @@ function validLevel(): MazeData {
 function invalidLevel(): MazeData {
   // Start sits on a wall → validateMaze throws → saveLevel returns ok=false.
   const lv = validLevel();
-  lv.walls[0][0] = 1;
+  lv.walls![0][0] = 1;
   return lv;
 }
 

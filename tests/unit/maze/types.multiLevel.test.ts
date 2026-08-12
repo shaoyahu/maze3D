@@ -187,10 +187,21 @@ describe('P3-1 multi-level types', () => {
     });
 
     it('preserves explicit levelCount / transitions / start.level values', () => {
+      // P5-1: levelCount > 1 requires walls2d (one 2D grid per
+      // layer). The fixture uses the default single-layer `walls`
+      // for all three layers so the test stays minimal — every
+      // cell is walkable, transitions land on open cells.
+      const emptyGrid = [
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+      ];
       const level = makeValidLevel({
         start: { x: 0, z: 0, level: 2 },
         exit: { x: 4, z: 2, level: 1 },
+        walls: undefined,
         levelCount: 3,
+        walls2d: [emptyGrid, emptyGrid, emptyGrid],
         transitions: [
           {
             id: 'vt-1',
@@ -211,7 +222,20 @@ describe('P3-1 multi-level types', () => {
     });
 
     it('preserves explicit per-entity level values', () => {
+      // P5-editor-multilayer: per-entity `level` is bounded by
+      // `levelCount` (decision A5), so a fixture with `level: 2`
+      // on a pickup must declare `levelCount >= 3` to validate.
+      // The default single-layer `walls` is replaced with
+      // `walls2d` of 3 layers (strict mutex).
+      const emptyGrid = [
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+      ];
       const level = makeValidLevel({
+        walls: undefined,
+        levelCount: 3,
+        walls2d: [emptyGrid, emptyGrid, emptyGrid],
         pickups: [{ x: 1, z: 1, type: 'time', value: 5, level: 2 }],
         enemies: [
           {
@@ -304,9 +328,20 @@ describe('P3-1 multi-level types', () => {
   describe('JsonMazeProvider integration with the documented types', () => {
     it('full multi-level level roundtrips through validateMaze', async () => {
       // Smoke test: a JSON that opts into P3-1 fields must load
-      // without dropping the levelCount / transitions.
+      // without dropping the levelCount / transitions / walls2d.
+      // P5-1: levelCount > 1 requires walls2d (one 2D grid per
+      // layer). Source layer L0 has an open cell at (1, 1) for
+      // the stair-up; L1 has an open cell at (3, 1) for the
+      // hole-down landing.
+      const emptyGrid = [
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+      ];
       const raw = makeValidLevel({
+        walls: undefined,
         levelCount: 2,
+        walls2d: [emptyGrid, emptyGrid],
         transitions: [
           { id: 'vt-up', level: 0, x: 1, z: 1, kind: 'stair-up', toLevel: 1 },
           { id: 'vt-down', level: 1, x: 3, z: 1, kind: 'hole-down', toLevel: 0 },
@@ -316,6 +351,7 @@ describe('P3-1 multi-level types', () => {
       const provider = new JsonMazeProvider({ 'level-multi': raw });
       const data = await provider.load('level-multi');
       expect(data.levelCount).toBe(2);
+      expect(data.walls2d).toHaveLength(2);
       expect(data.transitions).toHaveLength(2);
       expect(data.pickups[0].level).toBe(1);
     });

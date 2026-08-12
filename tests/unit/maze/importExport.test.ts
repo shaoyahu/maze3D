@@ -132,6 +132,66 @@ describe('importExport', () => {
       expect(getter(parsedLevel)).toBeDefined();
       expect(getter(parsedLevel)).toEqual(getter(level));
     });
+
+    // P5-editor-multilayer (Plan Task 7): a multi-layer level's
+    // `walls2d` must survive the exportLevel → parseImport
+    // round-trip. The editor's "Save As JSON" + "Import" path is
+    // the only way to hand a hand-edited level to another machine
+    // or share it with another user; dropping `walls2d` here
+    // would silently collapse the level to single-layer and lose
+    // every per-layer wall the user painted. The strict
+    // `walls xor walls2d` mutex means the round-tripped JSON
+    // must end up with `walls` undefined + `walls2d` populated.
+    it('roundtrips a multi-layer level (walls2d) without losing per-layer data', () => {
+      // 5x3 multi-layer fixture: L0 has a wall row in the middle,
+      // L1 is open. Distinct from the makeValidLevel single-layer
+      // default — we override `walls: undefined` to flip into the
+      // multi-layer shape.
+      const openGrid = [
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+      ];
+      const l0 = [
+        [0, 0, 0, 0, 0],
+        [0, 1, 1, 0, 0],
+        [0, 0, 0, 0, 0],
+      ];
+      const level = makeValidLevel({
+        walls: undefined,
+        levelCount: 2,
+        walls2d: [l0, openGrid],
+        start: { x: 0, z: 0, level: 0 },
+        exit: { x: 4, z: 2, level: 1 },
+        transitions: [
+          // (0, 0) is walkable on L0 and on the open L1 grid; the
+          // earlier (2, 1) attempt landed on the L0 wall row and
+          // tripped the per-layer wall check in JsonMazeProvider.
+          { id: 't-stair', level: 0, x: 0, z: 0, kind: 'stair-up', toLevel: 1, toX: 0, toZ: 0 },
+        ],
+      }) as unknown as MazeData;
+
+      const json = exportLevel(level);
+      const { level: parsedLevel } = parseImport(json);
+
+      // Strict mutex after round-trip: `walls` gone, `walls2d` set.
+      expect(parsedLevel.walls).toBeUndefined();
+      expect(parsedLevel.walls2d).toBeDefined();
+      expect(parsedLevel.walls2d).toHaveLength(2);
+      // Per-layer grids survive verbatim.
+      expect(parsedLevel.walls2d![0]).toEqual(l0);
+      expect(parsedLevel.walls2d![1]).toEqual(openGrid);
+      // Transitions + levelCount survive too (defensive: if a
+      // future refactor drops the spread on these, this assertion
+      // fires instead of letting the user ship a silently broken
+      // level).
+      expect(parsedLevel.levelCount).toBe(2);
+      expect(parsedLevel.transitions).toHaveLength(1);
+      expect(parsedLevel.transitions![0]).toMatchObject({ kind: 'stair-up', level: 0, toLevel: 1 });
+      // start / exit per-layer fields survive.
+      expect(parsedLevel.start.level).toBe(0);
+      expect(parsedLevel.exit.level).toBe(1);
+    });
   });
 
   describe('parseImport error handling', () => {

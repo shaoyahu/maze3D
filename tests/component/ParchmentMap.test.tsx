@@ -304,4 +304,37 @@ describe('ParchmentMap P3-1 level tab bar', () => {
     const canvas = screen.getByTestId('parchment-canvas');
     expect(canvas.getAttribute('data-level')).toBe('1');
   });
+
+  // P5-editor-multilayer: 2D multi-layer level (walls2d set,
+  // walls undefined per strict mutex) used to crash ParchmentMap
+  // because the drawWalls helper non-null-asserted `maze.walls!`.
+  // The fall-back to `walls2d[0]` keeps the parchment functional
+  // for the P5-1 teaching fixture.
+  it('renders without crashing on a 2D multi-layer level (walls undefined, walls2d set)', () => {
+    const multiLayer: MazeData = {
+      id: 'parchment-ml', name: 'ML', size: { width: 3, depth: 3 }, cellSize: 2,
+      start: { x: 0, z: 0, level: 0 },
+      exit: { x: 2, z: 2, level: 1 },
+      walls: undefined, // strict mutex: multi-layer has walls2d only
+      walls2d: [
+        [[0, 0, 0], [0, 1, 0], [0, 0, 0]],
+        [[0, 0, 0], [0, 0, 0], [0, 0, 0]],
+      ],
+      pickups: [], enemies: [], traps: [], doors: [],
+      rules: { initialTime: 60, maxHealth: 3, victory: 'reach-exit', timeOnPickup: 10 },
+      levelCount: 2,
+      transitions: [],
+    };
+    useGameStore.setState({
+      parchment: {
+        visitedCells: new Map<number, ReadonlySet<string>>([
+          [0, new Set()], [1, new Set()],
+        ]),
+        damageRegions: [],
+        isOpen: true,
+      },
+    });
+    // The previous non-null assert would have thrown here.
+    expect(() => render(<ParchmentMap maze={multiLayer} />)).not.toThrow();
+  });
 });
