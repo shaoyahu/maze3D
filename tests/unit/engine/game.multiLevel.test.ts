@@ -3,7 +3,7 @@ import { Game, FLOOR_HEIGHT, STAIR_DURATION_SEC } from '../../../src/engine/Game
 import type { GameBridge } from '../../../src/engine/Game';
 import { createCamera } from '../../../src/engine/Camera';
 import * as AlgorithmMazeProvider from '../../../src/maze/AlgorithmMazeProvider';
-import type { MazeData } from '../../../src/maze/types';
+import type { CellType, MazeData } from '../../../src/maze/types';
 
 // P3-1: Game engine surface for multi-level play. The runtime
 // transition animation owns the player for its full duration;
@@ -207,6 +207,19 @@ describe('Game P3-1 D6 — startLevel fires onLevelChange with the hand-authored
   // is a no-op for non-`gen-` levels, so buildScene falls back
   // to the single-layer `maze.walls` grid per the resolvePerLayer-
   // Walls back-compat path).
+  // P5-editor-multilayer: hand-authored multi-layer fixtures must
+  // carry `walls2d` (strict `walls xor walls2d` mutex, decision
+  // A5). The engine's `Scene.resolvePerLayerWalls` reads it
+  // directly, so the cache spy below is only needed for the
+  // assert the bridge receives the player's initial layer.
+  const open6x6: CellType[][] = [
+    [0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0],
+  ];
   const multiLevelMaze: MazeData = {
     id: 'p3-1-d6-handcrafted',
     name: 'P3-1 D6 Handcrafted',
@@ -215,14 +228,7 @@ describe('Game P3-1 D6 — startLevel fires onLevelChange with the hand-authored
     levelCount: 3,
     start: { x: 1, z: 1, level: 2 },
     exit: { x: 5, z: 5, level: 0 },
-    walls: [
-      [0, 0, 0, 0, 0, 0],
-      [0, 0, 0, 0, 0, 0],
-      [0, 0, 0, 0, 0, 0],
-      [0, 0, 0, 0, 0, 0],
-      [0, 0, 0, 0, 0, 0],
-      [0, 0, 0, 0, 0, 0],
-    ],
+    walls2d: [open6x6, open6x6, open6x6],
     pickups: [],
     enemies: [],
     traps: [],
@@ -252,7 +258,17 @@ describe('Game P3-1 D6 — startLevel fires onLevelChange with the hand-authored
     // the rendering. `mockReturnValue` keeps the test honest:
     // any future change that re-iterates layers (e.g. dropping
     // the back-compat fallback) will still pass.
-    const layers = [multiLevelMaze.walls, multiLevelMaze.walls, multiLevelMaze.walls];
+    // P5-editor-multilayer: the hand-authored multi-layer maze has
+    // `walls` undefined (strict `walls xor walls2d` mutex); the cache
+    // back-compat stub here just needs three walkable grids, so we
+    // build a small open grid inline rather than reaching for the
+    // (now optional) `walls` field.
+    const layerGrid: CellType[][] = [
+      [0, 0, 0],
+      [0, 0, 0],
+      [0, 0, 0],
+    ];
+    const layers: CellType[][][] = [layerGrid, layerGrid, layerGrid];
     const cacheSpy = vi.spyOn(
       AlgorithmMazeProvider,
       'getPerLayerWallsByLevelId',

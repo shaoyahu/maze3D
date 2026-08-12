@@ -432,6 +432,11 @@ export const en: Translations = {
   // able to click it.
   'editor.leftPanel.levelTab': 'L{level}',
   'editor.leftPanel.levelTabAria': 'Layer {level}',
+  // P5-editor-multilayer (Task 5): per-layer entity-count tooltip
+  // + multi-layer mode badge in the tab bar.
+  'editor.leftPanel.levelTabTooltip': 'Layer {level} · {count} entity / entities',
+  'editor.leftPanel.levelTabEntityBreakdown': '{pickups} items · {enemies} enemies · {traps} traps · {doors} doors · {transitions} transitions',
+  'editor.leftPanel.multiLayerBadge': 'Multi-layer',
   'editor.leftPanel.addLevel': 'Add layer',
   'editor.leftPanel.removeLevel': 'Remove layer',
   'editor.leftPanel.addLevelAria': 'Add a new layer (currently {count})',
@@ -459,6 +464,11 @@ export const en: Translations = {
   // card label.
   'editor.status.pickups': 'Items',
   'editor.status.enemies': 'Enemies',
+  // P5-editor-multilayer (Task 9): multi-layer status text. Single
+  // layer keeps the historical "1 layer" label; multi-layer shows
+  // "Layer 1/3" so the user always knows which layer is current.
+  'editor.status.layerIndicator.single': '1 layer',
+  'editor.status.layerIndicator.multi': 'Layer {current} / {total}',
   'editor.status.storageHintCloseAria': 'Got it — dismiss storage notice',
 
   // ============================================================
@@ -696,6 +706,19 @@ export const en: Translations = {
   'editor.help.section.shortcuts': '② Shortcuts',
   'editor.help.section.flow': '③ Common workflow',
   'editor.help.section.checklist': '④ Pre-save checklist',
+  // P5-editor-multilayer (Task 8): new "Multi-layer" section in the
+  // help drawer. Numbered ⑤ so the existing 4 sections keep their
+  // visual order; the new section is purely additive.
+  'editor.help.section.multiLayer': '⑤ Multi-layer levels',
+  'editor.help.multiLayerIntro': 'A multi-layer level has 2–6 stacked floors (L1, L2, …). The player walks L1 with WASD and uses a placed transition (stair / hole / ladder) to climb up or drop down.',
+  'editor.help.multiLayerAdd': 'Add a layer',
+  'editor.help.multiLayerAddBody': 'Click the [+] button in the tab bar to add a new top layer. The new layer is a clone of the current top layer — you can immediately edit its walls without affecting the others.',
+  'editor.help.multiLayerRemove': 'Remove a layer',
+  'editor.help.multiLayerRemoveBody': 'Click the [−] button to remove the top layer. When only one layer remains, the editor automatically collapses back to single-layer mode (the L0 grid moves back to the legacy `walls` field).',
+  'editor.help.multiLayerConnect': 'Cross-layer connections',
+  'editor.help.multiLayerConnectBody': 'Use the stair / hole / ladder tools to place a transition between two layers. The ghost overlay in the viewport shows which cells bridge the layers. Transitions need both source and destination cells to be on walkable cells of their own layer.',
+  'editor.help.multiLayerJson': 'JSON output',
+  'editor.help.multiLayerJsonBody': 'A multi-layer level exports as `walls2d: [layer0, layer1, …]` (one 2D grid per layer). The legacy `walls` field is dropped when you go multi-layer, and restored on collapse.',
   'editor.help.col.tool': 'Tool',
   'editor.help.col.shortcut': 'Shortcut',
   'editor.help.col.action': 'Action',

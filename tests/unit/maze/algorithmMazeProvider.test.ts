@@ -49,7 +49,7 @@ describe('AlgorithmMazeProvider', () => {
         expect(data.levelCount).toBe(1);
         expect(data.transitions).toEqual([]);
         expect(data.walls).toHaveLength(size);
-        for (const row of data.walls) {
+        for (const row of data.walls!) {
           expect(row).toHaveLength(size);
           for (const cell of row) {
             expect([0, 1]).toContain(cell);
@@ -104,8 +104,8 @@ describe('AlgorithmMazeProvider', () => {
     const provider = new AlgorithmMazeProvider();
     for (const algorithm of ALGOS) {
       const data = await provider.load(seedId(algorithm, 15, '0123456789abcdef'));
-      expect(data.walls[0][0]).toBe(0);
-      expect(data.walls[14][14]).toBe(0);
+      expect(data.walls![0][0]).toBe(0);
+      expect(data.walls![14][14]).toBe(0);
     }
   });
 

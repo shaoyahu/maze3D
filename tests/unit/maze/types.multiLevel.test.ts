@@ -199,6 +199,7 @@ describe('P3-1 multi-level types', () => {
       const level = makeValidLevel({
         start: { x: 0, z: 0, level: 2 },
         exit: { x: 4, z: 2, level: 1 },
+        walls: undefined,
         levelCount: 3,
         walls2d: [emptyGrid, emptyGrid, emptyGrid],
         transitions: [
@@ -221,7 +222,20 @@ describe('P3-1 multi-level types', () => {
     });
 
     it('preserves explicit per-entity level values', () => {
+      // P5-editor-multilayer: per-entity `level` is bounded by
+      // `levelCount` (decision A5), so a fixture with `level: 2`
+      // on a pickup must declare `levelCount >= 3` to validate.
+      // The default single-layer `walls` is replaced with
+      // `walls2d` of 3 layers (strict mutex).
+      const emptyGrid = [
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+      ];
       const level = makeValidLevel({
+        walls: undefined,
+        levelCount: 3,
+        walls2d: [emptyGrid, emptyGrid, emptyGrid],
         pickups: [{ x: 1, z: 1, type: 'time', value: 5, level: 2 }],
         enemies: [
           {
@@ -325,6 +339,7 @@ describe('P3-1 multi-level types', () => {
         [0, 0, 0, 0, 0],
       ];
       const raw = makeValidLevel({
+        walls: undefined,
         levelCount: 2,
         walls2d: [emptyGrid, emptyGrid],
         transitions: [

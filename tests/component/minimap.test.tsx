@@ -283,6 +283,45 @@ describe('Minimap P3-1 auto-switch', () => {
     expect(group?.getAttribute('data-level')).toBe('2');
     expect(group?.querySelectorAll('rect').length ?? 0).toBe(0);
   });
+
+  // P5-editor-multilayer: a 2D multi-layer level carries
+  // `walls2d` only — `maze.walls` is `undefined` per the strict
+  // `walls xor walls2d` mutex (decision A5). The previous
+  // non-null assert `maze.walls!` silently crash-threw on the
+  // P5-1 teaching-multilayer-01 fixture; the fall back to
+  // `walls2d[0]` keeps the minimap functional.
+  it('renders the L0 grid for a 2D multi-layer level (walls undefined, walls2d set)', () => {
+    const multiLayer: MazeData = {
+      id: 'm-ml', name: 'M', size: { width: 3, depth: 3 }, cellSize: 2,
+      start: { x: 0, z: 0 }, exit: { x: 2, z: 2 },
+      walls: undefined, // strict mutex: multi-layer has walls2d only
+      walls2d: [
+        // L0: 4 wall cells in a + shape
+        [[0, 0, 0], [0, 1, 0], [0, 0, 0]],
+        [[0, 0, 0], [0, 0, 0], [0, 0, 0]],
+      ],
+      pickups: [], enemies: [], traps: [], doors: [],
+      rules: { initialTime: 60, maxHealth: 3, victory: 'reach-exit', timeOnPickup: 10 },
+      levelCount: 2,
+      transitions: [],
+    };
+    useGameStore.setState({ player: { currentLevel: 0 } });
+    const { container } = render(<Minimap maze={multiLayer} gameRef={makeGameRef(0, 0)} />);
+    // The L0 wall at (1, 1) should render as a wall rect. If the
+    // previous non-null assert were still in place the render
+    // would throw "Cannot read properties of undefined" before
+    // any rect could be produced.
+    const wallRects = Array.from(container.querySelectorAll('rect')).filter((r) => {
+      // Wall cells use the COLOR_WALL constant from Minimap
+      // (line 34); the L0 (1, 1) cell is a wall. The check is
+      // structural — the SVG has at least one wall rect from
+      // the walls2d[0] grid. If the previous non-null assert
+      // were still in place, the render would throw before any
+      // rect is produced.
+      return r.getAttribute('fill') === '#2a2a3a';
+    });
+    expect(wallRects.length).toBeGreaterThan(0);
+  });
 });
 
 // F-minimap-strictmode-regression (2026-06-14): the live game was

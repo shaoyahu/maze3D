@@ -92,8 +92,14 @@ describe('built-in level JSONs (D-20)', () => {
       // *built-in* fixtures never trip that path. The double-check here
       // costs nothing and surfaces a confusing validator regression
       // with a clearer message.
-      expect(data.walls[data.start.z][data.start.x]).toBe(0);
-      expect(data.walls[data.exit.z][data.exit.x]).toBe(0);
+      // P5-editor-multilayer: multi-layer levels carry the per-layer
+      // grid in `walls2d` (strict `walls xor walls2d` mutex), so the
+      // belt-and-braces check has to read the start / exit's own
+      // layer to match what the runtime sees.
+      const startLayerWalls = data.walls2d?.[data.start.level ?? 0] ?? data.walls!;
+      const exitLayerWalls = data.walls2d?.[data.exit.level ?? 0] ?? data.walls!;
+      expect(startLayerWalls[data.start.z][data.start.x]).toBe(0);
+      expect(exitLayerWalls[data.exit.z][data.exit.x]).toBe(0);
     },
   );
 

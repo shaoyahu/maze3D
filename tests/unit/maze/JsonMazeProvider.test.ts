@@ -55,7 +55,7 @@ describe('JsonMazeProvider', () => {
       expect(data.levelCount).toBe(1);
       expect(data.transitions).toEqual([]);
       expect(data.walls).toHaveLength(3);
-      expect(data.walls[0]).toHaveLength(5);
+      expect(data.walls![0]).toHaveLength(5);
       expect(data.pickups).toEqual([]);
       expect(data.rules.victory).toBe('reach-exit');
     });
@@ -840,9 +840,11 @@ describe('JsonMazeProvider', () => {
 
     it('accepts levelCount=2 + walls2d + 1 stair-up transition', async () => {
       // The teaching-multilayer-01 fixture shape, sans tutorialSteps.
+      // P5-editor-multilayer decision A5: strict `walls xor walls2d`
+      // mutex — a multi-layer level has only `walls2d`, no `walls`.
       const level = makeValidLevel({
         size: { width: 5, depth: 5 },
-        walls: openGrid5,
+        walls: undefined,
         levelCount: 2,
         start: { x: 0, z: 0 },
         exit: { x: 4, z: 4, level: 1 },
@@ -876,6 +878,7 @@ describe('JsonMazeProvider', () => {
 
     it('rejects walls2d length mismatching levelCount', async () => {
       const level = makeValidLevel({
+        walls: undefined, // strict mutex: multi-layer has walls2d only
         levelCount: 2,
         walls2d: [openGrid5], // 1 layer, but levelCount says 2
       });
@@ -886,7 +889,7 @@ describe('JsonMazeProvider', () => {
     it('rejects out-of-bounds start.level / exit.level', async () => {
       const levelBadStart = makeValidLevel({
         size: { width: 5, depth: 5 },
-        walls: openGrid5,
+        walls: undefined,
         levelCount: 2,
         start: { x: 0, z: 0, level: 5 },
         walls2d: [openGrid5, openGrid5],
@@ -896,7 +899,7 @@ describe('JsonMazeProvider', () => {
 
       const levelBadExit = makeValidLevel({
         size: { width: 5, depth: 5 },
-        walls: openGrid5,
+        walls: undefined,
         levelCount: 2,
         exit: { x: 4, z: 4, level: 3 },
         walls2d: [openGrid5, openGrid5],
@@ -908,7 +911,7 @@ describe('JsonMazeProvider', () => {
     it('rejects transitions with out-of-bounds level / toLevel', async () => {
       const level = makeValidLevel({
         size: { width: 5, depth: 5 },
-        walls: openGrid5,
+        walls: undefined,
         levelCount: 2,
         walls2d: [openGrid5, openGrid5],
         transitions: [
@@ -932,7 +935,7 @@ describe('JsonMazeProvider', () => {
       const l1 = openGrid5;
       const level = makeValidLevel({
         size: { width: 5, depth: 5 },
-        walls: openGrid5,
+        walls: undefined,
         levelCount: 2,
         walls2d: [l0, l1],
         transitions: [

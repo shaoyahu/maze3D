@@ -65,8 +65,13 @@ describe('BUILT_IN_JSON_PROVIDER (F-project-review-2026-06-13-A-HIGH-4)', () => 
     for (const id of ids) {
       const data = await BUILT_IN_JSON_PROVIDER.load(id);
       expect(data.id).toBe(id);
-      expect(data.walls.length).toBe(data.size.depth);
-      expect(data.walls[0].length).toBe(data.size.width);
+      // P5-editor-multilayer: built-in teaching-multilayer-01 carries
+      // `walls2d` (strict mutex), every other built-in carries
+      // `walls`. Whichever shape the level uses, the per-layer
+      // grid dimensions must match `size.depth` × `size.width`.
+      const layerWalls = data.walls ?? data.walls2d![0]!;
+      expect(layerWalls.length).toBe(data.size.depth);
+      expect(layerWalls[0].length).toBe(data.size.width);
       // The validator rejects non-integer start/exit and walls off the
       // grid; the fixtures all pass, so we don't have to re-validate
       // every field here — but pinning the shape catches a

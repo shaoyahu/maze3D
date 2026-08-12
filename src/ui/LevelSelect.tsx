@@ -274,10 +274,16 @@ function LevelThumb({ data }: { data: MazeData }) {
   const startZ = data.start.z;
   const exitX = data.exit.x;
   const exitZ = data.exit.z;
+  // P5-editor-multilayer: thumbnail paints the L0 grid. Per the
+  // strict `walls xor walls2d` mutex a `MazeData` always has at
+  // least one set, and the editor's collapseToSingleLayer keeps
+  // the L0 grid on the legacy `walls` field for single-layer
+  // catalog items. Non-null assertion is safe.
+  const wallsL0 = data.walls ?? data.walls2d![0]!;
   const walls: JSX.Element[] = [];
   for (let z = 0; z < D; z++) {
     for (let x = 0; x < W; x++) {
-      if (data.walls[z]?.[x] === 1) {
+      if (wallsL0[z]?.[x] === 1) {
         walls.push(
           <rect
             key={`w-${x}-${z}`}
@@ -640,8 +646,14 @@ export function LevelSelect({
                     const selected = lv.id === effectiveSublevelId;
                     const best = bestByLevel[lv.id];
                     const pickupCount = lv.data?.pickups.length ?? 0;
+                    // P5-editor-multilayer: count walls on the L0
+                    // grid. Per the strict `walls xor walls2d`
+                    // mutex, at least one of the two is set; the
+                    // thumbnail / catalog preview stays
+                    // single-layer for back-compat.
                     const wallCount = lv.data
-                      ? lv.data.walls.reduce((acc, row) => acc + row.filter((c) => c === 1).length, 0)
+                      ? (lv.data.walls ?? lv.data.walls2d![0]!)
+                          .reduce((acc, row) => acc + row.filter((c) => c === 1).length, 0)
                       : null;
                     const isCustom = levelSource === 'custom';
                     const name = displayName(lv);
@@ -746,8 +758,12 @@ export function LevelSelect({
                 const selected = lv.id === effectiveSublevelId;
                 const best = bestByLevel[lv.id];
                 const pickupCount = lv.data?.pickups.length ?? 0;
+                // P5-editor-multilayer: same L0-only wall count as
+                // the teaching rail above. See comment at line ~649
+                // for the strict mutex reasoning.
                 const wallCount = lv.data
-                  ? lv.data.walls.reduce((acc, row) => acc + row.filter((c) => c === 1).length, 0)
+                  ? (lv.data.walls ?? lv.data.walls2d![0]!)
+                      .reduce((acc, row) => acc + row.filter((c) => c === 1).length, 0)
                   : null;
                 const name = displayName(lv);
                 return (

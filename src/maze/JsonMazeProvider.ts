@@ -128,27 +128,73 @@ export function validateMaze(raw: unknown, id: string): MazeData {
   requireNumber(exit, 'x', `${id}.exit`);
   requireNumber(exit, 'z', `${id}.exit`);
 
-  if (!Array.isArray(m.walls)) throw new LevelLoadError(`Maze '${id}': walls must be array`);
-  // `width` / `depth` / `cellSize` captured at the top of the function
-  // from requireNumber's return value; see D-6 comment at the size block.
-  if (m.walls.length !== depth) {
-    throw new LevelLoadError(`Maze '${id}': walls row count (${m.walls.length}) does not match depth (${depth})`);
+  // P5-editor-multilayer: enforce `walls xor walls2d` (single-layer
+  // vs multi-layer hand-crafted JSON). The editor's perLayerWalls
+  // utils atomically swap between the two shapes, so a level in
+  // flight never has both set. The historical single-layer path
+  // (every pre-P3-1 JSON) keeps `walls` required, unchanged.
+  const hasWalls = m.walls !== undefined;
+  const hasWalls2d = Array.isArray(m.walls2d);
+  if (hasWalls && hasWalls2d) {
+    throw new LevelLoadError(
+      `Maze '${id}': level has both 'walls' and 'walls2d' — set exactly one (single-layer → walls, multi-layer → walls2d)`,
+    );
   }
+  if (!hasWalls && !hasWalls2d) {
+    throw new LevelLoadError(`Maze '${id}': missing 'walls' field (or 'walls2d' for multi-layer)`);
+  }
+  // From this point on, the multi-layer path is handled
+  // differently: it populates `walls2d` (NOT `walls`) per the
+  // strict `walls xor walls2d` mutex (P5-2 decision A5). The
+  // entity parsers (pickup / enemy / trap / door / transition)
+  // use the `getLayerWalls` helper to read whichever grid the
+  // entity's `level` field points at — the L0 grid in single-
+  // layer JSON, the entity's own layer in multi-layer JSON.
+  // `walls` is only ever populated for the single-layer path;
+  // multi-layer JSON ends up with `walls` undefined (and
+  // `walls2d` populated), so the contract is preserved on
+  // round-trip through import/export.
   const walls: CellType[][] = [];
-  for (let z = 0; z < depth; z++) {
-    const row = m.walls[z];
-    if (!Array.isArray(row) || row.length !== width) {
-      throw new LevelLoadError(`Maze '${id}': walls[${z}] length does not match width (${width})`);
+  if (hasWalls) {
+    const wallsRaw = m.walls;
+    if (!Array.isArray(wallsRaw)) {
+      throw new LevelLoadError(`Maze '${id}': walls must be array`);
     }
-    const cells: CellType[] = [];
-    for (let x = 0; x < width; x++) {
-      const v = row[x];
-      if (v !== 0 && v !== 1) {
-        throw new LevelLoadError(`Maze '${id}': walls[${z}][${x}] must be 0 or 1 (got ${clampErrorValue(v)})`);
+    // `width` / `depth` / `cellSize` captured at the top of the
+    // function from requireNumber's return value; see D-6
+    // comment at the size block.
+    if (wallsRaw.length !== depth) {
+      throw new LevelLoadError(
+        `Maze '${id}': walls row count (${wallsRaw.length}) does not match depth (${depth})`,
+      );
+    }
+    for (let z = 0; z < depth; z++) {
+      const row = wallsRaw[z];
+      if (!Array.isArray(row) || row.length !== width) {
+        throw new LevelLoadError(`Maze '${id}': walls[${z}] length does not match width (${width})`);
       }
-      cells.push(v as CellType);
+      const cells: CellType[] = [];
+      for (let x = 0; x < width; x++) {
+        const v = row[x];
+        if (v !== 0 && v !== 1) {
+          throw new LevelLoadError(`Maze '${id}': walls[${z}][${x}] must be 0 or 1 (got ${clampErrorValue(v)})`);
+        }
+        cells.push(v as CellType);
+      }
+      walls.push(cells);
     }
-    walls.push(cells);
+  }
+  // P5-editor-multilayer: per-layer wall lookup. Single-layer
+  // hands back `walls`; multi-layer hands back the entity's
+  // own layer's grid (entity `level` defaults to 0 for legacy
+  // single-layer fixtures that have no `level` field). The
+  // helper is declared after both `walls` and `walls2d` are
+  // parsed (walls2d is parsed further down) and then used by
+  // every entity parser below.
+  let walls2d: CellType[][][] | undefined; // declared early, assigned later
+  function getLayerWalls(layer: number): CellType[][] {
+    if (walls2d && walls2d[layer] !== undefined) return walls2d[layer]!;
+    return walls;
   }
 
   // P3-1: default levelCount to 1 (single-layer back-compat for every
@@ -175,7 +221,8 @@ export function validateMaze(raw: unknown, id: string): MazeData {
   // the engine falls back to [walls]. Each layer's grid must
   // match size.width × size.depth with 0/1 cells (same shape
   // contract as AlgorithmMazeProvider's per-layer output).
-  let walls2d: CellType[][][] | undefined;
+  // (walls2d is declared early above for the getLayerWalls helper;
+  // this block is the actual parsing/validation.)
   if (Array.isArray(m.walls2d)) {
     if (m.walls2d.length !== levelCount) {
       throw new LevelLoadError(
@@ -307,8 +354,8 @@ export function validateMaze(raw: unknown, id: string): MazeData {
       }
       // Per-layer wall check. Use walls2d when set (multi-layer),
       // otherwise fall back to `walls` for the single-layer path.
-      const sourceWalls = walls2d ? walls2d[tLevel] : walls;
-      const destWalls = walls2d ? walls2d[tToLevel] : walls;
+      const sourceWalls = getLayerWalls(tLevel);
+      const destWalls = getLayerWalls(tToLevel);
       if (sourceWalls[tZ][tX] === 1) {
         throw new LevelLoadError(
           `Maze '${id}': transition '${clampErrorValue(tId)}' source (L${tLevel}, x=${tX}, z=${tZ}) is on a wall`,
@@ -364,8 +411,8 @@ export function validateMaze(raw: unknown, id: string): MazeData {
   // is set, fall back to `walls` for the single-layer back-compat
   // path. Without this, a 2-layer level with start on L1 would
   // check the wrong grid and let a wall-spawn through.
-  const startLayerWalls = walls2d ? walls2d[startLevel] : walls;
-  const exitLayerWalls = walls2d ? walls2d[exitLevel] : walls;
+  const startLayerWalls = getLayerWalls(startLevel);
+  const exitLayerWalls = getLayerWalls(exitLevel);
   if (startLayerWalls[start.z as number][start.x as number] === 1) {
     throw new LevelLoadError(`Maze '${id}': start is on a wall (L${startLevel})`);
   }
@@ -407,6 +454,16 @@ export function validateMaze(raw: unknown, id: string): MazeData {
     if (!isPickupType(pp.type)) {
       throw new LevelLoadError(`Maze '${id}': invalid pickup type`);
     }
+    // P5-editor-multilayer: parse the pickup's layer first so the per-layer
+    // wall check (below) and the bounds check use the same `level` value.
+    // The legacy single-layer convention defaults `level` to 0 via
+    // `parseEntityLevel`'s lenient policy, so this is back-compat-safe.
+    const pickupLevel = parseEntityLevel(pp);
+    if (pickupLevel < 0 || pickupLevel >= levelCount) {
+      throw new LevelLoadError(
+        `Maze '${id}': pickup at (${px}, ${pz}) level (${pickupLevel}) out of bounds; expected 0..${levelCount - 1}`,
+      );
+    }
     if (px === start.x && pz === start.z) {
       throw new LevelLoadError(`Maze '${id}': pickup is on the start cell`);
     }
@@ -417,8 +474,8 @@ export function validateMaze(raw: unknown, id: string): MazeData {
     if (px === exit.x && pz === exit.z) {
       throw new LevelLoadError(`Maze '${id}': pickup is on the exit cell`);
     }
-    if (walls[pz][px] === 1) {
-      throw new LevelLoadError(`Maze '${id}': pickup is on a wall`);
+    if (getLayerWalls(pickupLevel)[pz][px] === 1) {
+      throw new LevelLoadError(`Maze '${id}': pickup is on a wall (L${pickupLevel})`);
     }
     const cellKey = `${px},${pz}`;
     if (seenCells.has(cellKey)) {
@@ -436,7 +493,6 @@ export function validateMaze(raw: unknown, id: string): MazeData {
     if (pp.type === 'key' && isKeyColor(pp.keyColor)) {
       pickupKeyColor = pp.keyColor;
     }
-    const pickupLevel = parseEntityLevel(pp);
     normalizedPickups.push({
       id: pickupId,
       x: px,
@@ -482,7 +538,7 @@ export function validateMaze(raw: unknown, id: string): MazeData {
   if (!('enemies' in m)) {
     throw new LevelLoadError(`Maze '${id}': missing 'enemies' field (use [] for none)`);
   }
-  const enemies = parseEnemies(m.enemies, id, width, depth, walls);
+  const enemies = parseEnemies(m.enemies, id, width, depth, getLayerWalls, levelCount);
 
   // P3-1d (M-2): cap each entity array at MAX_ENTITIES_PER_KIND before
   // dispatching to the parser. parseEnemies / parseTraps / parseDoors
@@ -518,8 +574,8 @@ export function validateMaze(raw: unknown, id: string): MazeData {
   }
 
   // P2-18: traps and doors are optional fields. Missing or non-array → [].
-  const traps = parseTraps(m.traps, id, width, depth, walls, start as { x: number; z: number }, exit as { x: number; z: number });
-  const doors = parseDoors(m.doors, id, width, depth, walls, start as { x: number; z: number }, exit as { x: number; z: number });
+  const traps = parseTraps(m.traps, id, width, depth, getLayerWalls, start as { x: number; z: number }, exit as { x: number; z: number }, levelCount);
+  const doors = parseDoors(m.doors, id, width, depth, getLayerWalls, start as { x: number; z: number }, exit as { x: number; z: number }, levelCount);
 
   // F-2026-06-17-D-CRITICAL-1: P2-11 added 5 fields to MazeData
   // (i18n, tutorialSteps, hideMinimap, rules.enemyAggression,
@@ -652,7 +708,12 @@ export function validateMaze(raw: unknown, id: string): MazeData {
     cellSize,
     start: { x: start.x as number, z: start.z as number, level: startLevel },
     exit: { x: exit.x as number, z: exit.z as number, level: exitLevel },
-    walls,
+    // P5-editor-multilayer: `walls xor walls2d` — the literal
+    // includes the input's walls shape verbatim. Single-layer
+    // input → `walls` only; multi-layer input → `walls2d` only
+    // (the `walls` field is omitted so the result stays in the
+    // contract the engine + editor + perLayerWalls utils expect).
+    ...(hasWalls ? { walls } : {}),
     ...(walls2d !== undefined ? { walls2d } : {}),
     pickups: normalizedPickups,
     rules,
@@ -678,7 +739,17 @@ export function validateMaze(raw: unknown, id: string): MazeData {
 // patrol-path node must be in-bounds and on a walkable cell — the engine
 // itself only checks spawn-vs-wall, so anything looser here would let
 // a node render outside the grid (F7).
-function parseEnemies(raw: unknown, id: string, width: number, depth: number, walls: CellType[][]): EnemySpawn[] {
+// P5-editor-multilayer: parser helpers take `getLayerWalls`
+// (a per-layer wall lookup) instead of a single `walls` array.
+// For single-layer JSON, `getLayerWalls(L)` always returns the
+// same grid; for multi-layer, it returns the entity's own
+// layer's grid. This is the cleanest signature for the
+// `walls xor walls2d` contract — the parsers don't care
+// which shape the level uses, only that they can ask for
+// the grid at any layer index.
+type GetLayerWalls = (layer: number) => CellType[][];
+
+function parseEnemies(raw: unknown, id: string, width: number, depth: number, getLayerWalls: GetLayerWalls, levelCount: number): EnemySpawn[] {
   if (!Array.isArray(raw)) return [];
   const out: EnemySpawn[] = [];
   for (let i = 0; i < raw.length; i++) {
@@ -691,12 +762,19 @@ function parseEnemies(raw: unknown, id: string, width: number, depth: number, wa
     requireNumber(ee, 'x', `${id}.enemies[${i}]`);
     requireNumber(ee, 'z', `${id}.enemies[${i}]`);
     requireInBounds(ee, 'x', 'z', `${id}.enemies[${i}]`, width, depth);
+    // P5-editor-multilayer: per-layer wall check for spawn. The
+    // enemy's `level` (defaults to 0) selects the right grid.
+    const spawnLevel = parseEntityLevel(ee);
+    if (spawnLevel < 0 || spawnLevel >= levelCount) {
+      throw new LevelLoadError(`Maze '${id}': enemy ${clampErrorValue(ee.id)} level (${spawnLevel}) out of bounds; expected 0..${levelCount - 1}`);
+    }
+    const spawnWalls = getLayerWalls(spawnLevel);
     // F-2026-06-15-H-3.3: the file-level comment claims spawn x/z must be
     // on a walkable cell, but the original code only enforced this for path
     // nodes — spawn itself was unchecked. A spawn on a wall renders the
     // enemy stuck inside collision geometry and freezes patrol AI.
-    if (walls[ee.z as number][ee.x as number] === 1) {
-      throw new LevelLoadError(`Maze '${id}': enemy ${clampErrorValue(ee.id)} spawn is on a wall`);
+    if (spawnWalls[ee.z as number][ee.x as number] === 1) {
+      throw new LevelLoadError(`Maze '${id}': enemy ${clampErrorValue(ee.id)} spawn is on a wall (L${spawnLevel})`);
     }
 
     if (!Array.isArray(ee.path)) {
@@ -716,8 +794,8 @@ function parseEnemies(raw: unknown, id: string, width: number, depth: number, wa
       // 0<=x<w, 0<=z<d; the walkability check rejects nodes that sit
       // on a wall.
       requireInBounds(nn, 'x', 'z', `${id}.enemies[${i}].path[${j}]`, width, depth);
-      if (walls[nn.z as number][nn.x as number] === 1) {
-        throw new LevelLoadError(`Maze '${id}': enemy ${clampErrorValue(ee.id)} path[${j}] is on a wall`);
+      if (spawnWalls[nn.z as number][nn.x as number] === 1) {
+        throw new LevelLoadError(`Maze '${id}': enemy ${clampErrorValue(ee.id)} path[${j}] is on a wall (L${spawnLevel})`);
       }
       path.push({ x: nn.x as number, z: nn.z as number });
       // F-2026-06-17-C-H-2: reject duplicate consecutive path nodes. A
@@ -830,9 +908,10 @@ function parseTraps(
   id: string,
   width: number,
   depth: number,
-  walls: CellType[][],
+  getLayerWalls: GetLayerWalls,
   start: { x: number; z: number },
   exit: { x: number; z: number },
+  levelCount: number,
 ): Trap[] {
   if (!Array.isArray(raw)) return [];
   const out: Trap[] = [];
@@ -846,8 +925,14 @@ function parseTraps(
     const tx = requireNumber(tt, 'x', `${id}.traps[${i}]`);
     const tz = requireNumber(tt, 'z', `${id}.traps[${i}]`);
     requireInBounds(tt, 'x', 'z', `${id}.traps[${i}]`, width, depth);
-    if (walls[tz][tx] === 1) {
-      throw new LevelLoadError(`Maze '${id}': trap at (${tx}, ${tz}) is on a wall`);
+    // P5-editor-multilayer: per-layer wall check (trap's own layer)
+    const trapLevel = parseEntityLevel(tt);
+    if (trapLevel < 0 || trapLevel >= levelCount) {
+      throw new LevelLoadError(`Maze '${id}': trap at (${tx}, ${tz}) level (${trapLevel}) out of bounds; expected 0..${levelCount - 1}`);
+    }
+    const trapWalls = getLayerWalls(trapLevel);
+    if (trapWalls[tz][tx] === 1) {
+      throw new LevelLoadError(`Maze '${id}': trap at (${tx}, ${tz}) is on a wall (L${trapLevel})`);
     }
     if (tx === start.x && tz === start.z) {
       throw new LevelLoadError(`Maze '${id}': trap is on the start cell`);
@@ -872,7 +957,7 @@ function parseTraps(
       trap.slowDurationSec = tt.slowDurationSec;
     }
     // P3-1: see parseEntityLevel above. Defaults to 0.
-    trap.level = parseEntityLevel(tt);
+    trap.level = trapLevel;
     out.push(trap);
   }
   return out;
@@ -886,9 +971,10 @@ function parseDoors(
   id: string,
   width: number,
   depth: number,
-  walls: CellType[][],
+  getLayerWalls: GetLayerWalls,
   start: { x: number; z: number },
   exit: { x: number; z: number },
+  levelCount: number,
 ): Door[] {
   if (!Array.isArray(raw)) return [];
   const out: Door[] = [];
@@ -902,8 +988,14 @@ function parseDoors(
     const dx = requireNumber(dd, 'x', `${id}.doors[${i}]`);
     const dz = requireNumber(dd, 'z', `${id}.doors[${i}]`);
     requireInBounds(dd, 'x', 'z', `${id}.doors[${i}]`, width, depth);
-    if (walls[dz][dx] === 1) {
-      throw new LevelLoadError(`Maze '${id}': door at (${dx}, ${dz}) is on a wall`);
+    // P5-editor-multilayer: per-layer wall check (door's own layer)
+    const doorLevel = parseEntityLevel(dd);
+    if (doorLevel < 0 || doorLevel >= levelCount) {
+      throw new LevelLoadError(`Maze '${id}': door at (${dx}, ${dz}) level (${doorLevel}) out of bounds; expected 0..${levelCount - 1}`);
+    }
+    const doorWalls = getLayerWalls(doorLevel);
+    if (doorWalls[dz][dx] === 1) {
+      throw new LevelLoadError(`Maze '${id}': door at (${dx}, ${dz}) is on a wall (L${doorLevel})`);
     }
     if (dx === start.x && dz === start.z) {
       throw new LevelLoadError(`Maze '${id}': door is on the start cell`);
@@ -921,7 +1013,7 @@ function parseDoors(
     seenCells.add(cellKey);
     const doorId = typeof dd.id === 'string' && dd.id.length > 0 ? dd.id : generateId();
     // P3-1: see parseEntityLevel above. Defaults to 0.
-    out.push({ id: doorId, x: dx, z: dz, keyColor: dd.keyColor, level: parseEntityLevel(dd) });
+    out.push({ id: doorId, x: dx, z: dz, keyColor: dd.keyColor, level: doorLevel });
   }
   return out;
 }

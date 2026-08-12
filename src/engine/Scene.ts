@@ -212,7 +212,10 @@ function resolvePerLayerWalls(maze: MazeData): CellType[][][] {
   // is the back-compat path for hand-crafted levels (which never
   // hit the provider's cache) and for any caller that builds a
   // SceneRefs without going through `AlgorithmMazeProvider.load`.
-  return [maze.walls];
+  // The non-null assertion is safe: the `walls xor walls2d` mutex
+  // (P5-2 decision A5) guarantees that a `MazeData` reaching this
+  // function without a procedural cache hit has `walls` set.
+  return [maze.walls!];
 }
 
 export function buildScene(maze: MazeData, darkMode =false): SceneRefs {

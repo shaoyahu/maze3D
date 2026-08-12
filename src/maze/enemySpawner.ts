@@ -64,6 +64,13 @@ export function injectEnemySpawns(
 
   const w = maze.size.width;
   const d = maze.size.depth;
+  // P5-editor-multilayer: enemy spawner walks L0 only. Procedural
+  // injection is single-layer by design (the engine renders enemies
+  // on L0 regardless of `levelCount` — see the level-distribution
+  // loop below which only assigns `level` when `levelCount >= 2`).
+  // `!` is safe because the strict `walls xor walls2d` mutex
+  // guarantees at least one of them is set.
+  const wallsL0 = (maze.walls ?? maze.walls2d![0]!);
   const excluded = new Set<string>();
   const mark = (cx: number, cz: number) => {
     for (let dz = -1; dz <= 1; dz++) {
@@ -82,7 +89,7 @@ export function injectEnemySpawns(
   const candidates: Array<{ x: number; z: number }> = [];
   for (let z = 0; z < d; z++) {
     for (let x = 0; x < w; x++) {
-      if (maze.walls[z][x] === 1) continue;
+      if (wallsL0[z][x] === 1) continue;
       if (excluded.has(`${x},${z}`)) continue;
       candidates.push({ x, z });
     }
@@ -130,10 +137,15 @@ function findWalkableNeighbor(
 ): { x: number; z: number } | null {
   const w = maze.size.width;
   const d = maze.size.depth;
+  // P5-editor-multilayer: same L0-only rationale as the spawner loop
+  // above. The `??` falls through to `walls2d[0]` for multi-layer
+  // levels; `!` is safe because the strict `walls xor walls2d` mutex
+  // guarantees at least one of them is set.
+  const wallsL0 = (maze.walls ?? maze.walls2d![0]!);
   for (const [dx, dz] of [[0, 1], [1, 0], [0, -1], [-1, 0]] as const) {
     const nx = x + dx;
     const nz = z + dz;
-    if (nx >= 0 && nx < w && nz >= 0 && nz < d && maze.walls[nz][nx] === 0) {
+    if (nx >= 0 && nx < w && nz >= 0 && nz < d && wallsL0[nz][nx] === 0) {
       return { x: nx, z: nz };
     }
   }

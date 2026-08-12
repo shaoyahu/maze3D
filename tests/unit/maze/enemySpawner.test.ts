@@ -81,7 +81,7 @@ describe('injectEnemySpawns', () => {
   it('does not place spawns on wall cells', () => {
     const spawns = injectEnemySpawns(openMaze, 10);
     for (const s of spawns) {
-      expect(openMaze.walls[s.z][s.x]).toBe(0);
+      expect(openMaze.walls![s.z][s.x]).toBe(0);
     }
   });
 
@@ -140,7 +140,7 @@ describe('injectEnemySpawns', () => {
     // (no walls, not on start/exit ±1). This is the "independently
     // valid" property — retry doesn't bypass safety checks.
     for (const s of [...first, ...second]) {
-      expect(openMaze.walls[s.z][s.x]).toBe(0);
+      expect(openMaze.walls![s.z][s.x]).toBe(0);
       // 2-node path that begins at the spawn cell.
       expect(s.path.length).toBeGreaterThanOrEqual(2);
       expect(s.path[0]).toEqual({ x: s.x, z: s.z });

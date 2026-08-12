@@ -220,7 +220,19 @@ export interface MazeData {
   // converts a logical 3D grid to its visual 3D grid; P4a's
   // Recursive Backtracker returns the visual 3D grid directly.
   walls3D?: CellType[][][];
-  walls: CellType[][];
+  // P5-editor-multilayer: `walls` is now optional. The validator
+  // enforces the contract `walls xor walls2d`: single-layer levels
+  // carry `walls` (the historical single 2D grid); multi-layer
+  // levels carry `walls2d` (one 2D grid per layer). The two are
+  // mutually exclusive. The editor's `addLevel` / `removeLevel`
+  // actions (P5-editor-multilayer) use `perLayerWalls.promote` /
+  // `perLayerWalls.collapse` to swap between the two shapes
+  // atomically. The engine reads `walls2d` first in
+  // `Scene.resolvePerLayerWalls` + `Game._grid.get`, so the
+  // multi-layer path doesn't need this field. The single-layer
+  // path (the historical default) still reads `walls` via
+  // `[walls]` collapse in the engine resolve fallback.
+  walls?: CellType[][];
   pickups: Pickup[];
   rules: LevelRules;
   enemies: EnemySpawn[];

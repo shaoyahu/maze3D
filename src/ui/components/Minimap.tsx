@@ -462,8 +462,18 @@ export function Minimap({ maze, gameRef }: MinimapProps) {
  // that don't change the slice (e.g. a yaw-only update) — its
  // `React.memo` then skips reconciliation.
  const walls2D: CellType[][] = useMemo(
- () => (is3D ? (maze.walls3D?.[currentLayer] as CellType[][]) ?? [] : maze.walls),
- [is3D, maze.walls3D, maze.walls, currentLayer],
+ // P5-editor-multilayer: a 2D multi-layer level (P5-1 teaching
+ // fixture) carries `walls2d` only — `maze.walls` is `undefined`
+ // per the strict `walls xor walls2d` mutex (decision A5). Reading
+ // `maze.walls!` here used to silently fall through to a runtime
+ // crash on the P5-1 teaching level; the fall back to
+ // `maze.walls2d[0]` keeps the minimap working for the multi-layer
+ // path until the P4-refactor-fp2d 3D view lands. The 3D branch is
+ // unchanged.
+ () => (is3D
+   ? (maze.walls3D?.[currentLayer] as CellType[][]) ?? []
+   : maze.walls ?? maze.walls2d![0]!),
+ [is3D, maze.walls3D, maze.walls, maze.walls2d, currentLayer],
  );
  const exitPos2D: { x: number; z: number } | null = useMemo(() => {
  if (is3D) {
