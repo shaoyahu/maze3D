@@ -96,6 +96,30 @@ describe('App routing', () => {
     expect(screen.getByText(/关卡 URL 不合法/)).toBeInTheDocument();
   });
 
+  it('a /game?v3 seed URL (P4 refactor-fp2d) falls back to /levels instead of an error page', async () => {
+    // P4 refactor-fp2d: the v3 (3D voxel) wire format is removed
+    // (3D mode is now a first-person view of 2D multi-layer,
+    // triggered by `?view=fp3d` over a v1/v2 id). A user with
+    // a `?seed=algo-v3-…` bookmark lands on a dead URL —
+    // per spec.md §8/§10/§11 ("老 v3 URL：友好 fall back 到
+    // 2D + console.warn"), the App must NOT show the red
+    // error panel for the v3 case; it must console.warn and
+    // redirect to /levels (`replace: true` so the dead URL
+    // doesn't pollute browser history). A non-v3 bad seed
+    // (covered by the previous test) still hits the error
+    // panel because that's a genuine user mistake.
+    const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    renderAt(['/game?seed=algo-v3-3d-recursive-backtracker-7-0123456789abcdef']);
+    // P4 refactor-fp2d: the v3 redirect lands at /levels,
+    // so the test waits for the Levels UI (the "开始" rail
+    // button) instead of the error panel.
+    await waitFor(() => expect(screen.getByRole('button', { name: '教学' })).toBeInTheDocument());
+    expect(consoleWarn).toHaveBeenCalledWith(
+      expect.stringContaining('[P4 refactor-fp2d]'),
+    );
+    consoleWarn.mockRestore();
+  });
+
   it('quit from game navigates to / and the previous URL is preserved in history (replace semantics)', async () => {
     // F-project-review-2026-06-14: hitting pause-overlay's "quit" should
     // land at / via a replace (not push), so the back button returns to

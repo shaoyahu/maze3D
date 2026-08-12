@@ -10,11 +10,11 @@
 
 | 字段 | 值 |
 |---|---|
-| 活跃增量 | **P4b-Instanced 3D 墙 InstancedMesh(2026-08-07 session 实施;buildScene3D 改用 1 个 THREE.InstancedMesh 替代 N mesh,1687 draw call → 1 draw call 渲染所有 wall cell;1 pass O(N) 计数 + 1 pass O(N) setMatrixAt;mesh.count = actualCount(不是 visualSize³ 上限);mesh.instanceMatrix.needsUpdate = true 触发 GPU 上传;cell-center invariant 保持 matrix.makeTranslation((x+0.5)*cs, ...);SceneRefs.walls 变 [InstancedMesh] 单元素;disposeScene 兼容(seenGeoms/seenMats dedup 共享 wallGeom/wallMat);InstancedMesh 保持 per-instance 概念(后续可加 per-instance 状态:damage flash/enemy AI 标记/dynamic 颜色);2D buildScene 路径完全不动;typecheck 0/vitest 1755 pass+1 skip;待用户 commit)** |
-| 已完成 | P2-2 14/14 ✅ + P2-3 14/14 ✅ + P2-4a 16/16 ✅ + P2-4b 20/20 ✅ + P2-5 16/16 ✅ + P2-6 10/10 ✅ + P2-7 8/8 ✅ + P2-9 ✅ + P2-10 11/11 ✅ + P2-11 16/16 ✅ + P2-13 ✅ + P2-14 ✅ + P2-15 24/24 ✅ + P2-16 ✅ + P2-17 ✅ + P2-18 ✅ + P2-19 ✅ + P2-20 ✅ + P2-21 ✅ + P3-1 ✅ + P3-2 ✅ + P3-3 ✅ + P4a ✅ + P4b-Prim ✅ + P4b-CellSize ✅ + P4b-Lerp ✅ + P4b-Minimap ✅ + P4b-HudLayer ✅ + P4b-Panorama ✅ + **P4b-Instanced ✅ (2026-08-07, session 实施;3 文件/+6 case)** |
-| 下一个任务 | P4 路线图全部 ship 闭环 (P4a/P4b-Prim/P4b-CellSize/P4b-Lerp/P4b-Minimap/P4b-HudLayer/P4b-Panorama/P4b-Instanced);后续候选 — 3D enemy AI / 3D editor / 3D tutorial / HUD chip total "L5/15" / per-instance color (damage flash) |
-| 最后更新 | 2026-08-07 |
-| 最近 commit | 待提交 — P4b-Panorama 3D 全景 minimap (c3f6d07) 已 push;P4b-Instanced 增量在 working tree 等待用户 commit |
+| 活跃增量 | (无 — P4 refactor-fp2d 已 ship + review-ready PR,等用户 review + 决定下个增量) |
+| 已完成 | P2-2 14/14 ✅ + P2-3 14/14 ✅ + P2-4a 16/16 ✅ + P2-4b 20/20 ✅ + P2-5 16/16 ✅ + P2-6 10/10 ✅ + P2-7 8/8 ✅ + P2-9 ✅ + P2-10 11/11 ✅ + P2-11 16/16 ✅ + P2-13 ✅ + P2-14 ✅ + P2-15 24/24 ✅ + P2-16 ✅ + P2-17 ✅ + P2-18 ✅ + P2-19 ✅ + P2-20 ✅ + P2-21 ✅ + P3-1 ✅ + P3-2 ✅ + P3-3 ✅ + P4a ⚠️ 作废 + P4b-Prim ⚠️ 作废 + P4b-CellSize ⚠️ 作废 + P4b-Lerp ⚠️ 作废 + P4b-Minimap ⚠️ 作废 + P4b-HudLayer ⚠️ 作废 + P4b-Panorama ⚠️ 作废 + P4b-Instanced ⚠️ 作废 + **P4 refactor-fp2d ✅ (2026-08-11, 9 commit ship 闭环;16 文件 / +1310/-4516 = 净减 3206 行;1694/1695 tests pass + 0 2D 回归;2 个 bug fix post-review (GameCanvas view deps + 老 v3 URL 友好 fall back);1 个 code review 报告 docs/reviews/2026-08-11-p4-refactor-fp2d-review.md)** |
+| 下一个任务 | 待用户决定 — 候选: (1) P4 refactor-fp2d cleanup mini-increment (删 L-1 `getPlayerY()` + L-2 `_mode?: never` dead code + 简化 L-3 注释噪音,15-45 min) / (2) 3D 敌人 AI 复用 2D BFS + fp3d 渲染 3D 球体 (spec §11.1 line 207 偏差,P+ 候选) / (3) 3D 编辑器 raycasting / (4) HUD chip total "L5/15" 多层显示 / (5) 重建真正 3D 体素 (独立于 2D 多层,P5 级别) |
+| 最后更新 | 2026-08-12 |
+| 最近 commit | P4 refactor-fp2d 9 commit 已 push: c183ec0 数据层 / abf8d7c 引擎+Scene / d069ea5 Player+Input+gameStore+App / 73d96d3 LevelSelect+HUD+Minimap / 51aac32 test cleanup + fp3d tests / 52e57ef docs sync / 3f6baea fix test / **ed996a2 fix Bug #1+2 (GameCanvas view deps + 老 v3 URL 友好 fall back)** / **fd8ac84 docs cleanup (删 8 段 P4a/P4b 旧 contracts + 同步 README)** |
 
 **约束**：
 - 一次只做一个任务（见下方「总任务列表」）

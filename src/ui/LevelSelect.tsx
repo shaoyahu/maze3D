@@ -40,6 +40,7 @@ import { useT } from '../i18n';
 import { useSettingsStore } from '../store/settingsStore';
 import { getDisplayName } from '../utils/getDisplayName';
 import { Dropdown, type DropdownOption } from './components/Dropdown';
+import type { ViewMode } from '../maze/types';
 
 export interface LevelDef { id: string; name: string; data?: MazeData }
 
@@ -377,7 +378,14 @@ export function LevelSelect({
 }: {
   available: LevelDef[];
   error?: string | null;
-  onPick: (id: string, options?: StartLevelOptions) => void;
+  // P4 refactor-fp2d: onPick now also forwards the view
+  // (2D top-down vs first-person 3D) the user picked at
+  // /levels. The view is a presentation toggle, not a
+  // per-level rule, so it lives outside StartLevelOptions
+  // and is fed into the GameCanvas via the `view` query
+  // parameter at navigate time. The default '2d' keeps
+  // a no-view arg from any future caller working.
+  onPick: (id: string, options?: StartLevelOptions, view?: ViewMode) => void;
   onBack: () => void;
 }) {
   const t = useT();
@@ -409,6 +417,16 @@ export function LevelSelect({
 
   const customLevels = useLevelStore((s) => s.customLevels);
   const bestByLevel = useLevelStore((s) => s.bestByLevel);
+  // P4 refactor-fp2d: the rendering view (2D top-down or
+  // first-person 3D) is a presentation toggle captured at
+  // /levels and round-tripped through the /game URL via the
+  // `view` query parameter. Default is '2d' so the variable
+  // is never undefined and a back-compat link (no `?view=…`
+  // in the URL) keeps the historical top-down rendering.
+  // The `view` state is independent of the level source /
+  // algorithm / levelCount pickers — a player can switch
+  // views without resetting any other field.
+  const [view, setView] = useState<ViewMode>('2d');
   // P2-12: `deleteCustom` 之前是给 /levels 上"删除自定义关卡"按钮用的,
   // 那个入口已搬到 EditorMyLevelsDrawer。这里只读 customLevels 用于渲染。
   const customDefs = Object.values(customLevels)
@@ -496,7 +514,7 @@ export function LevelSelect({
     if (levelSource === 'seed' && isStorageAvailable()) {
       try { localStorage.setItem(LAST_SEED_KEY, seedInput); } catch { /* quota */ }
     }
-    onPick(validation.id, validation.options);
+    onPick(validation.id, validation.options, view);
   };
 
   const showSublevel = levelSource === 'teaching' || levelSource === 'custom';
@@ -523,6 +541,22 @@ export function LevelSelect({
   const displayName = (lv: { name: string; data?: MazeData }): string =>
     lv.data ? getDisplayName(lv.data, locale) : lv.name;
 
+  // P4 refactor-fp2d: the view segmented control's two options.
+  // Living in this file (not the i18n resource) because both
+  // options are stable constants — they describe a binary
+  // presentation toggle, not a user-facing feature that needs
+  // localization. Adding a third option (e.g. an "isometric"
+  // or "top-down isometric" view) would land here too, with
+  // its own ViewMode literal in `maze/types.ts`.
+  const VIEW_OPTIONS: ReadonlyArray<{
+    value: ViewMode;
+    label: string;
+    testId: string;
+  }> = [
+    { value: '2d', label: '2D Top-down', testId: 'view-option-2d' },
+    { value: 'fp3d', label: '3D First-person', testId: 'view-option-fp3d' },
+  ];
+
   return (
     <div data-testid="level-select-root" className="console-shell">
       <div className="console-statusbar">
@@ -536,6 +570,35 @@ export function LevelSelect({
         <span className="console-statusbar__live">
           <span className="console-statusbar__live-dot" />
           {t('levels.status.online')}
+        </span>
+        <span className="console-statusbar__divider" />
+        {/* P4 refactor-fp2d: view segmented control. The
+            rendering-mode picker is a presentation toggle
+            independent of the level-source / algorithm /
+            level-count pickers above, so it lives in the
+            statusbar (a thin horizontal strip) rather than
+            the main form. The two buttons are the only
+            ViewMode values today; adding a third (e.g. an
+            "isometric" view) would extend VIEW_OPTIONS and
+            the ViewMode union in lockstep. */}
+        <span className="console-statusbar__chip" style={{ display: 'inline-flex', gap: 4 }}>
+          <span aria-hidden="true" style={{ opacity: 0.6 }}>View</span>
+          {VIEW_OPTIONS.map((opt) => {
+            const active = view === opt.value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                data-testid={opt.testId}
+                aria-pressed={active}
+                onClick={() => setView(opt.value)}
+                className={`console-rail__tab${active ? ' console-rail__tab--active' : ''}`}
+                style={{ padding: '2px 8px', fontSize: '0.85em' }}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
         </span>
       </div>
 

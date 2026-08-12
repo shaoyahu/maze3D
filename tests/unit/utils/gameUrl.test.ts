@@ -372,11 +372,25 @@ describe('parseGameSearchParams tamper resistance (P3-1 isProcedural fix)', () =
   // regress to a teaching default. Post-fix: `?seed=algo-v3-…` lands
   // in `bad-seed`, and the `?id=algo-v3-…` path keeps the gate
   // strict via the 256-char length cap on the `?id=` branch.
-  it('rejects ?seed=algo-v3-… with a NON-3D algorithm (unknown to v3 whitelist) as bad-seed', () => {
-    // P4: v3 ids are now a real format (3D voxel mazes). But
-    // the v3 whitelist only accepts 3D-prefixed algorithm
-    // names (`3d-recursive-backtracker`); a v3 id carrying a
-    // 2D algorithm name is malformed and must be rejected.
+  //
+  // P4 refactor-fp2d: the `algo-v3-…` (3D voxel) wire format is
+  // removed. The two v3-positive tests above (P4-3D-voxel-id
+  // round-trip + buildGameSearchParams v3 routing) are gone in
+  // lockstep with the codec deletion. The negative test (rejects
+  // `?seed=algo-v3-…` with a NON-3D algorithm as bad-seed) is
+  // generalized below: any unknown prefix is rejected. The
+  // locked contract is "only `algo-v1-…` and `algo-v2-…` are
+  // accepted; everything else is bad-seed".
+
+  it('rejects ?seed=algo-v3-… (3D voxel prefix removed) as bad-seed', () => {
+    // P4 refactor-fp2d: the v3 codec is gone. A URL carrying
+    // `?seed=algo-v3-…` (whether the algorithm name is 3D-prefixed
+    // or not) fails the v1 / v2 regexes in decodeSeed and lands
+    // in the `bad-seed` error path. This is a stricter contract
+    // than the historical P4 3D-voxel acceptance — the 3D voxel
+    // path is replaced by the `view=fp3d` URL toggle over the
+    // 2D multi-layer data, so there's no algorithmic 3D path
+    // for the v3 prefix to mean anything.
     const r = parseGameSearchParams(
       new URLSearchParams('?seed=algo-v3-recursive-backtracker-30-0123456789abcdef'),
     );
@@ -384,42 +398,16 @@ describe('parseGameSearchParams tamper resistance (P3-1 isProcedural fix)', () =
     if (!r.ok) expect(r.error).toBe('bad-seed');
   });
 
-  it('accepts ?seed=algo-v3-3d-recursive-backtracker-7-… (P4 3D voxel id) and round-trips through build → parse', () => {
-    // P4: 3D voxel mazes are a real codec, not a future
-    // placeholder. The isProcedural gate now accepts the v3
-    // prefix, and `encodeSeedV3` (not `encodeSeed`) is the
-    // canonical encoder so the URL doesn't get downgraded to
-    // a wire-invalid v1 id with the 3D algorithm name.
-    const v3Id = 'algo-v3-3d-recursive-backtracker-7-0123456789abcdef';
-    // Parse directly.
-    const parsed = parseGameSearchParams(new URLSearchParams(`?seed=${v3Id}`));
-    expect(parsed.ok).toBe(true);
-    if (parsed.ok) {
-      expect(parsed.parsed.id).toBe(v3Id);
-      expect(parsed.parsed.options.seed?.algorithm).toBe('3d-recursive-backtracker');
-      expect(parsed.parsed.options.seed?.size).toBe(7);
-      expect(parsed.parsed.options.seed?.mazeSeed).toBe('0123456789abcdef');
-    }
-    // Build → parse round-trip.
-    const built = buildGameSearchParams(v3Id, { mode: 'reach-exit' });
-    const reparsed = parseGameSearchParams(built);
-    expect(reparsed.ok).toBe(true);
-    if (reparsed.ok) {
-      expect(reparsed.parsed.id).toBe(v3Id);
-      expect(reparsed.parsed.options.seed?.algorithm).toBe('3d-recursive-backtracker');
-    }
-  });
-
-  it('buildGameSearchParams routes a v3 id through encodeSeedV3 (not encodeSeed)', () => {
-    // Regression: pre-fix `buildGameSearchParams` only knew about
-    // encodeSeed (v1) and encodeSeedV2. A v3 id would have been
-    // re-emitted as `algo-v1-3d-recursive-backtracker-7-…` — a
-    // wire-invalid v1 id (the v1 whitelist rejects the 3d-
-    // algorithm name). The fix is the `algorithm.startsWith('3d-')`
-    // branch in `buildGameSearchParams` routing to encodeSeedV3.
-    const v3Id = 'algo-v3-3d-recursive-backtracker-7-0123456789abcdef';
-    const built = buildGameSearchParams(v3Id, { mode: 'reach-exit' });
-    expect(built.get('seed')).toBe(v3Id);
+  it('rejects ?seed=algo-v3-3d-recursive-backtracker-7-… (3D voxel id) as bad-seed', () => {
+    // Same contract: the previously-valid 3D voxel id is now
+    // an unknown prefix. The URL friendly-falls-through to a
+    // bad-seed error (no silent fallback to 2D — the user has
+    // to update the link or remove `view=fp3d`).
+    const r = parseGameSearchParams(
+      new URLSearchParams('?seed=algo-v3-3d-recursive-backtracker-7-0123456789abcdef'),
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toBe('bad-seed');
   });
 
   it('rejects ?seed=algo-v99-future-… (any unknown prefix) as bad-seed', () => {
@@ -457,6 +445,83 @@ describe('parseGameSearchParams tamper resistance (P3-1 isProcedural fix)', () =
       expect(parsed.parsed.id).toBe(v2Id);
       expect(parsed.parsed.options.seed?.levelCount).toBe(2);
       expect(parsed.parsed.options.mode).toBe('reach-exit');
+    }
+  });
+});
+
+// P4 refactor-fp2d: the new `?view=2d|fp3d` URL query.
+// This is the locked contract: 3D mode is a presentation
+// toggle over the 2D multi-layer data, NOT a separate
+// 3D-voxel wire format. The view defaults to `2d` (back-
+// compat with every URL minted before this branch landed);
+// `view=fp3d` opts into first-person 3D rendering.
+describe('parseGameSearchParams ?view=2d|fp3d (P4 refactor-fp2d)', () => {
+  it('defaults view to "2d" when ?view= is missing', () => {
+    const r = parseGameSearchParams(
+      new URLSearchParams(`?seed=${VALID_SEED_ID}`),
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.parsed.view).toBe('2d');
+  });
+
+  it('parses ?view=fp3d into ParsedGameUrl.view = "fp3d"', () => {
+    const r = parseGameSearchParams(
+      new URLSearchParams(`?seed=${VALID_SEED_ID}&view=fp3d`),
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.parsed.view).toBe('fp3d');
+  });
+
+  it('parses ?view=2d explicitly (no surprise default)', () => {
+    const r = parseGameSearchParams(
+      new URLSearchParams(`?seed=${VALID_SEED_ID}&view=2d`),
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.parsed.view).toBe('2d');
+  });
+
+  it('rejects ?view=invalid (bad-view error, the strict path)', () => {
+    // `?view=foo` is a hand-crafted URL typo (or a malicious
+    // injection attempt). The lenient policy on the other
+    // numeric queries (clamp + use) doesn't apply to view
+    // because there's no meaningful "default-ish" invalid
+    // value — surfacing the error in the error-boundary UI
+    // is the right call. Same pattern as `?mode=foo` →
+    // bad-mode.
+    const r = parseGameSearchParams(
+      new URLSearchParams(`?seed=${VALID_SEED_ID}&view=foo`),
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toBe('bad-view');
+  });
+
+  it('buildGameSearchParams omits ?view= when the view is the 2d default', () => {
+    // The default `2d` is intentionally omitted to keep the
+    // URL clean for the (much more common) top-down case.
+    // A pre-refactor URL (no `?view=`) keeps working because
+    // the parser defaults to `2d` when the key is missing.
+    const built = buildGameSearchParams(VALID_SEED_ID, { mode: 'reach-exit' }, '2d');
+    expect(built.get('view')).toBeNull();
+  });
+
+  it('buildGameSearchParams writes ?view=fp3d when the view is fp3d', () => {
+    const built = buildGameSearchParams(VALID_SEED_ID, { mode: 'reach-exit' }, 'fp3d');
+    expect(built.get('view')).toBe('fp3d');
+  });
+
+  it('round-trips a v1 id + view=fp3d through build → parse (URL persistence preserves both)', () => {
+    // The round-trip test pins the v1 + view=fp3d combination
+    // because it's the most likely shape a user would share
+    // (a teaching-style id plus a "play in first-person"
+    // preference). The parser must keep the view as 'fp3d' on
+    // re-parse; the builder must write it back to the URL.
+    const built = buildGameSearchParams(VALID_SEED_ID, { mode: 'reach-exit' }, 'fp3d');
+    const reparsed = parseGameSearchParams(built);
+    expect(reparsed.ok).toBe(true);
+    if (reparsed.ok) {
+      expect(reparsed.parsed.id).toBe(VALID_SEED_ID);
+      expect(reparsed.parsed.view).toBe('fp3d');
+      expect(reparsed.parsed.options.mode).toBe('reach-exit');
     }
   });
 });

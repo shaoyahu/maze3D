@@ -9,11 +9,11 @@ import { Crosshair } from './components/Crosshair';
 import { TutorialBanner } from './components/TutorialBanner';
 import { Minimap } from './components/Minimap';
 import { ParchmentMap } from './components/ParchmentMap';
-import type { MazeData, StartLevelOptions } from '../maze/types';
+import type { MazeData, StartLevelOptions, ViewMode } from '../maze/types';
 import { useT } from '../i18n';
 import { OPEN_MAP_KEY } from '../engine/InputManager';
 
-export function GameCanvas({ maze, options }: { maze: MazeData; options?: StartLevelOptions }) {
+export function GameCanvas({ maze, options, view = '2d' }: { maze: MazeData; options?: StartLevelOptions; view?: ViewMode }) {
   const t = useT();
   const ref = useRef<HTMLCanvasElement>(null);
   const gameRef = useRef<Game | null>(null);
@@ -158,7 +158,7 @@ export function GameCanvas({ maze, options }: { maze: MazeData; options?: StartL
         }
       },
     };
-    const game = new Game(bridge);
+    const game = new Game(bridge, view);
     game.init(ref.current);
     gameRef.current = game;
     // Dev-only escape hatch: lets a human poke at the live engine from the
@@ -181,7 +181,18 @@ export function GameCanvas({ maze, options }: { maze: MazeData; options?: StartL
       game.dispose();
       gameRef.current = null;
     };
-  }, []);
+    // P4 refactor-fp2d: `view` is in the deps array so a view
+    // toggle at /levels (without changing the maze id) tears
+    // down the existing Game and constructs a new one with
+    // the new `viewMode`. Without this dep, the App-level
+    // `key={activeMaze.id}` prop keeps the GameCanvas instance
+    // alive across view changes (the maze id is the same),
+    // and the existing Game would keep running with its
+    // constructor-time `view` — silently ignoring the toggle.
+    // The Effect 2 ([maze.id, restartKey]) handles the separate
+    // case of "same view, different maze" by calling
+    // `game.startLevel` on the live instance.
+  }, [view]);
 
   // Effect 2: (re)start the level whenever the maze changes or the store
   // signals a restart. Calling game.startLevel on the live instance is
@@ -313,7 +324,18 @@ export function GameCanvas({ maze, options }: { maze: MazeData; options?: StartL
           }, 3000);
         });
       }} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block' }} />
-      {screen === 'playing' && <Crosshair />}
+      {/* P4 refactor-fp2d: the crosshair is a first-person
+          cue, not a 2D cue. In 2D top-down the player sees
+          their own ring (Scene.ts playerMarker, hidden in
+          fp3d) so the on-screen crosshair would be a
+          redundant reticle on top of a redundant reticle.
+          Gating on `view === 'fp3d'` keeps the HUD as
+          clean as the engine state — fp3d has the crosshair
+          and no marker, 2D has the marker and no
+          crosshair. Same `screen === 'playing'` guard as
+          the legacy code so paused / game-over / win
+          overlays still cover it. */}
+      {screen === 'playing' && view === 'fp3d' && <Crosshair />}
       {screen === 'playing' && <Minimap maze={maze} gameRef={gameRef} />}
       {/* P2-11: tutorial banner — rendered only when this level has steps. The banner itself hides when currentStepId is null (tutorial finished), so we don't need a separate gate. */}
       {screen === 'playing' && maze.tutorialSteps && maze.tutorialSteps.length > 0 && <TutorialBanner />}

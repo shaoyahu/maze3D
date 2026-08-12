@@ -23,7 +23,7 @@ import { EditorMazeProvider } from './maze/EditorMazeProvider';
 import { AlgorithmMazeProvider } from './maze/AlgorithmMazeProvider';
 import { ConfirmProvider } from './ui/useConfirm';
 import { LevelLoadError, clampErrorValue } from './utils/errors';
-import type { MazeData, StartLevelOptions } from './maze/types';
+import type { MazeData, StartLevelOptions, ViewMode } from './maze/types';
 import { buildGameSearchParams, parseGameSearchParams } from './utils/gameUrl';
 import { useT } from './i18n';
 
@@ -274,10 +274,19 @@ function LevelsPage() {
         .filter(({ id }) => !id.startsWith('custom-'))
         .map(({ id, name, data }) => ({ id, name, data }))}
       error={error}
-      onPick={(id, options) => {
+      onPick={(id, options, view) => {
         // F-project-review-2026-06-14: build the /game URL from the id +
-        // options. push (not replace) so browser back returns to /levels.
-        const search = buildGameSearchParams(id, options);
+        // options + view. push (not replace) so browser back returns
+        // to /levels.
+        //
+        // P4 refactor-fp2d: `view` is the rendering mode the user
+        // picked at /levels (2D top-down or first-person 3D). The
+        // URL carries it as `?view=fp3d` when fp3d (the default
+        // `2d` is omitted to keep the URL clean for the much more
+        // common top-down case). The /game route's parser reads
+        // it into `ParsedGameUrl.view` and GameCanvas forwards
+        // it to the Game constructor.
+        const search = buildGameSearchParams(id, options, view ?? '2d');
         navigate({ pathname: '/game', search: `?${search.toString()}` });
       }}
       onBack={() => navigate(-1)}
@@ -325,6 +334,15 @@ function GamePage() {
 
   const [activeMaze, setActiveMaze] = useState<MazeData | null>(null);
   const [activeOptions, setActiveOptions] = useState<StartLevelOptions | undefined>(undefined);
+  // P4 refactor-fp2d: the rendering view (2D top-down or
+  // first-person 3D) is captured at the same time as the
+  // active maze so a refresh of the same URL keeps the
+  // view the user picked. Lives at the same scope as
+  // `activeMaze` because GameCanvas needs both to construct
+  // the Game instance. Default is '2d' so the variable is
+  // never undefined; the URL parser already collapses a
+  // missing `?view=` to '2d' at parseGameSearchParams time.
+  const [activeView, setActiveView] = useState<ViewMode>('2d');
   const [urlError, setUrlError] = useState<string | null>(null);
 
   // F-M2: monotonic token bumped on every startLevel / quitToMenu. Async
@@ -340,19 +358,42 @@ function GamePage() {
       // P2-3: ids starting with 'algo-v1-' are procedural seeds — we generate
       // the MazeData on demand via AlgorithmMazeProvider instead of looking
       // it up in the hand-crafted `levels` list. P3-1 added `algo-v2-…`
-      // (multi-level), P4 added `algo-v3-…` (3D voxel) — both go through
-      // the same `AlgorithmMazeProvider.load(id)` dispatch (the provider
-      // routes v3 ids to `load3D` internally). Anything else goes
-      // through the EditorMazeProvider (custom + built-in).
+      // (multi-level) — both go through the same
+      // `AlgorithmMazeProvider.load(id)` dispatch.
+      //
+      // P4 refactor-fp2d: the `algo-v3-…` (3D voxel) prefix is
+      // removed. 3D mode is now a first-person view of 2D
+      // multi-layer data (P4 refactor spec), so the procedural
+      // seed format space shrinks back to v1 + v2 only. A
+      // stale `algo-v3-…` id fails `decodeSeed` in the
+      // provider's load() and lands in the `bad-seed` error
+      // path. The 3D rendering toggle is now a separate
+      // `?view=fp3d` URL query, handled by GameCanvas.tsx when
+      // it builds the Game instance.
       const isProcedural =
         id.startsWith('algo-v1-') ||
-        id.startsWith('algo-v2-') ||
-        id.startsWith('algo-v3-');
+        id.startsWith('algo-v2-');
       const handleLoaded = (maze: MazeData) => {
         if (loadTokenRef.current !== myToken) return;
         useGameStore.getState().startLevel(maze, options);
         setActiveMaze(maze);
         setActiveOptions(options);
+        // P4 refactor-fp2d: capture the view from the parsed URL
+        // so GameCanvas can construct a Game with the right
+        // mouse-look gating. Reading from `parsed.parsed.view`
+        // (rather than re-parsing) is intentional — the URL
+        // parser already validated the value against the
+        // `isViewMode` whitelist, so this is the canonical
+        // "what view did the user pick" value. The
+        // `parsed.ok` guard is redundant at runtime (the
+        // enclosing useEffect already returned early on
+        // `!parsed.ok` before calling startLevel), but
+        // TypeScript can't narrow `parsed` across the
+        // useCallback boundary, so the guard gives the
+        // strict-typed read the narrowing it needs.
+        if (parsed.ok) {
+          setActiveView(parsed.parsed.view);
+        }
         setUrlError(null);
       };
       if (isProcedural) {
@@ -401,20 +442,45 @@ function GamePage() {
     // bump first makes every (re-)run start with a fresh token.
     loadTokenRef.current++;
     if (!parsed.ok) {
+      // P4 refactor-fp2d: the v3 (3D voxel) wire format is
+      // removed, so a user with a `?seed=algo-v3-…` bookmark
+      // lands here. Per spec.md §8 / §10 / §11 ("老 v3 URL：
+      // 友好 fall back 到 2D + console.warn"), we don't show
+      // a red error page for the v3 case — the URL is the
+      // user's genuine intent, just no longer a valid wire
+      // format. The lenient path: console.warn + redirect
+      // to /levels (`replace: true` so the dead v3 URL
+      // doesn't pollute browser history). The detection
+      // narrows to the v3 prefix specifically — a generic
+      // `?seed=not-a-real-seed` is a genuine user mistake
+      // and still surfaces the red error panel.
+      const v3Seed = searchParams.get('seed');
+      if (parsed.error === 'bad-seed' && v3Seed?.startsWith('algo-v3-')) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          '[P4 refactor-fp2d] v3 (3D voxel) seed URL detected — falling back to /levels. ' +
+            'The 3D voxel wire format is removed; please pick a v1 or v2 level.',
+        );
+        navigate('/levels', { replace: true });
+        return;
+      }
       setUrlError(`关卡 URL 不合法：${parsed.error}`);
       setActiveMaze(null);
       setActiveOptions(undefined);
+      // P4 refactor-fp2d: also clear the view on bad URL so a
+      // subsequent valid load doesn't inherit a stale value.
+      setActiveView('2d');
       return;
     }
     startLevel(parsed.parsed.id, parsed.parsed.options);
     // Reset on unmount too: any in-flight load is invalidated by the
     // loadTokenRef bump in quitToMenu, but bumping here also covers the
-    // case where GamePage unmounts without going through quitToMenu
+    // case where GamePage unmounts without goingThrough quitToMenu
     // (e.g. user typed a new URL into the address bar).
     return () => {
       loadTokenRef.current++;
     };
-  }, [parsed, startLevel]);
+  }, [parsed, startLevel, navigate, searchParams]);
 
   const quitToMenu = () => {
     // F-M2: cancel any in-flight procedural load before flipping the UI
@@ -424,6 +490,10 @@ function GamePage() {
     useGameStore.getState().goToMenu();
     setActiveMaze(null);
     setActiveOptions(undefined);
+    // P4 refactor-fp2d: also reset the view so the next
+    // /game entry defaults to 2D (the user can re-pick
+    // first-person via the LevelSelect view toggle).
+    setActiveView('2d');
     // F-project-review-2026-06-14: replace (not push) so the user's
     // history entry for /game is collapsed and back returns to whatever
     // was before the game (e.g. /levels).
@@ -474,7 +544,7 @@ function GamePage() {
 
   return (
     <>
-      {activeMaze && <GameCanvas key={activeMaze.id} maze={activeMaze} options={activeOptions} />}
+      {activeMaze && <GameCanvas key={activeMaze.id} maze={activeMaze} options={activeOptions} view={activeView} />}
       {activeMaze && gameScreen === 'playing' && <HUD />}
       {activeMaze && gameScreen === 'paused' && (
         <>

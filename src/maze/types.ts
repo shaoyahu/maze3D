@@ -189,37 +189,6 @@ export interface MazeData {
   cellSize: number;
   start: { x: number; z: number; level?: number };
   exit: { x: number; z: number; level?: number };
-  // P4: 3D voxel maze start/exit in 3D cell coordinates. Only
-  // populated when `walls3D` is set (3D levels); for 2D levels the
-  // engine reads the legacy 2D `start` / `exit` fields above. The
-  // two shapes are mutually exclusive — the provider always sets
-  // one OR the other, never both. `(x, y, z)` are integer visual
-  // cell coordinates (matching `walls3D[z][y][x]` indexing), not
-  // world meters. The renderer / engine do the cs-scale conversion
-  // when placing the player / exit pad. The literal `{x, y, z}`
-  // shape stays a separate type from the 2D `{x, z, level?}` so
-  // a hand-crafted 3D JSON can carry the 3D coords without
-  // silently colliding with the 2D shape.
-  start3D?: { x: number; y: number; z: number };
-  exit3D?: { x: number; y: number; z: number };
-  // P4: 3D voxel maze walls. When present, the renderer takes the
-  // 3D path (cuboid per wall cell) and the player can move in 6
-  // directions (WASD + Space/C). When absent, the existing 2D path
-  // (P2 / P3-1) runs. Both shapes coexist on the union: a level
-  // is either 2D (stack-of-layers) OR 3D (single voxel cube), never
-  // both — the validator at JsonMazeProvider accepts either or
-  // neither but rejects "both set" so the engine doesn't have to
-  // guess.
-  //
-  // The 3D array is `walls3D[z][y][x]` in `(depth, height, width)`
-  // order, where depth = height = width = visualSize (odd, 5/7/9
-  // for the MVP sizes; P4b may add 11/13/15). CellType = 0 is
-  // passage, 1 is wall. The same "thick-wall" encoding as 2D
-  // generators applies: odd cells are the spanning tree edges
-  // and even cells are wall borders. _expandThickWall3D (P4a)
-  // converts a logical 3D grid to its visual 3D grid; P4a's
-  // Recursive Backtracker returns the visual 3D grid directly.
-  walls3D?: CellType[][][];
   walls: CellType[][];
   pickups: Pickup[];
   rules: LevelRules;
@@ -404,24 +373,7 @@ export type Algorithm =
   | 'wilsons'
   | 'houston'
   | 'growing-binary-tree'
-  | 'blobby-recursive-division'
-  // P4: 3D voxel maze generator. The algorithm operates on a single
-  // 3D grid (z × y × x) rather than the 2D (z × x) used by every
-  // algorithm above. The "3d-" prefix on the literal keeps the
-  // search space clear: any future 2D variant of the same name
-  // would be a 2D algorithm and the registry's `id: Algorithm`
-  // type would refuse to register it without a separate literal.
-  | '3d-recursive-backtracker'
-  // P4b-Prim: 3D Randomized Prim. Sibling of `3d-recursive-backtracker`
-  // — both bypass the algorithm registry (signature mismatch with
-  // the 2D `(size, rng) => CellType[][]` contract) and dispatch
-  // through `AlgorithmMazeProvider.load3D`. Same data layout
-  // (`walls3D[z][y][x]`) and same thick-wall encoding; the only
-  // delta from the 3D RB is the outer loop: a frontier-based random
-  // pick instead of a stack-based DFS. The 3d- prefix keeps the
-  // name space disjoint from the 2D `prim` literal (which is the
-  // canonical 2D Prim).
-  | '3d-prim';
+  | 'blobby-recursive-division';
 
 // Square grid sizes the procedural provider accepts. The literal union
 // doubles as the whitelist enforced by decodeSeed() in utils/seed.ts; adding
@@ -494,6 +446,19 @@ export interface StartLevelOptions {
   spawnSchedule?: SpawnSchedule;
   surviveSeconds?: 30 | 60 | 90 | 120;
 }
+
+// P4 refactor-fp2d: rendering mode for /game. The 2D top-down
+// path is the historical default and is byte-identical to every
+// URL minted before this branch landed (the `view` query is
+// omitted in that case, so an old link keeps working). The
+// `fp3d` mode is a first-person perspective camera that consumes
+// the SAME 2D multi-layer data (P3-1 walls + levelCount +
+// transitions) — there is no separate "3D data"; the only
+// delta from `2d` is the camera + the mesh styling. This is
+// the locked contract: 3D mode ≠ 6-direction free movement,
+// 3D mode = first-person view of 2D multi-layer. See
+// docs/increments/p4-refactor-fp2d/spec.md §1.
+export type ViewMode = '2d' | 'fp3d';
 
 // ---------------------------------------------------------------------------
 // P2-4a: enemies + survive mode

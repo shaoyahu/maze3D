@@ -1,10 +1,10 @@
 # 3D 迷宫（maze3D）
 
-浏览器中运行的第一人称 **3D 体素迷宫 + 多层 2D 迷宫** 游戏。
+浏览器中运行的 **多层 2D 迷宫 + 第一人称 3D 视角** 游戏（P4 refactor-fp2d, 2026-08-11）。
 
 - **2D 模式**：经典顶视迷宫 + 多层 1 层迷宫堆叠，梯子 / 洞 / 阶梯在不同层之间穿梭
-- **3D 模式**：体素立方体迷宫（5³ ~ 15³），自由六方向移动（上下 + 前后左右），WASD + Space/C 控制
-- **15 种 2D 算法** + **2 种 3D 算法**（Recursive Backtracker / Prim）程序生成
+- **3D 模式**：**第一人称视角渲染同一个 2D 多层迷宫**（WASD 走 x/z 平面，y 轴只走 transition tile）—— 玩家**不能**自由升空 / 下降，**不能**在 3D 体素空间乱走
+- **15 种 2D 算法**（Recursive Backtracker / Prim / Eller / Sidewinder / Binary Tree / Growing Tree / Parallel Backtracker / Recursive Division / Aldous-Broder / Wilsons / Houston / Growing Binary Tree / Blobby Recursive Division / Hunt-and-Kill / Kruskal）程序生成
 - **浏览器内关卡编辑器**，支持手写 / 程序 / 编辑器三类关卡
 - **reach-exit / time-trial / survive** 三种胜利模式 + 巡逻敌人
 - **URL 是关卡状态的唯一真源** —— 刷新 / 分享 / 后退都回放同一关卡配置
@@ -92,11 +92,13 @@ npx playwright test --grep "specific title"
 | `enemies` | `0`–`N` | 巡逻敌人数量 |
 | `progressive` | `0` / `1` | 渐进式敌人刷新开关 |
 | `progressiveMax` | `1`–`20` | 渐进式敌人上限 |
+| `view` | `2d` / `fp3d` | 渲染模式（2D 顶视图 / 第一人称 3D），`2d` 默认省略 |
 
 **Seed 格式版本**（按调用方 dispatch 到不同 codec）：
 - `algo-v1-<algorithm>-<size>-<hex16>` —— 单层 2D 关卡（P2-3 引入，jamisbuck 15 算法都走 v1）
 - `algo-v2-<algorithm>-<size>-<levels>-<hex16>` —— **多层 2D 关卡**（P3-1 引入；中间多一层数槽）
-- `algo-v3-<3d-algorithm>-<cubeSize>-<hex16>` —— **3D 体素关卡**（P4 引入；算法名带 `3d-` 前缀）
+
+**P4 refactor-fp2d (2026-08-11)**：3D 模式 = 第一人称视角渲染 2D 多层数据；3D 模式 ≠ 6 方向自由移动。`algo-v3-…` (3D voxel) wire format **完全作废** —— 老 v3 URL fail `bad-seed` 错误（友好 fall back）。View 切换是 `?view=fp3d` (新加 URL query)，不是新 seed format。
 
 > 刷新 / 分享 URL / 浏览器后退都回到同一配置；F9 重试也通过 URL 重新触发同一配置。
 
@@ -117,14 +119,16 @@ npx playwright test --grep "specific title"
 | **F9** | 重玩当前关卡（保留 URL 配置） |
 | **ESC** | 释放鼠标指针 |
 
-### 4.2 3D 模式（体素立方体）
+### 4.2 3D 模式（第一人称视角渲染 2D 多层）
+
+P4 refactor-fp2d 后，3D 模式 = 第一人称视角 + **同一个 2D 多层数据**（P3-1 walls + levelCount + transitions）。玩家**只能**在 (x, z) 平面移动，**不能**自由升空 / 下降 —— 上下层切换**只能**通过 transition tile（stair / ladder / hole）。视图切换 = `?view=fp3d`。
 
 | 键位 | 作用 |
 |---|---|
-| **W / A / S / D** | 水平四向移动（x / z 轴） |
-| **Space** | 向上 +1 格（y 轴） |
-| **C** | 向下 -1 格（y 轴） |
-| **鼠标** | 视角（点击画布锁定指针） |
+| **W / A / S / D** | 水平四向移动（x / z 轴）—— 跟 2D 模式完全相同 |
+| **鼠标** | 视角（点击画布锁定指针，yaw / pitch 控制） |
+| **Space** | 站在梯子上时上升一层（ladder up）—— **不是**自由升空 |
+| **C** | 站在梯子上时下降一层（ladder down）—— **不是**自由下降 |
 | **P** / **F9** / **ESC** | 同 2D |
 
 ### 4.3 通用
@@ -152,15 +156,18 @@ P3-1 起：单个 2D 关卡可由 N 个 1 层迷宫（`levelCount` 1..6）堆叠
 
 每个 transition 在 `MazeData.transitions: VerticalTransition[]` 中编码 `{id, level, x, z, kind, toLevel, toX?, toZ?}`。生成器默认给每对相邻层放 1 个 `stair-up`；编辑器可放任意 kind。
 
-### 5.2 3D 模式：体素立方体迷宫
+### 5.2 3D 模式：第一人称视角渲染 2D 多层（P4 refactor-fp2d）
 
-P4a 起：3D 关卡是一个 `walls3D: CellType[][][]` 的体素立方体：
+P4 refactor-fp2d 后：3D 模式 = 第一人称视角 + 同一个 2D 多层数据（P3-1 锁的 `walls: CellType[][]` + `levelCount` + `transitions`）。**没有**独立的 3D 体素数据结构 / 算法 / 移动模型。
 
-- 尺寸：`visualSize` ∈ {5, 7, 9, 11, 13, 15}（P4b-CellSize 从 {5,7,9} 扩到 6 档）
-- 算法：3D Recursive Backtracker（P4a）+ 3D Prim（P4b-Prim）
-- 移动模型：六方向 cell-based（WASD + Space/C），每个 cell 1.5×1.5×1.5 m，**没有上下墙的概念**（每个 cell 都能上下走，区别于 2D ladder 那种"只在特定 tile 才能上下"）
-- 玩家 P4b-Lerp 平滑 tween：0.1s 线性 cell-to-cell，6 帧 60fps sweet spot
-- 3D 墙渲染 P4b-Instanced：从 N 个 mesh 改成 1 个 `THREE.InstancedMesh`（1687 → 1 draw call for visualSize=15）
+- **数据**：完全复用 2D 多层（`walls` 2D grid + `levelCount` 1..6 + `transitions` 5 kind）
+- **渲染**：buildSceneFP3D（first-person perspective camera + 3D wall mesh + 多层 floor/ceiling + 3D exit + 3D pickups + 3D enemy + transition mesh）
+- **移动**：2D `getMove()` (WASD → x/z) + 2D `getLadderRequest()` (Space/C ladder) —— **跟 2D 模式共享同一套物理**
+- **相机**：PerspectiveCamera (60° FOV) + 玩家 yaw/pitch（mouse-look），camera y = `playerY + EYE_HEIGHT (1.6m)`
+- **playerMarker**：view='fp3d' 时 `visible = false`（第一人称看不到自己脚下）
+- **locked contract**：3D 模式 ≠ 6 方向自由移动；y 轴切换**只能**通过 transition tile（stair / ladder / hole）
+
+P4 refactor-fp2d (2026-08-11) 之前（P4a + 7 P4b）的"3D 体素立方体"（`walls3D: CellType[][][]` + 6 方向 cell-based 移动 + 3D 算法 + 0.1s lerp + InstancedMesh）**全部作废**。
 
 ### 5.3 程序生成关卡
 
@@ -175,11 +182,7 @@ P4a 起：3D 关卡是一个 `walls3D: CellType[][][]` 的体素立方体：
 
 提供 3 档尺寸（15×15 / 30×30 / 50×50）+ 16 位 hex 种子。LevelSelect 算法下拉 15 项全收录。
 
-**3D 算法（2 种）**：
-- `3d-recursive-backtracker`（P4a MVP）
-- `3d-prim`（P4b-Prim，跟 2D Prim 同款 Multiplicative 跨界踩过的坑已绕开：logically-indexed `maxIdx = visualSize*visualSize`）
-
-3D 提供 6 档尺寸（5³ / 7³ / 9³ / 11³ / 13³ / 15³，P4b-CellSize）。
+**3D 算法**：P4 refactor-fp2d 后**作废**。3D 模式 = 第一人称视角渲染 2D 多层，没有 3D 专属算法（2D 15 种算法在 3D 视角下都能玩）。
 
 ### 5.4 手写关卡
 
@@ -222,7 +225,7 @@ P4a 起：3D 关卡是一个 `walls3D: CellType[][][]` 的体素立方体：
 
 库存槽位通过数字键 `1` / `2` 触发使用。
 
-3D 模式暂无拾取系统（`walls3D` 路径下 `pickups` 数组为空）。
+3D 模式（`view=fp3d`）的拾取系统跟 2D 模式完全相同 —— 共享同一个 2D 多层数据 + 拾取逻辑，只是相机换成第一人称视角。P4 refactor-fp2d 前 P4a 的"3D 体素没有拾取"约束**已作废**。
 
 ---
 
@@ -267,11 +270,12 @@ P4a 起：3D 关卡是一个 `walls3D: CellType[][][]` 的体素立方体：
 - **敌人数**：survive 模式 HUD 实时显示
 - **教程 banner**：教学关卡 6 步引导
 
-### 9.2 HUD（3D 模式）
+### 9.2 HUD（3D 模式 / 第一人称视角）
 
-- **3D 状态条**：健康 / 时间 / 库存 / 当前 y-layer chip（`L1` ~ `L15`）
-- **3D 小地图**：3D top-down minimap（顶层 + 玩家位置 + 出口标记）
-- **过场动画**：0.1s cell-to-cell tween，3D 6 邻居
+- **状态条**：健康 / 时间 / 库存 / 当前 layer chip（`L1` ~ `L{levelCount}`）—— 跟 2D 模式共享
+- **小地图**：2D top-down minimap（当前层 + 玩家位置 + 出口标记）—— 跟 2D 模式共享（第一人称看不到自己脚下的 playerMarker，minimap 仍显示）
+- **crosshair**：屏幕中央准星（仅 `view=fp3d` 时显示，2D 模式不显示）
+- **过场动画**：跟 2D 模式共享 P3-1 0.5s stair + 0.4s hole-down + 0.5s warning flash
 
 ### 9.3 过场 / 状态机
 
@@ -290,24 +294,24 @@ P4a 起：3D 关卡是一个 `walls3D: CellType[][][]` 的体素立方体：
 ```
 src/
 ├── engine/                       # 纯 TypeScript 写的 Three.js 引擎，不引用 React
-│   ├── Camera.ts                 #   相机与视角封装
-│   ├── Collision.ts              #   玩家与墙体的碰撞检测
-│   ├── Game.ts                   #   主循环、Tick 调度、scene refs、2D/3D 分发
-│   ├── InputManager.ts           #   键盘 / 鼠标输入 (2D move + 3D 6-neighbor + ladder 键位)
+│   ├── Camera.ts                 #   相机与视角封装（PerspectiveCamera，2D / fp3d 共享）
+│   ├── Collision.ts              #   玩家与墙体的碰撞检测（2D 多层 + fp3d 共享）
+│   ├── Game.ts                   #   主循环、Tick 调度、scene refs、view=2d/fp3d 派发
+│   ├── InputManager.ts           #   键盘 / 鼠标输入 (2D move + ladder 键位)
 │   ├── Loop.ts                   #   requestAnimationFrame 循环
 │   ├── Renderer.ts               #   Three.js 渲染器
-│   └── Scene.ts                  #   场景搭建 (2D walls/3D InstancedMesh/transition mesh)
+│   └── Scene.ts                  #   场景搭建 (多层 walls/floor/ceiling + transition mesh + view playerMarker gate)
 ├── entities/
-│   ├── Player.ts                 #   玩家位置 / 朝向 / 半径 (2D + 3D 双模式)
+│   ├── Player.ts                 #   玩家位置 / 朝向 / 半径 (2D / fp3d 共享)
 │   ├── Pickup.ts                 #   拾取物品的视觉与碰撞表示
 │   └── Enemy.ts                  #   巡逻敌人 (patrol / dwell / chase 状态机 + FOV)
 ├── game/
 │   ├── GameState.ts              #   状态机：menu / playing / paused / game-over / win
 │   └── Rules.ts                  #   纯函数规则 (含渐进 spawn `shouldProgressSpawn`)
 ├── maze/
-│   ├── types.ts                  #   CellType / PickupType / Seed / MazeData / SpawnSchedule
+│   ├── types.ts                  #   CellType / PickupType / Seed / MazeData / SpawnSchedule / ViewMode
 │   ├── JsonMazeProvider.ts       #   从 public/levels/*.json 加载
-│   ├── AlgorithmMazeProvider.ts  #   程序生成 (15 个 2D + 2 个 3D 算法 + 多层 + 3D 分发)
+│   ├── AlgorithmMazeProvider.ts  #   程序生成 (15 个 2D 算法 + 多层；P4 refactor-fp2d 后 3D 算法作废)
 │   ├── EditorMazeProvider.ts     #   编辑器导出的关卡 (经 localStorage)
 │   ├── builtInLevels.ts          #   静态 import public/levels JSON
 │   ├── generators/               #   纯函数生成器
@@ -326,8 +330,6 @@ src/
 │   │   ├── houston.ts            #   P2-21
 │   │   ├── growingBinaryTree.ts
 │   │   ├── blobbyRecursiveDivision.ts
-│   │   ├── recursiveBacktracker3D.ts  #   P4a (3D 递归回溯)
-│   │   ├── prim3D.ts             #   P4b-Prim
 │   │   ├── _isReachable.ts       #   DFS 验证 start ↔ exit 连通
 │   │   └── _expandThickWall.ts   #   物理墙厚扩展
 │   ├── enemySpawner.ts           #   程序生成时注入敌人 (含 schedule.max 上限)
@@ -358,7 +360,7 @@ src/
 │   │   ├── Button.tsx
 │   │   ├── Dialog.tsx
 │   │   ├── Dropdown.tsx
-│   │   ├── Minimap.tsx           #   2D top-down + 3D panorama (3 strip 堆叠)
+│   │   ├── Minimap.tsx           #   2D top-down minimap(2D / fp3d view 共享)
 │   │   ├── HealthBar.tsx
 │   │   ├── InventoryBar.tsx
 │   │   ├── Timer.tsx
@@ -405,7 +407,7 @@ src/
 - **引擎 / UI 隔离**：`src/engine/` 不允许 `import` 任何 React 模块；UI 通过 `useGameStore` 订阅运行时状态。
 - **生成器纯函数**：`src/maze/generators/*` 接受 `(size, prng)`，输出 `walls: CellType[][]`，不依赖 React / Zustand，便于单测。
 - **种子自描述**：`algo-v{N}-{algorithm}-{size}[-{levels}]-{hex}` 把算法、版本、尺寸、层数、16 位熵打包到一个字符串里，可以原样回放到 `AlgorithmMazeProvider.load()` 复现完全相同的迷宫。
-- **2D / 3D 互斥 dispatch**：3D 路径通过 `maze.walls3D !== undefined` 检测；2D 路径用 `walls + transitions`；同一个 `Game` 实例不会同时跑两套渲染。
+- **3D 模式 dispatch**：`?view=fp3d` URL query 切第一人称视角（`?view=2d` 或缺省走 2D top-down,back-compat 干净）。3D 模式渲染**同一份** 2D 多层数据（`walls: CellType[][]` + `levelCount` + `transitions`,P3-1 锁的 contract 完整保留），**没有**独立的 3D 数据结构 / 算法 / 移动模型。`new Game(bridge, view)` 把 view 锁到 Game 实例上,`buildScene(maze, darkMode, view)` 唯一 view-specific 差异是 `view === 'fp3d'` 时 `playerMarker.visible = false`(第一人称看不到脚下)。
 - **URL 是规范**：`/game` 的查询串是关卡身份的唯一来源；`gameUrl.ts` 在边界处显式校验 `isMazeSize` / `isVictoryType` / `normalizeSurviveSeconds`，校验失败回退到默认。
 - **校验在边界**：所有从 `localStorage` 或 URL 读出的数据都会经过 `isBestRecord` / `isValidSeed` 等显式校验函数，校验失败时丢弃而不是静默吞错。
 - **编辑器输出与手写关卡同构**：编辑器导出同样使用 `MazeData` schema，外层包 `ExportEnvelope { schemaVersion: 1, level: MazeData }`。
@@ -469,27 +471,30 @@ src/
 | P3-2 | 掉落警告（hole-down 0.5s 红 ring + 0.4s 自由落体） | ✅ |
 | P3-3 | HUD 0.5s 红色 vignette overlay | ✅ |
 
-### Phase 4 — 3D 体素迷宫 ✅
+### Phase 4 — 3D 体素迷宫（已作废，2026-08-11 P4 refactor-fp2d 推翻）
+
+P4 refactor-fp2d 后，Phase 4 的"3D 体素"路线**完全作废**。3D 模式改为第一人称视角渲染 2D 多层，3D 算法 / 3D 数据结构 / 3D 移动模型全部删除。`algo-v3-…` wire format 不再产生，老 v3 URL fail `bad-seed` 错误。
 
 | 阶段 | 标题 | 状态 |
 |---|---|---|
-| P4a | 3D 体素迷宫 MVP（Recursive Backtracker，5/7/9 立方体） | ✅ |
-| P4b-Prim | 3D Prim 第二算法 | ✅ |
-| P4b-CellSize | 3D 多 cell size（11/13/15 立方体） | ✅ |
-| P4b-Lerp | 3D Player 0.1s cell-to-cell tween | ✅ |
-| P4b-Minimap | 3D top-down minimap | ✅ |
-| P4b-HudLayer | HUD LevelIndicator 2D/3D dispatch | ✅ |
-| P4b-Panorama | 3D 全景 minimap（3 y-layer 堆叠） | ✅ |
-| P4b-Instanced | 3D 墙 InstancedMesh（1687 → 1 draw call） | ✅ |
+| P4a | 3D 体素迷宫 MVP（Recursive Backtracker，5/7/9 立方体） | ⚠️ 作废 |
+| P4b-Prim | 3D Prim 第二算法 | ⚠️ 作废 |
+| P4b-CellSize | 3D 多 cell size（11/13/15 立方体） | ⚠️ 作废 |
+| P4b-Lerp | 3D Player 0.1s cell-to-cell tween | ⚠️ 作废 |
+| P4b-Minimap | 3D top-down minimap | ⚠️ 作废 |
+| P4b-HudLayer | HUD LevelIndicator 2D/3D dispatch | ⚠️ 作废 |
+| P4b-Panorama | 3D 全景 minimap（3 y-layer 堆叠） | ⚠️ 作废 |
+| P4b-Instanced | 3D 墙 InstancedMesh（1687 → 1 draw call） | ⚠️ 作废 |
+| P4 refactor-fp2d | 3D 模式 = 第一人称视角渲染 2D 多层 | ✅ 2026-08-11 |
 
 ### 候选池（待用户决策）
 
-- 3D 敌人 AI（在 3D 体素上 BFS chase + 3D 球体渲染）
-- 3D 编辑器（多层 raycasting + 工具面板 + undo/redo + JSON 导入导出）
-- 3D 教程（教学 JSON + 高亮渲染）
-- HUD chip total "L5/15"（多层时显示「当前层 / 总层数」）
-- per-instance color（3D InstancedMesh damage flash）
+- 3D 敌人 AI（在 2D 多层 BFS chase + 3D 球体渲染，P4 refactor-fp2d 后跟 2D 敌人共享状态机）
+- 3D 编辑器（多层 raycasting + 工具面板 + undo/redo + JSON 导入导出，2D 编辑器扩展）
+- 3D 教程（教学 JSON + 高亮渲染，2D 教程同款）
+- HUD chip total "L5/15"（多层时显示「当前层 / 总层数」，2D / 3D 模式共享）
 - 音频管线 / 移动端触摸支持 / 额外 pickup 子类型
+- 重建 3D 视觉系统（如果用户后续需要真正的 3D 体素，独立于 2D 多层）
 
 详细路线图：`docs/roadmap.md`。
 每个增量有两阶段产物（设计 / 计划），位于 `docs/increments/p{N}-{slug}/`。
