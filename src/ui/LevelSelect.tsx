@@ -444,22 +444,21 @@ export function LevelSelect({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
 
-  // H3 fix (architect review): teaching levels are single-layer by
-  // design — JsonMazeProvider serves the JSON directly, and the
-  // teaching JSONs have no `transitions` array. If a stale
-  // `levelCount > 1` value from a prior visit to the seed / random
-  // rail leaked into a teaching start, the engine would render
-  // N copies of the same single-layer walls and the player would be
-  // trapped on L0 with no transition to climb to L1. Forcing the
-  // state back to `1` whenever the user lands on the teaching rail
-  // is the UI-side guard that keeps the seed / options payload
-  // (which the game side consumes) honest regardless of how the
-  // user got there.
-  useEffect(() => {
-    if (levelSource === 'teaching' && levelCount !== 1) {
-      setLevelCount(1);
-    }
-  }, [levelSource, levelCount]);
+  // P5-1: the historical H3 fix (forcing levelCount=1 for any
+  // teaching selection) is removed. Teaching JSONs now carry
+  // `levelCount` directly (e.g. `teaching-multilayer-01` has
+  // `levelCount: 2`), and the engine reads it from the JSON —
+  // not from any URL state. The levelCount picker is hidden on
+  // the teaching rail (showProceduralFields excludes teaching),
+  // so the user has no way to set a stale value from the teaching
+  // UI itself. A stale `levelCount` from a prior random/seed
+  // selection flows into the state but is never read by the
+  // teaching path (validateSelection for teaching returns no
+  // options), so it never reaches the engine. Letting the state
+  // reflect the user's last interaction (instead of snapping it
+  // back to 1) is the cleaner contract.
+  // (Kept the previous-fix comment as a one-line breadcrumb for
+  // anyone reading the git history of the removed useEffect.)
 
   const sublevelOptions: LevelDef[] = useMemo(() => {
     if (levelSource === 'teaching') return available;

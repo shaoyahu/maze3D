@@ -857,4 +857,10 @@ export const zh: Translations = {
   'tutorial.teaching08.step4': '拾取第二把钥匙 — 注意陷阱扣血',
   'tutorial.teaching08.step5': '走到第二道门旁 — 再开一道门',
   'tutorial.teaching08.step6': '恭喜 — 全部新特性通关！',
+  // P5-1: 多层教学关卡 — 教玩家跨层移动的核心 mechanic
+  'tutorial.teachingMultilayer01.step1': '欢迎来到层级试炼 — 这个迷宫有 2 层',
+  'tutorial.teachingMultilayer01.step2': '按 WASD 移动,找到地上的楼梯（↑ 符号）走上去',
+  'tutorial.teachingMultilayer01.step3': '你已经到第 2 层!HUD 上的 L 标记会跟着切换',
+  'tutorial.teachingMultilayer01.step4': '在第 2 层找到出口 (绿色方块)',
+  'tutorial.teachingMultilayer01.step5': '成功!你刚刚跨越了不同层级',
 };

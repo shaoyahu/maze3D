@@ -261,6 +261,17 @@ export interface MazeData {
   // engine in P3-1b will read this array; P3-1a only owns the
   // validator (forward-compatible shape, lenient on missing fields).
   transitions?: VerticalTransition[];
+  // P5-1: optional per-layer wall grids. When set, the engine
+  // reads THIS (not `walls`) for multi-layer rendering. Shape:
+  // `CellType[][][]` of length `levelCount`, where each entry is a
+  // 2D grid matching `size.width × size.depth` with 0/1 cells.
+  // Required when `levelCount > 1` for hand-crafted JSON levels
+  // (the validator rejects `levelCount > 1` without `walls2d`),
+  // optional for single-layer (falls back to `[walls]`).
+  // Procedural levels (`AlgorithmMazeProvider`) populate the
+  // per-layer cache side-channel instead — this field is for
+  // hand-authored JSON and editor-exported custom levels.
+  walls2d?: CellType[][][];
 }
 
 // P3-1: per-layer data shape. The runtime engine in P3-1b will

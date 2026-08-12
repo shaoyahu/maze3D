@@ -401,13 +401,17 @@ describe('LevelSelect levelCount dropdown is teaching-aware (H3 fix)', () => {
     }
   });
 
-  it('snaps levelCount back to 1 when the user switches from seed (levelCount=6) to teaching', () => {
-    // Belt-and-suspenders for the H3 fix: even if a regression
-    // removes the `disabled` prop on the dropdown, the guard
-    // useEffect inside LevelSelect must still snap `levelCount` to
-    // 1 whenever the user lands on the teaching rail. This is the
-    // contract that prevents a stale `levelCount=6` from leaking
-    // into the teaching start payload.
+  it('preserves the levelCount state value when switching from seed to teaching (no auto-snap, P5-1)', () => {
+    // P5-1: the historical H3 useEffect that snapped `levelCount`
+    // back to 1 on the teaching rail is removed. Teaching JSONs
+    // now carry `levelCount` directly (e.g. `teaching-multilayer-01`
+    // has `levelCount: 2`), and the engine reads it from the JSON —
+    // the UI state is internal-only. The dropdown stays `disabled`
+    // on the teaching rail (so a user can't change it from the
+    // teaching UI), but a stale value from a prior seed visit
+    // flows through the state without auto-reset. The teaching
+    // rail's validateSelection returns no options, so the stale
+    // value never reaches the engine.
     render(<ConfirmProvider><LevelSelect available={[]} onPick={() => {}} onBack={() => {}} /></ConfirmProvider>);
     goToSeedPath(ENCODE_HEX);
 
@@ -416,13 +420,13 @@ describe('LevelSelect levelCount dropdown is teaching-aware (H3 fix)', () => {
     fireEvent.change(levelCount, { target: { value: '6' } });
     expect(levelCount.value).toBe('6');
 
-    // Switch back to teaching (the default rail). The useEffect
-    // fires synchronously inside the same render, so the dropdown
-    // reflects 1 immediately.
+    // Switch back to teaching (the default rail). The dropdown
+    // becomes disabled but the value is preserved — no useEffect
+    // snap, since the engine reads `levelCount` from the JSON.
     const src = screen.getByTestId('level-source-select') as HTMLSelectElement;
     fireEvent.change(src, { target: { value: 'teaching' } });
 
-    expect((screen.getByTestId('level-count-select') as HTMLSelectElement).value).toBe('1');
+    expect((screen.getByTestId('level-count-select') as HTMLSelectElement).value).toBe('6');
     expect(screen.getByTestId('level-count-disabled-hint')).toBeInTheDocument();
   });
 });

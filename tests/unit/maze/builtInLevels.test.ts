@@ -16,6 +16,9 @@ const EXPECTED_BUILT_IN_IDS = [
   'teaching-06',
   'teaching-07',
   'teaching-08',
+  // P5-1: new multi-layer teaching level (2 layers + stair-up
+  // transition). Auto-discovered by the /public/levels glob.
+  'teaching-multilayer-01',
   // F-2026-07-01-FCR-C-2: restore the 4 legacy fixtures referenced by
   // pickup-types.spec / enemies.spec / play-through.spec /
   // persistence.spec. Their id-based `sublevel-select` selections are

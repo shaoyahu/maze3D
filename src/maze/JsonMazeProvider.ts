@@ -166,14 +166,171 @@ export function validateMaze(raw: unknown, id: string): MazeData {
     levelCount = 1;
   }
 
+  // P5-1: per-layer wall grids. Required when levelCount > 1
+  // (hand-crafted multi-layer JSON must carry one 2D grid per
+  // layer, otherwise the engine's per-layer cache miss collapses
+  // to [walls] and both layers render the same geometry). For
+  // levelCount === 1 the field is optional — a hand-authored
+  // single-layer level can keep the historical `walls` shape and
+  // the engine falls back to [walls]. Each layer's grid must
+  // match size.width × size.depth with 0/1 cells (same shape
+  // contract as AlgorithmMazeProvider's per-layer output).
+  let walls2d: CellType[][][] | undefined;
+  if (Array.isArray(m.walls2d)) {
+    if (m.walls2d.length !== levelCount) {
+      throw new LevelLoadError(
+        `Maze '${id}': walls2d layer count (${m.walls2d.length}) does not match levelCount (${levelCount})`,
+      );
+    }
+    walls2d = [];
+    for (let L = 0; L < levelCount; L++) {
+      const layerWalls = m.walls2d[L];
+      if (!Array.isArray(layerWalls) || layerWalls.length !== depth) {
+        throw new LevelLoadError(
+          `Maze '${id}': walls2d[${L}] row count does not match depth (${depth})`,
+        );
+      }
+      const layer: CellType[][] = [];
+      for (let z = 0; z < depth; z++) {
+        const row = layerWalls[z];
+        if (!Array.isArray(row) || row.length !== width) {
+          throw new LevelLoadError(
+            `Maze '${id}': walls2d[${L}][${z}] length does not match width (${width})`,
+          );
+        }
+        const cells: CellType[] = [];
+        for (let x = 0; x < width; x++) {
+          const v = row[x];
+          if (v !== 0 && v !== 1) {
+            throw new LevelLoadError(
+              `Maze '${id}': walls2d[${L}][${z}][${x}] must be 0 or 1 (got ${clampErrorValue(v)})`,
+            );
+          }
+          cells.push(v as CellType);
+        }
+        layer.push(cells);
+      }
+      walls2d.push(layer);
+    }
+  } else if (levelCount > 1) {
+    // Multi-layer level without walls2d — reject strictly so a
+    // hand-crafted level with levelCount: 2 + walls: [...] doesn't
+    // silently degrade to "both layers look the same". The lenient
+    // single-layer path (walls without walls2d) still works.
+    throw new LevelLoadError(
+      `Maze '${id}': levelCount ${levelCount} requires walls2d field (array of ${levelCount} wall grids)`,
+    );
+  }
+
   // P3-1: default `transitions` to []. The validator accepts the
   // array as-is when present; non-array values fall back to []
   // (same lenient policy as `traps` / `doors` in P2-18). P3-1b
   // will read this array to render stair / hole / ladder meshes
   // and gate the player's `isOnTransition` flow.
-  const transitions: import('./types').VerticalTransition[] = Array.isArray(m.transitions)
-    ? (m.transitions as import('./types').VerticalTransition[])
-    : [];
+  // P5-1: full structural validation for each transition entry —
+  // `level` / `toLevel` must be in [0, levelCount), source and
+  // dest cells must be in-bounds + not on the per-layer wall, and
+  // ids must be unique. The per-layer wall lookup uses walls2d when
+  // set (multi-layer) and falls back to `walls` for the single-
+  // layer back-compat path. Without these checks a hand-crafted
+  // level with levelCount: 2 + transitions: [{level: 0, toLevel: 5}]
+  // would silently OOB in the engine's per-layer cache index.
+  const transitions: import('./types').VerticalTransition[] = [];
+  if (Array.isArray(m.transitions)) {
+    const seenIds = new Set<string>();
+    for (let i = 0; i < m.transitions.length; i++) {
+      const raw = m.transitions[i];
+      if (typeof raw !== 'object' || raw === null) {
+        throw new LevelLoadError(`Maze '${id}': invalid transition at index ${i}`);
+      }
+      const t = raw as Record<string, unknown>;
+      const tIdRaw = t.id;
+      if (typeof tIdRaw !== 'string' || tIdRaw.length === 0) {
+        throw new LevelLoadError(`Maze '${id}': transitions[${i}] missing string 'id'`);
+      }
+      const tId = tIdRaw;
+      if (seenIds.has(tId)) {
+        throw new LevelLoadError(
+          `Maze '${id}': duplicate transition id '${clampErrorValue(tId)}'`,
+        );
+      }
+      seenIds.add(tId);
+      const tLevel = requireNumber(t, 'level', `${id}.transitions[${i}]`);
+      if (!Number.isInteger(tLevel) || tLevel < 0 || tLevel >= levelCount) {
+        throw new LevelLoadError(
+          `Maze '${id}': transition '${clampErrorValue(tId)}' level (${tLevel}) out of bounds; expected 0..${levelCount - 1}`,
+        );
+      }
+      const tX = requireNumber(t, 'x', `${id}.transitions[${i}]`);
+      const tZ = requireNumber(t, 'z', `${id}.transitions[${i}]`);
+      if (!Number.isInteger(tX) || tX < 0 || tX >= width) {
+        throw new LevelLoadError(
+          `Maze '${id}': transition '${clampErrorValue(tId)}' x (${tX}) out of bounds; expected 0..${width - 1}`,
+        );
+      }
+      if (!Number.isInteger(tZ) || tZ < 0 || tZ >= depth) {
+        throw new LevelLoadError(
+          `Maze '${id}': transition '${clampErrorValue(tId)}' z (${tZ}) out of bounds; expected 0..${depth - 1}`,
+        );
+      }
+      const tKind = t.kind;
+      if (
+        tKind !== 'stair-up' && tKind !== 'stair-down' &&
+        tKind !== 'hole-down' && tKind !== 'hole-up' &&
+        tKind !== 'ladder'
+      ) {
+        throw new LevelLoadError(
+          `Maze '${id}': transition '${clampErrorValue(tId)}' has invalid kind '${clampErrorValue(tKind)}'`,
+        );
+      }
+      const tToLevel = requireNumber(t, 'toLevel', `${id}.transitions[${i}]`);
+      if (!Number.isInteger(tToLevel) || tToLevel < 0 || tToLevel >= levelCount) {
+        throw new LevelLoadError(
+          `Maze '${id}': transition '${clampErrorValue(tId)}' toLevel (${tToLevel}) out of bounds; expected 0..${levelCount - 1}`,
+        );
+      }
+      // Destination cell: explicit toX/toZ OR default to source (x, z)
+      // on the destination layer. Always validate in-bounds + not on
+      // the destination layer's wall so a hand-authored stair-down on
+      // a wall cell doesn't strand the player mid-air.
+      const tToX = typeof t.toX === 'number' ? t.toX : tX;
+      const tToZ = typeof t.toZ === 'number' ? t.toZ : tZ;
+      if (!Number.isInteger(tToX) || tToX < 0 || tToX >= width) {
+        throw new LevelLoadError(
+          `Maze '${id}': transition '${clampErrorValue(tId)}' toX (${tToX}) out of bounds; expected 0..${width - 1}`,
+        );
+      }
+      if (!Number.isInteger(tToZ) || tToZ < 0 || tToZ >= depth) {
+        throw new LevelLoadError(
+          `Maze '${id}': transition '${clampErrorValue(tId)}' toZ (${tToZ}) out of bounds; expected 0..${depth - 1}`,
+        );
+      }
+      // Per-layer wall check. Use walls2d when set (multi-layer),
+      // otherwise fall back to `walls` for the single-layer path.
+      const sourceWalls = walls2d ? walls2d[tLevel] : walls;
+      const destWalls = walls2d ? walls2d[tToLevel] : walls;
+      if (sourceWalls[tZ][tX] === 1) {
+        throw new LevelLoadError(
+          `Maze '${id}': transition '${clampErrorValue(tId)}' source (L${tLevel}, x=${tX}, z=${tZ}) is on a wall`,
+        );
+      }
+      if (destWalls[tToZ][tToX] === 1) {
+        throw new LevelLoadError(
+          `Maze '${id}': transition '${clampErrorValue(tId)}' dest (L${tToLevel}, x=${tToX}, z=${tToZ}) is on a wall`,
+        );
+      }
+      transitions.push({
+        id: tId,
+        level: tLevel,
+        x: tX,
+        z: tZ,
+        kind: tKind,
+        toLevel: tToLevel,
+        toX: tToX,
+        toZ: tToZ,
+      });
+    }
+  }
 
   // P3-1: helper — extract `level` from a raw position record
   // (start / exit) or a position-bearing entity (pickup / trap /
@@ -184,14 +341,36 @@ export function validateMaze(raw: unknown, id: string): MazeData {
   // and the engine treats undefined as 0 in P3-1b.
   const startLevel = parseEntityLevel(start);
   const exitLevel = parseEntityLevel(exit);
+  // P5-1: per-layer bounds check. start.level / exit.level must
+  // satisfy 0 <= level < levelCount, otherwise the engine would
+  // index past the per-layer cache (array OOB) and the player would
+  // spawn on a non-existent layer. For levelCount === 1 the only
+  // legal value is 0 (and the parser already defaults to 0 when the
+  // field is missing), so the check passes silently.
+  if (startLevel < 0 || startLevel >= levelCount) {
+    throw new LevelLoadError(
+      `Maze '${id}': start.level (${startLevel}) out of bounds; expected 0..${levelCount - 1}`,
+    );
+  }
+  if (exitLevel < 0 || exitLevel >= levelCount) {
+    throw new LevelLoadError(
+      `Maze '${id}': exit.level (${exitLevel}) out of bounds; expected 0..${levelCount - 1}`,
+    );
+  }
 
   requireInBounds(start, 'x', 'z', `${id}.start`, width, depth);
   requireInBounds(exit, 'x', 'z', `${id}.exit`, width, depth);
-  if (walls[start.z as number][start.x as number] === 1) {
-    throw new LevelLoadError(`Maze '${id}': start is on a wall`);
+  // P5-1: per-layer wall check. Use walls2d[level] when multi-layer
+  // is set, fall back to `walls` for the single-layer back-compat
+  // path. Without this, a 2-layer level with start on L1 would
+  // check the wrong grid and let a wall-spawn through.
+  const startLayerWalls = walls2d ? walls2d[startLevel] : walls;
+  const exitLayerWalls = walls2d ? walls2d[exitLevel] : walls;
+  if (startLayerWalls[start.z as number][start.x as number] === 1) {
+    throw new LevelLoadError(`Maze '${id}': start is on a wall (L${startLevel})`);
   }
-  if (walls[exit.z as number][exit.x as number] === 1) {
-    throw new LevelLoadError(`Maze '${id}': exit is on a wall`);
+  if (exitLayerWalls[exit.z as number][exit.x as number] === 1) {
+    throw new LevelLoadError(`Maze '${id}': exit is on a wall (L${exitLevel})`);
   }
   // F6: the player would spawn on the exit cell, so `crossesExit`
   // fires on tick 0 and `reachExit` records a 0-second victory.
@@ -474,6 +653,7 @@ export function validateMaze(raw: unknown, id: string): MazeData {
     start: { x: start.x as number, z: start.z as number, level: startLevel },
     exit: { x: exit.x as number, z: exit.z as number, level: exitLevel },
     walls,
+    ...(walls2d !== undefined ? { walls2d } : {}),
     pickups: normalizedPickups,
     rules,
     enemies,

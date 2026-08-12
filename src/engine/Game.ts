@@ -26,6 +26,7 @@ import {
 // today can play tomorrow.
 import { getPerLayerWallsByLevelId } from '../maze/AlgorithmMazeProvider';
 import type {
+  CellType,
   EnemyAggression,
   InventorySlot,
   MazeData,
@@ -91,15 +92,27 @@ const _grid: WallGrid = {
     const maze = __SCRATCH_currentMaze;
     if (!maze) return 0;
     const id = maze.id;
-    const perLayer = getPerLayerWallsByLevelId(id);
-    // P3-1: `perLayer` is `CellType[][][]` (one 2D grid per layer).
-    // Index by `level` first; if the cache is shorter than `level`
-    // (e.g. a hand-authored level that under-declared its layers),
-    // treat the cell as out-of-bounds / wall — the conservative
-    // choice for collision.
-    const wallGrid = perLayer && perLayer[level] !== undefined
-      ? perLayer[level]
-      : maze.walls;
+    // P5-1: hand-authored multi-layer levels (teaching JSON +
+    // editor exports) carry `maze.walls2d` directly. Read it
+    // BEFORE the procedural provider's cache so the engine's
+    // collision + the engine's render (Scene.ts resolvePerLayerWalls)
+    // see the same canonical per-layer grid. The cache side-
+    // channel still wins for procedural levels (walls2d is
+    // undefined for those).
+    let wallGrid: CellType[][] | undefined;
+    if (maze.walls2d && maze.walls2d[level] !== undefined) {
+      wallGrid = maze.walls2d[level];
+    } else {
+      const perLayer = getPerLayerWallsByLevelId(id);
+      // P3-1: `perLayer` is `CellType[][][]` (one 2D grid per layer).
+      // Index by `level` first; if the cache is shorter than `level`
+      // (e.g. a hand-authored level that under-declared its layers),
+      // treat the cell as out-of-bounds / wall — the conservative
+      // choice for collision.
+      wallGrid = perLayer && perLayer[level] !== undefined
+        ? perLayer[level]
+        : maze.walls;
+    }
     if (wallGrid === undefined) return 0;
     return wallGrid[z]?.[x] === 1 || __SCRATCH_closedDoorCells.has(`${x},${z}`)
       ? 1 : 0;

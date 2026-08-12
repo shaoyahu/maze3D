@@ -817,4 +817,131 @@ describe('JsonMazeProvider', () => {
       await expect(provider.load('level-test')).resolves.toBeDefined();
     });
   });
+
+  // P5-1: multi-layer hand-crafted JSON contract. The new teaching
+  // level teaching-multilayer-01 is the canonical example: levelCount=2,
+  // per-layer walls2d, start on L0, exit on L1, stair-up transition.
+  // These tests pin the validator contract so a future regression
+  // (e.g. a relaxed walls2d check that lets hand-crafted multi-layer
+  // levels silently degrade to "both layers look the same") fails
+  // loudly.
+  describe('multi-layer hand-crafted JSON (P5-1)', () => {
+    // 5x5 grid, all walkable, matches teaching-multilayer-01's
+    // size contract. Every test in this describe reuses this grid
+    // so the test stays focused on the new validation paths
+    // (walls2d / start.level / transition) rather than wall art.
+    const openGrid5 = [
+      [0, 0, 0, 0, 0],
+      [0, 0, 0, 0, 0],
+      [0, 0, 0, 0, 0],
+      [0, 0, 0, 0, 0],
+      [0, 0, 0, 0, 0],
+    ];
+
+    it('accepts levelCount=2 + walls2d + 1 stair-up transition', async () => {
+      // The teaching-multilayer-01 fixture shape, sans tutorialSteps.
+      const level = makeValidLevel({
+        size: { width: 5, depth: 5 },
+        walls: openGrid5,
+        levelCount: 2,
+        start: { x: 0, z: 0 },
+        exit: { x: 4, z: 4, level: 1 },
+        walls2d: [openGrid5, openGrid5],
+        transitions: [
+          { id: 't-stair-1', level: 0, x: 2, z: 2, kind: 'stair-up', toLevel: 1, toX: 2, toZ: 2 },
+        ],
+      });
+      const provider = new JsonMazeProvider({ 'level-test': level });
+      const data = await provider.load('level-test');
+      expect(data.levelCount).toBe(2);
+      expect(data.walls2d).toHaveLength(2);
+      expect(data.start.level).toBe(0);
+      expect(data.exit.level).toBe(1);
+      expect(data.transitions).toHaveLength(1);
+      expect(data.transitions![0]).toMatchObject({ kind: 'stair-up', level: 0, toLevel: 1 });
+    });
+
+    it('rejects levelCount > 1 without walls2d (strict)', async () => {
+      // A hand-authored level with levelCount: 2 but only the
+      // historical `walls` field must NOT silently degrade to
+      // "both layers look the same" — the engine's per-layer
+      // cache miss would collapse to [walls] and the player
+      // would be trapped on L0 with no climb-out path. The
+      // strict reject forces the author to spell out the
+      // per-layer grid.
+      const level = makeValidLevel({ levelCount: 2 });
+      const provider = new JsonMazeProvider({ 'level-test': level });
+      await expect(provider.load('level-test')).rejects.toThrow(/requires walls2d/);
+    });
+
+    it('rejects walls2d length mismatching levelCount', async () => {
+      const level = makeValidLevel({
+        levelCount: 2,
+        walls2d: [openGrid5], // 1 layer, but levelCount says 2
+      });
+      const provider = new JsonMazeProvider({ 'level-test': level });
+      await expect(provider.load('level-test')).rejects.toThrow(/walls2d layer count/);
+    });
+
+    it('rejects out-of-bounds start.level / exit.level', async () => {
+      const levelBadStart = makeValidLevel({
+        size: { width: 5, depth: 5 },
+        walls: openGrid5,
+        levelCount: 2,
+        start: { x: 0, z: 0, level: 5 },
+        walls2d: [openGrid5, openGrid5],
+      });
+      const provider1 = new JsonMazeProvider({ 'level-test': levelBadStart });
+      await expect(provider1.load('level-test')).rejects.toThrow(/start\.level/);
+
+      const levelBadExit = makeValidLevel({
+        size: { width: 5, depth: 5 },
+        walls: openGrid5,
+        levelCount: 2,
+        exit: { x: 4, z: 4, level: 3 },
+        walls2d: [openGrid5, openGrid5],
+      });
+      const provider2 = new JsonMazeProvider({ 'level-test': levelBadExit });
+      await expect(provider2.load('level-test')).rejects.toThrow(/exit\.level/);
+    });
+
+    it('rejects transitions with out-of-bounds level / toLevel', async () => {
+      const level = makeValidLevel({
+        size: { width: 5, depth: 5 },
+        walls: openGrid5,
+        levelCount: 2,
+        walls2d: [openGrid5, openGrid5],
+        transitions: [
+          // level 5 is OOB for levelCount 2
+          { id: 't-bad', level: 5, x: 0, z: 0, kind: 'stair-up', toLevel: 1 },
+        ],
+      });
+      const provider = new JsonMazeProvider({ 'level-test': level });
+      await expect(provider.load('level-test')).rejects.toThrow(/level \(5\) out of bounds/);
+    });
+
+    it('rejects transitions whose source or dest cell is on a wall', async () => {
+      // L0 has a wall at (1, 1); transition lands there.
+      const l0 = [
+        [0, 0, 0, 0, 0],
+        [0, 1, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+      ];
+      const l1 = openGrid5;
+      const level = makeValidLevel({
+        size: { width: 5, depth: 5 },
+        walls: openGrid5,
+        levelCount: 2,
+        walls2d: [l0, l1],
+        transitions: [
+          { id: 't-on-wall', level: 0, x: 1, z: 1, kind: 'stair-up', toLevel: 1 },
+        ],
+      });
+      const provider = new JsonMazeProvider({ 'level-test': level });
+      await expect(provider.load('level-test')).rejects.toThrow(/source .* is on a wall/);
+    });
+  });
 });
+

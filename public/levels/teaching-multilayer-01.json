@@ -1,0 +1,60 @@
+{
+  "id": "teaching-multilayer-01",
+  "name": "层级试炼",
+  "i18n": { "en": "Layered Trial" },
+  "size": { "width": 5, "depth": 5 },
+  "cellSize": 2,
+  "levelCount": 2,
+  "start": { "x": 0, "z": 0 },
+  "exit": { "x": 4, "z": 4, "level": 1 },
+  "walls": [
+    [0, 1, 0, 1, 0],
+    [0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0],
+    [0, 1, 0, 0, 0],
+    [0, 0, 0, 1, 0]
+  ],
+  "walls2d": [
+    [
+      [0, 1, 0, 1, 0],
+      [0, 0, 0, 0, 0],
+      [0, 0, 0, 0, 0],
+      [0, 1, 0, 0, 0],
+      [0, 0, 0, 1, 0]
+    ],
+    [
+      [0, 0, 0, 0, 0],
+      [0, 1, 0, 1, 0],
+      [0, 0, 0, 0, 0],
+      [0, 0, 0, 1, 0],
+      [0, 0, 0, 0, 0]
+    ]
+  ],
+  "transitions": [
+    {
+      "id": "t-stair-l0-to-l1",
+      "level": 0,
+      "x": 2,
+      "z": 2,
+      "kind": "stair-up",
+      "toLevel": 1,
+      "toX": 2,
+      "toZ": 2
+    }
+  ],
+  "pickups": [],
+  "rules": {
+    "initialTime": 60,
+    "maxHealth": 3,
+    "victory": "reach-exit",
+    "timeOnPickup": 10
+  },
+  "enemies": [],
+  "tutorialSteps": [
+    { "id": "intro", "messageKey": "tutorial.teachingMultilayer01.step1", "trigger": { "type": "timeout", "timeoutSec": 2 } },
+    { "id": "find-stairs", "messageKey": "tutorial.teachingMultilayer01.step2", "trigger": { "type": "key-pressed", "keys": ["KeyW", "KeyA", "KeyS", "KeyD"], "timeoutSec": 15 } },
+    { "id": "layer-2", "messageKey": "tutorial.teachingMultilayer01.step3", "trigger": { "type": "timeout", "timeoutSec": 25 } },
+    { "id": "find-exit", "messageKey": "tutorial.teachingMultilayer01.step4", "trigger": { "type": "timeout", "timeoutSec": 30 } },
+    { "id": "exit", "messageKey": "tutorial.teachingMultilayer01.step5", "trigger": { "type": "reached-exit" } }
+  ]
+}

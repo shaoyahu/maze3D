@@ -859,4 +859,10 @@ export const en: Translations = {
   'tutorial.teaching08.step4': 'Grab the second key — watch for damage traps',
   'tutorial.teaching08.step5': 'Reach the second door — unlock it the same way',
   'tutorial.teaching08.step6': 'Cleared with every new mechanic!',
+  // P5-1: multi-layer teaching — walk the player through crossing layers
+  'tutorial.teachingMultilayer01.step1': 'Welcome to the Layered Trial — this maze has 2 floors',
+  'tutorial.teachingMultilayer01.step2': 'Use WASD to move; find the stairs (↑) and step on them to climb up',
+  'tutorial.teachingMultilayer01.step3': "You're on layer 2 now! The HUD L badge switches with you",
+  'tutorial.teachingMultilayer01.step4': 'Find the green exit square on layer 2',
+  'tutorial.teachingMultilayer01.step5': 'Success — you just crossed between layers!',
 };
