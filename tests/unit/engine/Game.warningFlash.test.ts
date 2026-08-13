@@ -241,7 +241,14 @@ describe('P3-2 (code review) — disposeScene clears warningRings', () => {
     };
     const walls = [makeMesh('w1'), makeMesh('w2')];
     const pickups = [makeMesh('p1')];
-    const enemies = [makeMesh('e1')];
+    // P1-4 Phase 1: enemy refs are THREE.Group containers now, not
+    // raw Meshes. disposeScene walks the scene graph (which still
+    // finds the inner Mesh) and releases the per-build array.
+    // The fake Group below is enough to verify the array plumbing
+    // without standing up the full humanoid visual.
+    const fakeEnemy = new THREE.Group();
+    fakeEnemy.add(makeMesh('e1'));
+    const enemies = [fakeEnemy];
     const traps = [makeMesh('t1')];
     const doors = new Map<string, THREE.Mesh>([['d1', makeMesh('d1')]]);
     const transitions = [makeMesh('tr1')];

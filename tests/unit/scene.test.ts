@@ -45,17 +45,24 @@ describe('buildScene', () => {
     };
     const { enemies, scene } = buildScene(mazeWithEnemies);
     expect(enemies).toHaveLength(2);
-    for (const m of enemies) {
-      expect(m.geometry).toBeInstanceOf(THREE.CapsuleGeometry);
-      // Bottom of capsule sits on the floor (y=0), so center y = height/2 = 0.8.
-      expect(m.position.y).toBeCloseTo(0.8);
+    for (const group of enemies) {
+      // P1-4 Phase 1: enemy is now a Group (body + head + 2 arms),
+      // not a single Mesh. The Group's local origin is at floor
+      // level; the body capsule sits at y = bodyHeight/2 inside
+      // the Group.
+      expect(group).toBeInstanceOf(THREE.Group);
+      expect(group.children.length).toBeGreaterThanOrEqual(4);
+      // The body mesh is the first child (capsule, MeshStandardMaterial).
+      const body = group.children[0] as THREE.Mesh;
+      expect(body.geometry).toBeInstanceOf(THREE.CapsuleGeometry);
+      expect(body.position.y).toBeCloseTo(0.7); // bodyHeight/2 = 1.4/2
     }
     // First enemy at grid (0,2) -> cell center (1, _, 5); maze is 3x3 with cs=2.
     const e1 = enemies.find(
-      (m) => Math.abs(m.position.x - 1) < 1e-6 && Math.abs(m.position.z - 5) < 1e-6,
+      (g) => Math.abs(g.position.x - 1) < 1e-6 && Math.abs(g.position.z - 5) < 1e-6,
     );
-    expect(e1, 'enemy mesh at grid (0,2) cell center (1, _, 5)').toBeTruthy();
-    // And the mesh is actually added to the scene graph.
+    expect(e1, 'enemy group at grid (0,2) cell center (1, _, 5)').toBeTruthy();
+    // And the group is actually added to the scene graph.
     expect(scene.children).toContain(e1);
   });
 
