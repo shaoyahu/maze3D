@@ -112,62 +112,12 @@ const SEED_RE_V2 = /^algo-v2-([a-z-]+)-(\d+)-(\d+)-([0-9a-f]{16})$/;
 // Q7 (1 = back-compat default, 6 = upper cap).
 const VALID_LEVEL_COUNTS: readonly LevelCount[] = [1, 2, 3, 4, 5, 6];
 
-// P4: v3 seed id format. Introduces a 3D voxel cube — the algorithm
-// operates on a `[z][y][x]` CellType[][][] instead of the
-// historical `[z][x]` CellType[][]. Encoding:
-//
-//   algo-v3-{algorithm}-{size}-{mazeSeed}
-//
-// `size` is the **3D** visualSize (odd, 5/7/9 for the P4a MVP
-// sizes from `recursiveBacktracker3D.ts`). The v1/v2 sizes
-// (15/30/50) don't apply — a 3D cube of 50³ = 125000 cells would
-// be 5 MB per maze, well past the 5/7/9 sweet spot the
-// recursive-backtracker-3D family is designed for.
-//
-// The v3 prefix is new; the v1 regex and the v2 regex both fail
-// for v3 ids because the algorithm slot in v1/v2 must be one of
-// the 15 P2-21 algorithms (P2-21 cleanup, `VALID_ALGORITHMS`),
-// and `3d-recursive-backtracker` isn't on that list. We still
-// add a v3-specific whitelist so a future v3 algorithm (P4b's
-// 3D Prim / 3D CA) can register here without re-touching v1/v2.
-const SEED_RE_V3 = /^algo-v3-([a-z0-9-]+)-(\d+)-([0-9a-f]{16})$/;
-
-// F-P4-VALID-3D-SIZES: the 3D visualSize whitelist. Lives next
-// to the v3 regex so the codec + the generator share one source
-// of truth. `recursiveBacktracker3D.ts` re-exports the same set
-// via `VALID_3D_SIZES`; the duplication is intentional — the
-// codec is a runtime check, the generator is a build-time
-// typecheck, and importing across the maze/utils boundary
-// would create a cycle the registry pattern explicitly avoids.
-//
-// P4b-CellSize: widens the set from {5, 7, 9} to
-// {5, 7, 9, 11, 13, 15}. The 11/13/15 entries are the
-// "medium" 3D cube sizes that P4a spec §15 reserved as a
-// future candidate. Both sources of truth
-// (`recursiveBacktracker3D.ts` + this `seed.ts` list) MUST
-// stay in lockstep — `decodeSeed` rejects any size not on
-// this list, so widening only the generator whitelist
-// would still fail every v3 id with a 3D size > 9.
-const VALID_3D_SIZES: readonly number[] = [5, 7, 9, 11, 13, 15];
-
-// P4: whitelist for v3 algorithms. Single algorithm in P4a
-// (recursive backtracker on a 3D cube). P4b will append 3D
-// Prim / 3D CA here as the family grows. The `3d-` prefix is
-// required on every entry — see `recursiveBacktracker3D.ts`
-// for the rationale. TypeScript can't enforce the prefix
-// without a string-literal-union here, so a runtime test
-// (tests/unit/utils/seed.test.ts) asserts it.
-//
-// P4b-Prim: add '3d-prim' as the second 3D algorithm. The
-// entry is appended (not interleaved) so the whitelist order
-// is "P4a first, P4b-Prim second, future P4b-... last" — this
-// doesn't affect any code path (whitelist membership is
-// `Array.prototype.includes`-based, order-independent) but
-// makes git history show the algorithm growth clearly.
-const VALID_3D_ALGORITHMS: readonly string[] = [
-  '3d-recursive-backtracker',
-  '3d-prim',
-];
+// (P4 3D v3 seed codec removed in P0-followup; 3D voxel maze support
+// retired in P4-refactor-fp2d. v1 (single-layer) and v2 (multi-layer)
+// remain the two supported procedural seed formats. An `algo-v3-…` URL
+// now lands in the `decodeSeed` v1/v2 fallback path and throws
+// `InvalidSeedError: malformed id` — P4-refactor-fp2d's console.warn
+// + redirect policy handles the legacy URL in the UI layer.)
 
 export function encodeSeed(seed: Seed): string {
   // P2-21 back-compat: this function is the v1 codec. It is the
@@ -190,69 +140,7 @@ export function encodeSeedV2(seed: Seed, levelCount: LevelCount): string {
   return `algo-v2-${seed.algorithm}-${seed.size}-${levelCount}-${seed.mazeSeed}`;
 }
 
-// P4: v3 codec for 3D voxel mazes. The signature mirrors
-// `encodeSeedV2` but the shape lacks the `levels` slot — a 3D
-// cube is by definition a single voxel mass, never a stack of
-// layers. `algorithm` is the 3D literal (e.g.
-// `'3d-recursive-backtracker'`); `size` is the odd 3D visualSize
-// (5/7/9). The caller is `LevelSelect` and the test fixture
-// builder, not the provider — the provider consumes the
-// decoded Seed and routes to the 3D generator by algorithm
-// literal.
-//
-// Note: a v3 Seed has `size: number`, not `MazeSize`, because
-// the 3D sizes (5/7/9/11/13/15) are not in the historical 2D
-// whitelist (15/30/50). The shared `Seed` interface in
-// `types.ts` keeps the 2D `MazeSize` constraint for LevelSelect
-// and the 2D generator dispatch, so v3 gets its own narrow
-// shape — `algorithm` + a free `size: number` + `mazeSeed` —
-// and callers explicitly pass the odd 3D visualSize. The
-// interface is structural (just the three fields), so any Seed
-// is accepted via the structural-subtype rule; the only
-// difference is that v3 also accepts the 3D sizes that don't
-// satisfy `MazeSize`.
-export interface SeedV3 {
-  algorithm: Algorithm;
-  size: number;
-  mazeSeed: string;
-}
-export function encodeSeedV3(seed: SeedV3): string {
-  return `algo-v3-${seed.algorithm}-${seed.size}-${seed.mazeSeed}`;
-}
-
 export function decodeSeed(id: string): Seed {
-  // P4: try the v3 regex first. v3 ids are the most specific
-  // (3-segment pattern: `algo-v3-{algorithm}-{size}-{hex}`), so
-  // failing fast lets the v1/v2 branches handle the historical
-  // formats below. The `algorithm` field is one of the
-  // 3D-prefixed literals (`3d-recursive-backtracker` for P4a);
-  // the size is the 3D visualSize (5/7/9).
-  const m3 = SEED_RE_V3.exec(id);
-  if (m3) {
-    const [, algorithm, sizeStr, mazeSeed] = m3;
-    if (!VALID_3D_ALGORITHMS.includes(algorithm)) {
-      throw new InvalidSeedError(`decodeSeed: unknown v3 algorithm ${JSON.stringify(algorithm)}`);
-    }
-    const size = Number(sizeStr);
-    if (!VALID_3D_SIZES.includes(size)) {
-      throw new InvalidSeedError(`decodeSeed: unsupported v3 size ${size} (expected 5, 7, or 9)`);
-    }
-    return {
-      algorithm: algorithm as Algorithm,
-      // F-P4b-CellSize: the 3D visualSize is a `number` (5/7/9/11/13/15),
-      // not a 2D `MazeSize` (15/30/50). The shared `Seed.size: MazeSize`
-      // type doesn't capture the v3 range, so we cast through `number`
-      // here. Callers that need the 2D-only validation check
-      // `isMazeSize(seed.size)` before using the value as a 2D size.
-      size: size as number as never,
-      mazeSeed,
-      // v3 always decodes to a single voxel cube; `levelCount`
-      // is omitted on purpose so callers fall back to 1 via
-      // `seed.levelCount ?? 1`. The runtime guard that picks
-      // the 3D rendering path is `MazeData.walls3D` being
-      // present, not `levelCount`.
-    };
-  }
   // P3-1: try the v2 regex first because the v1 regex would
   // greedily match the leading 4 segments of a v2 id (it has no
   // anchor for "exactly 4 dashes-after-algo"). Concretely, a v2 id
