@@ -113,6 +113,13 @@ export const en: Translations = {
   'settings.darkMode.label': 'Dark Mode',
   'settings.darkMode.desc': 'Toggle dark/light theme; applied to every surface and the HUD',
   'settings.darkMode.aria': 'Dark Mode',
+  // P1-4 Phase 4: chase audio cues.
+  'settings.chaseHeartbeat.label': 'Chase Heartbeat',
+  'settings.chaseHeartbeat.desc': 'Low-frequency heartbeat that speeds up when a chasing enemy is closer. Off in shared spaces.',
+  'settings.chaseHeartbeat.aria': 'Chase Heartbeat',
+  'settings.enemyFootsteps.label': 'Enemy Footsteps',
+  'settings.enemyFootsteps.desc': 'Audible footstep pings when a chasing enemy is within 8 meters. Off in shared spaces.',
+  'settings.enemyFootsteps.aria': 'Enemy Footsteps',
 
   'settings.fov.label': 'Field of View',
   'settings.fov.desc': 'Camera vertical FOV — wider sees more, but distant objects look smaller',

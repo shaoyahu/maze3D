@@ -124,6 +124,13 @@ export const zh: Translations = {
   'settings.darkMode.label': '深色模式',
   'settings.darkMode.desc': '切换深色 / 浅色主题，所有界面与 HUD 同步生效',
   'settings.darkMode.aria': '深色模式',
+  // P1-4 Phase 4: 追击音效.
+  'settings.chaseHeartbeat.label': '追击心跳',
+  'settings.chaseHeartbeat.desc': '敌人追击时的低频心跳, 越近越快. 公共场合可关闭.',
+  'settings.chaseHeartbeat.aria': '追击心跳',
+  'settings.enemyFootsteps.label': '敌人脚步',
+  'settings.enemyFootsteps.desc': '追击敌人距离 < 8 米时的脚步提示音. 公共场合可关闭.',
+  'settings.enemyFootsteps.aria': '敌人脚步',
 
   'settings.fov.label': '视野角度',
   'settings.fov.desc': '摄像机垂直视野，越大看越多但远处更小',

@@ -157,6 +157,18 @@ export interface GameBridge {
   // enemy. The store's 0.5s invulnerable window collapses the per-frame
   // burst into one logical hit. Wired to gameStore.damage in GameCanvas.
   onEnemyContact: (damage: number) => void;
+  // P1-4 Phase 4: chase audio sync. Fired by Game.update() when
+  // an enemy's state flips (patrol/dwell → chase) and every
+  // frame during chase with the current distance to the
+  // closest chasing enemy. GameCanvas wires this to the Audio
+  // module (heartbeat + footsteps). The engine only emits the
+  // callback; the Audio module owns WebAudio lifecycle.
+  // Optional — levels without audio (e.g. unit tests) ignore it.
+  onEnemyChaseState?: (event:
+    | { kind: 'enter'; distance: number }
+    | { kind: 'update'; distance: number }
+    | { kind: 'exit' }
+  ) => void;
   // P2-18: fired by Game.update() when the player steps on a trap.
   // fire trap: damage is the trap's damage (default 1).
   // water trap: the numeric arg is the slow duration in seconds.
@@ -1273,6 +1285,7 @@ export class Game {
     // onEnemyContact(1) every frame the player overlaps an enemy.
     for (let i = 0; i < this.enemies.length; i++) {
       const enemy = this.enemies[i];
+      const previousState = enemy.state;
       enemy.update(dt, { position: this.player.position });
       const mesh = this.sceneRefs.enemies[i];
       mesh.position.x = enemy.position.x;
@@ -1285,6 +1298,32 @@ export class Game {
       // still shows all enemies across all layers (P3-1 锁 —
       // minimap reads enemy logic, not mesh).
       mesh.visible = enemy.level === this.playerLevel;
+      // P1-4 Phase 4: chase audio state transitions. We emit
+      // an event whenever the state flips OR an enemy stays in
+      // chase (so the Audio module can re-evaluate distance).
+      // Cross-layer enemies are skipped here (their audio is
+      // already muted by the visibility check above + the
+      // Phase 3 group.visible cascade).
+      if (enemy.level === this.playerLevel) {
+        if (previousState !== 'chase' && enemy.state === 'chase') {
+          // patrol/dwell → chase: emit enter.
+          const distance = Math.hypot(
+            enemy.position.x - this.player.position.x,
+            enemy.position.z - this.player.position.z,
+          );
+          this.bridge.onEnemyChaseState?.({ kind: 'enter', distance });
+        } else if (previousState === 'chase' && enemy.state !== 'chase') {
+          // chase → patrol/dwell: emit exit.
+          this.bridge.onEnemyChaseState?.({ kind: 'exit' });
+        } else if (enemy.state === 'chase') {
+          // still chasing: emit update with current distance.
+          const distance = Math.hypot(
+            enemy.position.x - this.player.position.x,
+            enemy.position.z - this.player.position.z,
+          );
+          this.bridge.onEnemyChaseState?.({ kind: 'update', distance });
+        }
+      }
       // P1-4 Phase 2: sync enemy.state → fovCone material.
       // patrol invisible (玩家看不到 "敌人在看哪里"), dwell
       // 0.3 opacity 灰 (enemy 在休息), chase 0.8 opacity 红

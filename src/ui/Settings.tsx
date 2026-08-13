@@ -90,6 +90,8 @@ export function Settings({ onBack }: { onBack: () => void }) {
   const sens = useSettingsStore((s) => s.pointerSensitivity);
   const fov = useSettingsStore((s) => s.fov);
   const darkMode = useSettingsStore((s) => s.darkMode);
+  const chaseHeartbeat = useSettingsStore((s) => s.chaseHeartbeat);
+  const enemyFootsteps = useSettingsStore((s) => s.enemyFootsteps);
   const aggression = useSettingsStore((s) => s.enemyAggression);
   const language = useSettingsStore((s) => s.language);
   const set = useSettingsStore((s) => s.set);
@@ -191,6 +193,49 @@ export function Settings({ onBack }: { onBack: () => void }) {
                       aria-label={t('settings.darkMode.aria')}
                       checked={darkMode}
                       onChange={(e) => set('darkMode', e.target.checked)}
+                    />
+                    <span className="console-switch__track" />
+                    <span className="console-switch__knob" />
+                  </label>
+                </div>
+              </div>
+
+              {/* P1-4 Phase 4 NEW: chase audio cues. The heartbeat
+                  fires when an enemy enters chase state (rate
+                  depends on distance); footsteps fire when the
+                  closest chasing enemy is < 8m. Both default
+                  on; users with sound-sensitive setups or in
+                  shared spaces can disable either independently. */}
+              <div className="prefs-row">
+                <div className="prefs-row__label">
+                  <span className="prefs-row__name">{t('settings.chaseHeartbeat.label')}</span>
+                  <span className="prefs-row__desc">{t('settings.chaseHeartbeat.desc')}</span>
+                </div>
+                <div className="prefs-row__control">
+                  <label className="console-switch">
+                    <input
+                      type="checkbox"
+                      aria-label={t('settings.chaseHeartbeat.aria')}
+                      checked={chaseHeartbeat}
+                      onChange={(e) => set('chaseHeartbeat', e.target.checked)}
+                    />
+                    <span className="console-switch__track" />
+                    <span className="console-switch__knob" />
+                  </label>
+                </div>
+              </div>
+              <div className="prefs-row">
+                <div className="prefs-row__label">
+                  <span className="prefs-row__name">{t('settings.enemyFootsteps.label')}</span>
+                  <span className="prefs-row__desc">{t('settings.enemyFootsteps.desc')}</span>
+                </div>
+                <div className="prefs-row__control">
+                  <label className="console-switch">
+                    <input
+                      type="checkbox"
+                      aria-label={t('settings.enemyFootsteps.aria')}
+                      checked={enemyFootsteps}
+                      onChange={(e) => set('enemyFootsteps', e.target.checked)}
                     />
                     <span className="console-switch__track" />
                     <span className="console-switch__knob" />

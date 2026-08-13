@@ -1,7 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
-import * as THREE from 'three';
+import { describe, it, expect } from 'vitest';
 import { buildScene } from '../../../src/engine/Scene';
-import { Game } from '../../../src/engine/Game';
 import type { MazeData } from '../../../src/maze/types';
 
 // P1-4 Phase 3: 跨层 enemy 渲染过滤. The player on layer L only
@@ -126,10 +124,10 @@ describe('P1-4 Phase 3 — 跨层 enemy 渲染过滤', () => {
     const sceneRefs = buildScene(maze);
     const groups = sceneRefs.enemies;
     // Legacy enemy (level 0) on playerLevel 0 → visible.
-    groups[0].visible = 0 === 0; // back-compat: ?? 0 in Enemy ctor
+    groups[0].visible = (0 as number) === (0 as number); // back-compat: ?? 0 in Enemy ctor
     expect(groups[0].visible).toBe(true);
     // On layer 1, the legacy enemy would be hidden.
-    groups[0].visible = 0 === 1;
+    groups[0].visible = (0 as number) === (1 as number);
     expect(groups[0].visible).toBe(false);
   });
 
