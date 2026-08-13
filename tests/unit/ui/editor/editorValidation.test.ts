@@ -203,4 +203,115 @@ describe('validateDesign', () => {
 
     expect(validateDesign(level)).toEqual([]);
   });
+
+  // P5-2 Phase 3 (P0-followup #2): cross-layer BFS. The single-layer
+  // `isReachable` 2D BFS replaced by `isReachableMultiLevel` when the
+  // level carries `walls2d` + a transitions graph. The BFS walks
+  // start's layer → any matching transition → next layer's walls →
+  // ... → exit's layer. A level with no transitions and a cross-layer
+  // start/exit is genuinely unreachable, and the validator should
+  // surface that.
+  describe('P5-2 Phase 3 — cross-layer BFS via isReachableMultiLevel', () => {
+    it('marks a cross-layer level WITHOUT transitions as unreachable (start L0, exit L1, no bridge)', () => {
+      const level: MazeData = {
+        id: 'test-cross-layer-no-bridge',
+        name: 'No bridge',
+        size: { width: 3, depth: 3 },
+        cellSize: 2,
+        start: { x: 0, z: 0, level: 0 },
+        exit: { x: 2, z: 2, level: 1 },
+        walls2d: [
+          [
+            [0, 0, 0],
+            [0, 0, 0],
+            [0, 0, 0],
+          ],
+          [
+            [0, 0, 0],
+            [0, 0, 0],
+            [0, 0, 0],
+          ],
+        ],
+        pickups: [],
+        rules: { initialTime: 60, maxHealth: 3, victory: 'reach-exit', timeOnPickup: 10 },
+        enemies: [],
+        traps: [],
+        doors: [],
+        transitions: [],
+      };
+      const issues = validateDesign(level);
+      expect(issues).toContainEqual({
+        severity: 'warning',
+        messageKey: 'editor.validation.exitUnreachable',
+        where: 'exit',
+      });
+    });
+
+    it('marks a cross-layer level WITH a connecting transition as reachable', () => {
+      const level: MazeData = {
+        id: 'test-cross-layer-bridge',
+        name: 'With bridge',
+        size: { width: 3, depth: 3 },
+        cellSize: 2,
+        start: { x: 0, z: 0, level: 0 },
+        exit: { x: 2, z: 2, level: 1 },
+        walls2d: [
+          [
+            [0, 0, 0],
+            [0, 0, 0],
+            [0, 0, 0],
+          ],
+          [
+            [0, 0, 0],
+            [0, 0, 0],
+            [0, 0, 0],
+          ],
+        ],
+        pickups: [],
+        rules: { initialTime: 60, maxHealth: 3, victory: 'reach-exit', timeOnPickup: 10 },
+        enemies: [],
+        traps: [],
+        doors: [],
+        // P3-1: stair-up at (1, 1) on L0 → (1, 1) on L1. The BFS
+        // crosses at this cell.
+        transitions: [
+          {
+            id: 't1',
+            level: 0,
+            x: 1,
+            z: 1,
+            kind: 'stair-up',
+            toLevel: 1,
+          },
+        ],
+      };
+      const issues = validateDesign(level);
+      // No "exit unreachable" warning — the BFS walks L0 (0,0) → (1,1)
+      // → transition → L1 (1,1) → (2,2) = exit.
+      const unreachable = issues.filter((i) => i.messageKey === 'editor.validation.exitUnreachable');
+      expect(unreachable).toEqual([]);
+    });
+
+    it('still flags unreachable exits within a single layer (regression: same-layer 2D BFS)', () => {
+      // P5-2: the single-layer BFS path uses the historical
+      // `isReachable` 2D BFS, not `isReachableMultiLevel`. A
+      // single-layer level with the exit walled off should
+      // still surface the warning.
+      const level = makeLevel({
+        // Wall ring around the middle cell (1,1), leaving start
+        // (0,0) and exit (2,2) on opposite isolated sides.
+        walls: [
+          [0, 1, 0],
+          [1, 1, 1],
+          [0, 1, 0],
+        ],
+      });
+      const issues = validateDesign(level);
+      expect(issues).toContainEqual({
+        severity: 'warning',
+        messageKey: 'editor.validation.exitUnreachable',
+        where: 'exit',
+      });
+    });
+  });
 });
