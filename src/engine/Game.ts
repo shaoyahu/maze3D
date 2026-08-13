@@ -1277,19 +1277,26 @@ export class Game {
       const mesh = this.sceneRefs.enemies[i];
       mesh.position.x = enemy.position.x;
       mesh.position.z = enemy.position.z;
+      // P1-4 Phase 3: cross-layer visibility. Enemies on a layer
+      // other than the player's current layer are hidden from the
+      // 3D scene (group.visible = false). The AI state still ticks
+      // above (so the enemy's patrol/chase/dwell state is preserved
+      // when the player returns to that layer), and the minimap
+      // still shows all enemies across all layers (P3-1 锁 —
+      // minimap reads enemy logic, not mesh).
+      mesh.visible = enemy.level === this.playerLevel;
       // P1-4 Phase 2: sync enemy.state → fovCone material.
       // patrol invisible (玩家看不到 "敌人在看哪里"), dwell
       // 0.3 opacity 灰 (enemy 在休息), chase 0.8 opacity 红
       // (紧迫感). The fovCone is the 5th child of each enemy
       // Group; userData.fovCone holds the cached ref so we
-      // don't re-index per frame.
+      // don't re-index per frame. When the enemy group is
+      // hidden by Phase 3, the fovCone state is irrelevant
+      // (parent visibility cascades) but we still update it
+      // so a future layer flip doesn't show a stale state.
       const fovCone = mesh.userData?.fovCone as THREE.Mesh | undefined;
       if (fovCone) {
         const mat = fovCone.material as THREE.MeshBasicMaterial;
-        // P1-4 Phase 3 placeholder: Phase 3 wires layer-based
-        // visibility here (cross-layer enemies get group.visible
-        // = false); for now Phase 2 just sets opacity + color
-        // based on state, regardless of layer.
         switch (enemy.state) {
           case 'patrol':
             mat.opacity = 0;
