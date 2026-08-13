@@ -436,6 +436,9 @@ export const zh: Translations = {
   'editor.leftPanel.addLevel': '加层',
   'editor.leftPanel.removeLevel': '删层',
   'editor.leftPanel.addLevelAria': '增加一层（当前 {count} 层）',
+  // P1-5: addLevelEmpty — 第二个 addLevel variant.
+  'editor.leftPanel.addLevelEmpty': '加空白层',
+  'editor.leftPanel.addLevelEmptyAria': '增加一层空白层（当前 {count} 层）',
   'editor.leftPanel.removeLevelAria': '删除最顶层（当前 {count} 层）',
   'editor.leftPanel.removeLevelTitle': '删除最顶层?',
   'editor.leftPanel.removeLevelMessage': '这会删除第 {count} 层以及这一层上的所有实体（拾取 / 陷阱 / 门 / 敌人 / 垂直连接）。可以用 ⌘Z 撤销。',

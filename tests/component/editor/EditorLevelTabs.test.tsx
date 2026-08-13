@@ -15,6 +15,7 @@ import { EditorLevelTabs } from '../../../src/ui/editor/LevelTabs';
 import { ConfirmProvider } from '../../../src/ui/useConfirm';
 import { useEditorStore } from '../../../src/store/editorStore';
 import { resetEditor } from '../../_helpers/editorMocks';
+import type { CellType } from '../../../src/maze/types';
 
 beforeEach(() => {
   resetEditor();
@@ -58,6 +59,51 @@ describe('EditorLevelTabs (P3-1c H-1)', () => {
     const addBtn = screen.getByTestId('level-add');
     expect(addBtn).toBeDisabled();
     expect(addBtn.getAttribute('data-disabled')).toBe('true');
+  });
+
+  // P1-5: addLevelEmpty — second addLevel variant. The `+ ∅` button
+  // calls addLevelEmpty (which adds an empty grid rather than a
+  // clone). Same 1..6 clamp, same data-testid pattern as `+`.
+  it('+ ∅ button calls addLevelEmpty and bumps levelCount by 1', () => {
+    // Start with a 2-layer level that has a non-trivial top
+    // layer (so the "empty" assertion is meaningful — if the
+    // implementation accidentally cloned the top, the new L2
+    // would carry the pattern instead of being all 0).
+    const topWithWalls: CellType[][] = [
+      [1, 1, 1],
+      [1, 0, 1],
+      [1, 1, 1],
+    ];
+    useEditorStore.setState({
+      level: {
+        ...useEditorStore.getState().level,
+        levelCount: 2,
+        walls2d: [
+          useEditorStore.getState().level.walls!.map((r) => r.slice()),
+          topWithWalls.map((r) => r.slice()),
+        ],
+        walls: undefined,
+      },
+      currentLevel: 1,
+    });
+    render(<ConfirmProvider><EditorLevelTabs /></ConfirmProvider>);
+    fireEvent.click(screen.getByTestId('level-add-empty'));
+    const after = useEditorStore.getState().level;
+    expect(after.levelCount).toBe(3);
+    expect(after.walls2d).toHaveLength(3);
+    // The new L2 is all 0 — not a clone of the previous top.
+    const allEmpty = after.walls2d![2]!.every((row) =>
+      row.every((c) => c === 0),
+    );
+    expect(allEmpty).toBe(true);
+  });
+
+  it('+ ∅ button is disabled at the 6-layer cap', () => {
+    useEditorStore.setState({ level: { ...useEditorStore.getState().level, levelCount: 6 } });
+    render(<ConfirmProvider><EditorLevelTabs /></ConfirmProvider>);
+    const addEmptyBtn = screen.getByTestId('level-add-empty');
+    expect(addEmptyBtn).toBeDisabled();
+    expect(addEmptyBtn.getAttribute('data-disabled')).toBe('true');
   });
 
   it('- button is disabled at levelCount=1 (cannot remove the bottom layer)', () => {

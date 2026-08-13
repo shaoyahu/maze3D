@@ -1289,6 +1289,25 @@
   cursor: not-allowed;
 }
 
+/* P1-5: addLevelEmpty button. Visually distinct from the `+`
+   (clone) button via a dashed border + lighter background so
+   a designer doesn't mis-click. The two addLayer variants sit
+   side-by-side in the actions group; the visual weight
+   difference signals "these do different things" without
+   needing a separate row. */
+.editor-leveltabs__btn--empty {
+  border-style: dashed;
+  background: transparent;
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.editor-leveltabs__btn--empty:hover {
+  border-color: var(--accent, var(--border-strong));
+  color: var(--fg);
+  border-style: solid;
+}
+
 /* ----- Viewport chrome (footer readouts, minimap, zoom controls) ----- */
 
 .editor-viewport-shell {

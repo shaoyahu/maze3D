@@ -81,6 +81,12 @@ export const EditorLevelTabs = memo(function EditorLevelTabs(): React.ReactEleme
   );
   const setCurrentLevel = useEditorStore((s) => s.setCurrentLevel);
   const addLevel = useEditorStore((s) => s.addLevel);
+  // P1-5: addLevelEmpty — second addLevel variant. Adds a fresh
+  // empty grid (no clone) so designers can start a new layer from
+  // scratch instead of cloning + manually deleting. Same
+  // 1..6 clamp + commitLevel path as addLevel; no confirm
+  // dialog because empty layers have no entity to lose.
+  const addLevelEmpty = useEditorStore((s) => s.addLevelEmpty);
   const removeLevel = useEditorStore((s) => s.removeLevel);
 
   const atMax = levelCount >= MAX_LEVEL;
@@ -156,6 +162,24 @@ export const EditorLevelTabs = memo(function EditorLevelTabs(): React.ReactEleme
           {...(atMax ? { 'data-disabled': 'true' } : {})}
         >
           <span aria-hidden>+</span>
+        </button>
+        {/* P1-5: addLevelEmpty button. Visually distinct from the
+            `+` (clone) button via the `editor-leveltabs__btn--empty`
+            modifier so a designer doesn't mis-click. Same
+            1..6 clamp (atMax) and no-confirm semantics. The `∅`
+            glyph is the empty-set symbol; aria-label spells it
+            out as "Add Empty Layer" for screen readers. */}
+        <button
+          type="button"
+          className="editor-leveltabs__btn editor-leveltabs__btn--empty"
+          onClick={addLevelEmpty}
+          disabled={atMax}
+          aria-label={t('editor.leftPanel.addLevelEmptyAria', { count: levelCount })}
+          title={t('editor.leftPanel.addLevelEmpty')}
+          data-testid="level-add-empty"
+          {...(atMax ? { 'data-disabled': 'true' } : {})}
+        >
+          <span aria-hidden>+ ∅</span>
         </button>
         <button
           type="button"
