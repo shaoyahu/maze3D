@@ -49,7 +49,7 @@ describe('P1-4 Phase 1 — enemy 视觉升级 humanoid + PBR + shadow', () => {
     }
   });
 
-  it('each enemy Group has 4 child meshes: body (capsule) + head (sphere) + 2 arms (capsule)', () => {
+  it('each enemy Group has 5 child meshes: body + head + 2 arms (PBR) + fovCone (Phase 2)', () => {
     const maze = makeMaze({
       enemies: [
         { id: 'e1', x: 0, z: 0, path: [{ x: 0, z: 0 }, { x: 2, z: 0 }] },
@@ -57,8 +57,12 @@ describe('P1-4 Phase 1 — enemy 视觉升级 humanoid + PBR + shadow', () => {
     });
     const { enemies } = buildScene(maze);
     const group = enemies[0];
-    expect(group.children).toHaveLength(4);
-    const [body, head, armL, armR] = group.children as THREE.Mesh[];
+    // P1-4 Phase 2 adds the 5th child (FOV cone). The order is
+    // body → head → armL → armR → fovCone; the fovCone's material
+    // is MeshBasicMaterial (transparent + state-driven opacity)
+    // and does NOT cast/receive shadow.
+    expect(group.children).toHaveLength(5);
+    const [body, head, armL, armR, fovCone] = group.children as THREE.Mesh[];
     // body is a capsule
     expect(body.geometry).toBeInstanceOf(THREE.CapsuleGeometry);
     // head is a sphere
@@ -66,6 +70,8 @@ describe('P1-4 Phase 1 — enemy 视觉升级 humanoid + PBR + shadow', () => {
     // arms are capsules
     expect(armL.geometry).toBeInstanceOf(THREE.CapsuleGeometry);
     expect(armR.geometry).toBeInstanceOf(THREE.CapsuleGeometry);
+    // fovCone is a cone (Phase 2)
+    expect(fovCone.geometry).toBeInstanceOf(THREE.ConeGeometry);
   });
 
   it('body is anchored at y = bodyHeight/2 above the group local origin (floor)', () => {
@@ -96,7 +102,13 @@ describe('P1-4 Phase 1 — enemy 视觉升级 humanoid + PBR + shadow', () => {
     expect(head.position.y).toBeCloseTo(1.4 + 0.15 * 0.6, 5);
   });
 
-  it('uses MeshStandardMaterial (PBR-ish), not MeshLambertMaterial', () => {
+  it('body / head / arms use MeshStandardMaterial (PBR-ish), fovCone uses MeshBasicMaterial', () => {
+    // P1-4 Phase 2: the FOV cone is intentionally MeshBasicMaterial
+    // (not MeshStandardMaterial) because it must stay unlit and
+    // color-uniform regardless of scene lighting — the cone is a
+    // state-based UI affordance, not a physical object. The body
+    // group is still PBR so the humanoid reads correctly under
+    // the main directional light.
     const maze = makeMaze({
       enemies: [
         { id: 'e1', x: 0, z: 0, path: [{ x: 0, z: 0 }, { x: 2, z: 0 }] },
@@ -104,14 +116,16 @@ describe('P1-4 Phase 1 — enemy 视觉升级 humanoid + PBR + shadow', () => {
     });
     const { enemies } = buildScene(maze);
     const group = enemies[0];
-    for (const child of group.children) {
-      const mesh = child as THREE.Mesh;
-      // Every child uses MeshStandardMaterial.
-      expect(mesh.material).toBeInstanceOf(THREE.MeshStandardMaterial);
+    const [body, head, armL, armR, fovCone] = group.children as THREE.Mesh[];
+    for (const pbrMesh of [body, head, armL, armR]) {
+      expect(pbrMesh.material).toBeInstanceOf(THREE.MeshStandardMaterial);
     }
+    expect(fovCone.material).toBeInstanceOf(THREE.MeshBasicMaterial);
   });
 
-  it('every child mesh has castShadow + receiveShadow enabled', () => {
+  it('body / head / arms have castShadow + receiveShadow; fovCone does not', () => {
+    // FOV cone is a translucent state UI — it shouldn't cast or
+    // receive shadows. The humanoid body parts should.
     const maze = makeMaze({
       enemies: [
         { id: 'e1', x: 0, z: 0, path: [{ x: 0, z: 0 }, { x: 2, z: 0 }] },
@@ -119,11 +133,13 @@ describe('P1-4 Phase 1 — enemy 视觉升级 humanoid + PBR + shadow', () => {
     });
     const { enemies } = buildScene(maze);
     const group = enemies[0];
-    for (const child of group.children) {
-      const mesh = child as THREE.Mesh;
-      expect(mesh.castShadow).toBe(true);
-      expect(mesh.receiveShadow).toBe(true);
+    const [body, head, armL, armR, fovCone] = group.children as THREE.Mesh[];
+    for (const shadowMesh of [body, head, armL, armR]) {
+      expect(shadowMesh.castShadow).toBe(true);
+      expect(shadowMesh.receiveShadow).toBe(true);
     }
+    expect(fovCone.castShadow).toBe(false);
+    expect(fovCone.receiveShadow).toBe(false);
   });
 
   it('shared geometry across enemies (body/head/arms instances reused)', () => {

@@ -548,6 +548,42 @@ export function buildScene(maze: MazeData, darkMode =false): SceneRefs {
     armR.castShadow = true;
     armR.receiveShadow = true;
     group.add(armR);
+    // P1-4 Phase 2: FOV cone (5th child). A 60° half-angle cone
+    // pointing forward from the enemy's head, matching the
+    // enemy.fovAngleDeg default. Default state is 'patrol' so
+    // the cone is invisible on spawn (per Phase 2 FR-2.3);
+    // Game.update syncs opacity + color every frame from
+    // enemy.state. The cone is the same length as the enemy's
+    // fovRange default (3 cells = 3*cs) so the visual matches
+    // the AI's actual sight range.
+    const fovConeGeom = new THREE.ConeGeometry(
+      Math.tan((60 * Math.PI) / 360) * 3 * cs,
+      3 * cs,
+      16,
+      1,
+      true,
+    );
+    const fovConeMat = new THREE.MeshBasicMaterial({
+      color: 0xff3030,
+      transparent: true,
+      opacity: 0, // invisible at spawn (patrol default)
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    const fovCone = new THREE.Mesh(fovConeGeom, fovConeMat);
+    // Cone default points +Y; rotate so it points -Z (forward).
+    fovCone.rotation.x = Math.PI / 2;
+    // Position: at the head height, projected forward so the
+    // cone's base sits at the head and the tip extends out to
+    // fovRange. The cone's local origin is its center; offset
+    // by half the cone's length along the forward axis.
+    fovCone.position.set(0, bodyHeight + headRadius * 0.6, -3 * cs / 2);
+    fovCone.renderOrder = 1; // draw on top of walls
+    fovCone.frustumCulled = false; // always render (state changes may move it)
+    group.add(fovCone);
+    // userData hook so Game.update can find the fovCone child
+    // without indexing children[4] (future-proof against re-ordering).
+    group.userData = { enemy: e, fovCone, bodyHeight };
     // Spawn position: cell center, y = 0 (group's local origin is
     // the floor; body sits at y = bodyHeight/2 above it).
     group.position.set(
