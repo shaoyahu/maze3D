@@ -1,0 +1,27 @@
+#!/usr/bin/env sh
+# P0-followup #3: typecheck 蒙混 vector audit. P5-2 review H-1 revealed
+# that the strict `walls xor walls2d` mutex (P5-2 decision A5) lets
+# `maze.walls!` non-null asserts pass typecheck but crash at runtime
+# on multi-layer levels (maze.walls is undefined when maze.walls2d is
+# set). The audit grep catches future regressions by failing the
+# pre-commit hook when a non-null assert on maze.walls is introduced.
+# Exclusions:
+#   - `??` immediately after the access (the reviewer-blessed
+#     `maze.walls ?? maze.walls2d![...]!` fallback pattern)
+#   - lines whose content is a `//` comment (regression tests
+#     reference the pattern in comments; the actual assert call is
+#     caught separately)
+set -e
+MATCHES=$(grep -rn 'maze\.walls!' src/ tests/ \
+  --include='*.ts' --include='*.tsx' \
+  | grep -v '??' \
+  | grep -vE ':\s*//' || true)
+if [ -n "$MATCHES" ]; then
+  echo "❌ P0-followup #3: found non-null assert on maze.walls without fallback."
+  echo "   The strict 'walls xor walls2d' mutex (P5-2 decision A5) means"
+  echo "   \`maze.walls!\` crashes at runtime on multi-layer levels. Use"
+  echo "   \`maze.walls ?? maze.walls2d![...]!\` instead."
+  echo ""
+  echo "$MATCHES"
+  exit 1
+fi
