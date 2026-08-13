@@ -2078,6 +2078,95 @@ it('refuses to commit and surfaces pathNotAdjacent when any segment is diagonal'
       });
     });
 
+    // P1-5: addLevelEmpty — second addLevel variant. Adds a fresh
+    // empty grid (no clone) so designers can start a new layer
+    // from scratch. Same 1..6 clamp + commitLevel + currentLevel
+    // jump as addLevel; the only behavioral difference is the
+    // new layer is empty instead of a clone.
+    describe('addLevelEmpty', () => {
+      it('bumps levelCount by 1 and pins currentLevel to the new top', () => {
+        useEditorStore.setState({
+          level: makeMaze({ levelCount: 1 }),
+          currentLevel: 0,
+          dirty: false,
+        });
+        useEditorStore.getState().addLevelEmpty();
+        expect(useEditorStore.getState().level.levelCount).toBe(2);
+        expect(useEditorStore.getState().currentLevel).toBe(1);
+      });
+
+      it('is a no-op at the 6-layer cap', () => {
+        useEditorStore.setState({
+          level: makeMaze({ levelCount: 6 }),
+          currentLevel: 5,
+        });
+        useEditorStore.getState().addLevelEmpty();
+        expect(useEditorStore.getState().level.levelCount).toBe(6);
+        expect(useEditorStore.getState().currentLevel).toBe(5);
+      });
+
+      it('promotes a single-layer level to multi-layer with an empty L1 (walls → walls2d, new layer is all 0)', () => {
+        // The single-layer base has a non-trivial wall pattern
+        // (used to verify that the new L1 is NOT a clone but
+        // a fresh empty grid).
+        const base = makeMaze({ levelCount: 1 });
+        expect(base.walls).toBeDefined();
+        // Confirm the fixture has at least one wall cell so the
+        // "empty" assertion is meaningful.
+        const hasWall = base.walls!.some((row) => row.some((c) => c === 1));
+        expect(hasWall).toBe(true);
+        useEditorStore.setState({ level: base, currentLevel: 0, dirty: false });
+        useEditorStore.getState().addLevelEmpty();
+        const after = useEditorStore.getState().level;
+        // Strict mutex: `walls` is gone, `walls2d` is populated.
+        expect(after.walls).toBeUndefined();
+        expect(after.walls2d).toHaveLength(2);
+        // L0 is preserved (cloned) so the existing layer is
+        // untouched — `promoteToMultiLayer`'s contract.
+        expect(after.walls2d![0]).toEqual(base.walls!);
+        // L1 is all 0 (empty) regardless of L0's wall pattern.
+        const allEmpty = after.walls2d![1]!.every((row) =>
+          row.every((c) => c === 0),
+        );
+        expect(allEmpty).toBe(true);
+      });
+
+      it('appends an empty top layer on subsequent addLevelEmpty (does NOT clone the current top)', () => {
+        // Build a 2-layer level with a non-trivial L1 (so the
+        // "empty" assertion is meaningful — if the implementation
+        // accidentally cloned L1, the new L2 would carry the
+        // pattern instead of being all 0).
+        const base = makeMaze({ levelCount: 2 });
+        const topWithWalls: CellType[][] = [
+          [1, 1, 1],
+          [1, 0, 1],
+          [1, 1, 1],
+        ];
+        const multi: MazeData = {
+          ...base,
+          walls: undefined,
+          walls2d: [
+            base.walls!.map((r) => r.slice()),
+            topWithWalls.map((r) => r.slice()),
+          ],
+        };
+        useEditorStore.setState({ level: multi, currentLevel: 1, dirty: false });
+        useEditorStore.getState().addLevelEmpty();
+        const after = useEditorStore.getState().level;
+        expect(after.walls2d).toHaveLength(3);
+        // L0 is untouched.
+        expect(after.walls2d![0]).toEqual(multi.walls2d![0]);
+        // L1 is untouched.
+        expect(after.walls2d![1]).toEqual(topWithWalls);
+        // L2 is all 0 — the empty variant must NOT inherit the
+        // previous top's wall pattern.
+        const allEmpty = after.walls2d![2]!.every((row) =>
+          row.every((c) => c === 0),
+        );
+        expect(allEmpty).toBe(true);
+      });
+    });
+
     describe('removeLevel', () => {
       it('decrements levelCount by 1 and clamps currentLevel to the new top', () => {
         useEditorStore.setState({

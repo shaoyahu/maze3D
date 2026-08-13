@@ -447,6 +447,9 @@ export const en: Translations = {
   'editor.leftPanel.addLevel': 'Add layer',
   'editor.leftPanel.removeLevel': 'Remove layer',
   'editor.leftPanel.addLevelAria': 'Add a new layer (currently {count})',
+  // P1-5: addLevelEmpty — second addLevel variant.
+  'editor.leftPanel.addLevelEmpty': 'Add empty layer',
+  'editor.leftPanel.addLevelEmptyAria': 'Add a new empty layer (currently {count})',
   'editor.leftPanel.removeLevelAria': 'Remove the top layer (currently {count})',
   'editor.leftPanel.removeLevelTitle': 'Remove the top layer?',
   'editor.leftPanel.removeLevelMessage': 'This will remove layer {count} and all entities placed on it (pickups / traps / doors / enemies / transitions). You can undo with ⌘Z.',

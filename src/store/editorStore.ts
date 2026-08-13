@@ -45,7 +45,7 @@ import { exportLevel, parseImport } from '../maze/importExport';
 import { validateMaze } from '../maze/JsonMazeProvider';
 import { generateId } from '../utils/id';
 import { safeSetItem, MAX_DRAFT_BYTES } from './persist';
-import { getCurrentLayerWalls, promoteToMultiLayer, collapseToSingleLayer } from '../utils/perLayerWalls';
+import { getCurrentLayerWalls, promoteToMultiLayer, collapseToSingleLayer, createEmptyGrid } from '../utils/perLayerWalls';
 
 // Re-export the EditorSelection union from editorHistory so the rest of
 // the editor codebase can import it from a single place. Keeping the
@@ -254,6 +254,11 @@ interface EditorStoreState {
   // re-render automatically.
   setCurrentLevel: (level: number) => void;
   addLevel: () => void;
+  // P1-5: addLevelEmpty — 第二个 addLevel variant. 加全 0 (empty)
+  // grid 替代克隆当前 layer. 跟 addLevel 同样 commitLevel +
+  // currentLevel jump + levelCount clamp, 唯一差异是新 layer
+  // 内容是空 grid. LevelTabs 工具栏加 `+ ∅` button 触发.
+  addLevelEmpty: () => void;
   removeLevel: () => void;
 
   // P3-1c: vertical-transition placement + edit. The editor toolbar
@@ -1724,6 +1729,42 @@ export const useEditorStore = create<EditorStoreState>((set, get) => {
       // change. dirty is re-derived from the new hash; the saved
       // baseline (lastSavedHash) is unchanged so the new top layer
       // shows as a fresh edit.
+      set({ ...commitLevel(get(), nextLevel), currentLevel: next - 1 });
+    },
+
+    // P1-5: addLevelEmpty — 第二个 addLevel variant. 加一个全 0
+    // (empty) grid 替代克隆当前 layer, 让玩家从零设计新 layer
+    // 不用先 clone 然后手动删所有 wall/entity. 走跟 addLevel 一样
+    // 的 walls xor walls2d mutex + commitLevel + currentLevel jump
+    // + levelCount clamp, 唯一差异是新 layer 内容是空 grid 而非
+    // 克隆. 共享 `createEmptyGrid` helper (P5-2 附赠) 保证形状
+    // 跟单层 back-compat `walls` 字段一致.
+    addLevelEmpty: () => {
+      const { level } = get();
+      const current = level.levelCount ?? 1;
+      const maxLevel = LEVEL_COUNT_VALUES[LEVEL_COUNT_VALUES.length - 1] ?? 6;
+      if (current >= maxLevel) return;
+      const next = current + 1;
+      let nextLevel: MazeData;
+      if (level.walls2d) {
+        // Already multi-layer: append a fresh empty grid. The size
+        // matches the existing top layer so the new layer is
+        // visually consistent (the editor viewport + minimap
+        // both grid-snap to width × depth). createEmptyGrid is
+        // re-used from perLayerWalls (single source of truth).
+        const emptyLayer = createEmptyGrid(
+          level.walls2d[0]![0]!.length,
+          level.walls2d[0]!.length,
+        );
+        nextLevel = { ...level, walls2d: [...level.walls2d, emptyLayer], levelCount: next };
+      } else {
+        // Single-layer: promote to multi-layer, dropping `walls`
+        // and using an empty grid for the new L1. Same as
+        // addLevel's single-layer path except the new layer is
+        // empty instead of a clone of L0.
+        const promoted = promoteToMultiLayer(level, { clone: 'empty' });
+        nextLevel = { ...promoted, levelCount: next };
+      }
       set({ ...commitLevel(get(), nextLevel), currentLevel: next - 1 });
     },
 
