@@ -465,6 +465,11 @@ export const zh: Translations = {
   // P5-editor-multilayer (Task 9): 多层时显示 "第 1/3 层"，单层时 "1 层"
   'editor.status.layerIndicator.single': '1 层',
   'editor.status.layerIndicator.multi': '第 {current} / {total} 层',
+  // P1-6: transition count + per-layer breakdown chips.
+  'editor.status.transitions': '垂直连接',
+  'editor.status.transitionsAria': '垂直连接：{count}',
+  'editor.status.layerBreakdownCompact': 'L{level}: {enemies} 敌 · {pickups} 拾',
+  'editor.status.layerBreakdownLine': '第 {level} 层：{enemies} 敌人、{pickups} 拾取、{traps} 陷阱、{doors} 门、{transitions} 垂直连接',
   'editor.status.storageHintCloseAria': '知道了，关闭存储提示',
 
   // ============================================================

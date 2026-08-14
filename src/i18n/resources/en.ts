@@ -479,6 +479,11 @@ export const en: Translations = {
   // "Layer 1/3" so the user always knows which layer is current.
   'editor.status.layerIndicator.single': '1 layer',
   'editor.status.layerIndicator.multi': 'Layer {current} / {total}',
+  // P1-6: transition count + per-layer breakdown chips.
+  'editor.status.transitions': 'Transitions',
+  'editor.status.transitionsAria': 'Vertical transitions: {count}',
+  'editor.status.layerBreakdownCompact': 'L{level}: {enemies} e · {pickups} p',
+  'editor.status.layerBreakdownLine': 'Layer {level}: {enemies} enemies, {pickups} pickups, {traps} traps, {doors} doors, {transitions} transitions',
   'editor.status.storageHintCloseAria': 'Got it — dismiss storage notice',
 
   // ============================================================
