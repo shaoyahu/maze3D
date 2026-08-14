@@ -1351,6 +1351,50 @@ export class Game {
             break;
         }
       }
+      // P1-7: per-enemy body + arms color chase flash. The
+      // Enemy class owns the state machine (when to start
+      // the ramp) and the `colorRamp` field (start time +
+      // target color + duration). The Game tick just lerps
+      // the per-enemy material's color and clears the ramp
+      // on completion. Cross-layer enemies are skipped by
+      // the same `mesh.visible` guard above (Phase 3): if
+      // the group is hidden, the player can't see the body
+      // color, so updating it is wasted work.
+      if (mesh.visible && enemy.colorRamp) {
+        const ramp = enemy.colorRamp;
+        const bodyMat = mesh.userData?.bodyMat as THREE.MeshStandardMaterial | undefined;
+        const armMat = mesh.userData?.armMat as THREE.MeshStandardMaterial | undefined;
+        if (bodyMat || armMat) {
+          const elapsedSec = (performance.now() - ramp.startMs) / 1000;
+          const u = Math.min(1, elapsedSec / ramp.durationSec);
+          // Lerp from the current material color (not a
+          // captured `from` value) so re-entering chase
+          // mid-ramp picks up wherever the body actually is
+          // — no snap on rapid state flips.
+          const fromColor = bodyMat?.color.getHex() ?? ramp.to;
+          const toColor = ramp.to;
+          const r = ((fromColor >> 16) & 0xff) * (1 - u) + ((toColor >> 16) & 0xff) * u;
+          const g = ((fromColor >> 8) & 0xff) * (1 - u) + ((toColor >> 8) & 0xff) * u;
+          const b = (fromColor & 0xff) * (1 - u) + (toColor & 0xff) * u;
+          const lerpedHex = ((Math.round(r) & 0xff) << 16) | ((Math.round(g) & 0xff) << 8) | (Math.round(b) & 0xff);
+          if (bodyMat) bodyMat.color.setHex(lerpedHex);
+          if (armMat) armMat.color.setHex(lerpedHex);
+          // Emissive: subtle red glow at chase peak (when
+          // u = 1). 0 at base, 0x331111 at peak. Same lerp
+          // formula as the diffuse channel so the glow
+          // ramps in / out in lockstep.
+          const emissiveColor = Math.round(u * 0x33) * 0x010000;
+          if (bodyMat) bodyMat.emissive.setHex(emissiveColor);
+          if (armMat) armMat.emissive.setHex(emissiveColor);
+          if (u >= 1) {
+            // Ramp complete — clear so the per-frame check
+            // is a single null compare on subsequent ticks.
+            enemy.colorRamp = null;
+          }
+        } else {
+          enemy.colorRamp = null;
+        }
+      }
     }
     // F-H2: inline the contact check to avoid per-frame allocation of
     // an N-element `{x,z}[]` array. `hasEnemyContact` remains exported for

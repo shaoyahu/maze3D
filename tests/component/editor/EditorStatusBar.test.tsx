@@ -100,6 +100,72 @@ describe('EditorStatusBar (P2-4b #14)', () => {
     expect(screen.getByTestId('status-schema').textContent).toBe('schema v1');
   });
 
+  // P1-6: transition count chip renders `level.transitions.length`
+  // and shows the count even when 0 (visual consistency with the
+  // other entity chips). The `levelCount > 1` accent modifier is
+  // CSS-only, so we don't assert on it here — only the count and
+  // testid.
+  it('renders the transition count chip (always visible, even when 0)', () => {
+    render(<EditorStatusBar />);
+    const chip = screen.getByTestId('status-transitions');
+    // Default fixture (makeLevel) has no transitions, so the
+    // value is 0.
+    expect(chip.textContent).toContain('0');
+  });
+
+  it('transition count chip reflects level.transitions.length', () => {
+    useEditorStore.setState({
+      level: {
+        ...useEditorStore.getState().level,
+        transitions: [
+          { id: 't1', level: 0, x: 1, z: 1, kind: 'stair-up', toLevel: 1 },
+        ],
+      },
+    });
+    render(<EditorStatusBar />);
+    const chip = screen.getByTestId('status-transitions');
+    expect(chip.textContent).toContain('1');
+  });
+
+  // P1-6: per-layer breakdown chip. Multi-layer only — single-
+  // layer levels don't render it because the existing wall /
+  // pickup / enemy chips already cover the only layer.
+  it('does NOT render the per-layer breakdown chip for a single-layer level', () => {
+    useEditorStore.setState({ level: { ...useEditorStore.getState().level, levelCount: 1 } });
+    render(<EditorStatusBar />);
+    expect(screen.queryByTestId('status-layer-breakdown')).toBeNull();
+  });
+
+  it('renders the per-layer breakdown chip for a multi-layer level with entity counts', () => {
+    useEditorStore.setState({
+      level: {
+        ...useEditorStore.getState().level,
+        levelCount: 2,
+        walls2d: [
+          useEditorStore.getState().level.walls!.map((r) => r.slice()),
+          useEditorStore.getState().level.walls!.map((r) => r.slice()),
+        ],
+        walls: undefined,
+        enemies: [
+          { id: 'e_l0', x: 0, z: 0, level: 0, path: [{ x: 0, z: 0 }, { x: 1, z: 0 }] },
+          { id: 'e_l1', x: 1, z: 0, level: 1, path: [{ x: 1, z: 0 }, { x: 2, z: 0 }] },
+        ],
+        transitions: [
+          { id: 't1', level: 0, x: 1, z: 1, kind: 'stair-up', toLevel: 1 },
+        ],
+      },
+    });
+    render(<EditorStatusBar />);
+    const chip = screen.getByTestId('status-layer-breakdown');
+    // The compact format shows L1: 1e · 0p and L2: 1e · 0p
+    // (1-indexed display, matching the level tab labels).
+    expect(chip.textContent).toContain('L1');
+    expect(chip.textContent).toContain('L2');
+    // 1 enemy on L1 + 1 enemy on L2 → "1 敌" appears twice.
+    expect(chip.textContent).toContain('1 敌');
+    expect(chip.textContent).toContain('0 拾');
+  });
+
   // F-editor-warnings-popup: the status-bar warning chip is now a button.
   // Clicking it opens a portal-rendered dialog listing every issue
   // validateDesign emits for the current level, each tagged with its

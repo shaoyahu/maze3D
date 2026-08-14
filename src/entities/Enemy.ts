@@ -35,6 +35,18 @@ export class Enemy {
   readonly patrolSpeed: number;
   readonly chaseMultiplier: number;
   readonly chaseSpeed: number;
+  // P1-7: per-instance color chase flash. P1-4 shared the
+  // body / arms material across all enemies (the wall/pickup
+  // pattern). P1-7 un-shares body + arms so the Game tick can
+  // lerp each enemy's body color independently when it enters
+  // chase state (0.3s linear ramp base → red), and fade back
+  // to base on chase exit (0.5s linear ramp red → base). The
+  // state machine drives `startColorFlash('red')` /
+  // `startColorFlash('base')`; the lerp runs every frame until
+  // the ramp completes, then nulls out (no per-frame
+  // allocation past the start). Mirrors the activeTransition
+  // P3-1 pattern.
+  colorRamp: { startMs: number; durationSec: number; from: number; to: number } | null = null;
 
   state: EnemyState = 'patrol';
   currentTarget: number;
@@ -231,12 +243,44 @@ export class Enemy {
   private enterChase(): void {
     this.state = 'chase';
     this.alertTimer = ENEMY_CHASE_ALERT_SECONDS;
+    // P1-7: kick the body color ramp toward red. The Game
+    // tick reads colorRamp + the per-enemy material's current
+    // color, so the lerp continues across frames until the
+    // 0.3s ramp completes. From color is captured at
+    // startColorFlash time so a fresh enterChase mid-ramp
+    // (e.g. a fast patrol → chase → patrol → chase loop)
+    // doesn't jump — it picks up wherever the body was.
+    this.startColorFlash(0xff0000, 0.3);
   }
 
   private enterPatrol(): void {
     this.state = 'patrol';
+    // P1-7: fade back to base color on chase exit. 0.5s
+    // linear ramp so the color doesn't punch out (the
+    // heartbeat audio fades 0.5s too, parallel UX).
+    this.startColorFlash(0x553333, 0.5);
     this.alertTimer = 0;
     this.heading = headingToward(this.position, this.path[this.currentTarget]);
+  }
+
+  // P1-7: kick a color ramp. Called from enterChase / enterPatrol.
+  // The Game tick reads `this.colorRamp` and lerps the per-enemy
+  // material color from `from` (captured at start time) to `to`
+  // over `durationSec` seconds. The ramp auto-clears on completion
+  // so the per-frame check is just a null comparison; we don't
+  // pay for an allocation once the lerp finishes.
+  //
+  // `from` is intentionally NOT a parameter — the Game tick
+  // snapshots the material's *current* color at lerp time, so
+  // re-entering chase mid-ramp picks up wherever the body
+  // actually is (avoids a snap on rapid state flips).
+  startColorFlash(toColor: number, durationSec: number): void {
+    this.colorRamp = {
+      startMs: performance.now(),
+      durationSec,
+      from: 0, // placeholder; the Game tick reads the live material color
+      to: toColor,
+    };
   }
 }
 

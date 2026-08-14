@@ -39,7 +39,10 @@ const MAX_LEVEL = LEVEL_COUNT_VALUES[LEVEL_COUNT_VALUES.length - 1] ?? 6;
 // The filter reuses the same per-entity `level ?? 0` convention the
 // store's `removeLevel` action uses (legacy single-layer entities
 // without a `level` field default to 0).
-function countEntitiesOnLevel(level: MazeData, targetLevel: number): {
+// P1-6: exported so EditorStatusBar's per-layer breakdown chip
+// reuses this helper (single source of truth — the numbers stay
+// in lockstep across the status bar and the level tab tooltips).
+export function countEntitiesOnLevel(level: MazeData, targetLevel: number): {
   pickups: number;
   enemies: number;
   traps: number;

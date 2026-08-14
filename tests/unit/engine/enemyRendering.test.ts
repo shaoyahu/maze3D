@@ -143,10 +143,16 @@ describe('P1-4 Phase 1 — enemy 视觉升级 humanoid + PBR + shadow', () => {
   });
 
   it('shared geometry across enemies (body/head/arms instances reused)', () => {
-    // The wall/pickup pattern is to share geometry + material so
-    // a level with 50 enemies doesn't pay 50× geometry upload cost.
-    // Phase 1 preserves that: every enemy body shares the same
+    // The wall/pickup pattern is to share geometry so a level
+    // with 50 enemies doesn't pay 50× geometry upload cost.
+    // P1-4 preserved that: every enemy body shares the same
     // bodyGeom, every head shares headGeom, etc.
+    //
+    // P1-7: body + arms MATERIALS are per-enemy (cloned) so
+    // the chase-flash lerp can mutate each enemy's body color
+    // independently. Geometry is still shared — material is
+    // what differs. Head material stays shared (constant color
+    // 0x886666 regardless of state, no per-instance need).
     const maze = makeMaze({
       enemies: [
         { id: 'e1', x: 0, z: 0, path: [{ x: 0, z: 0 }, { x: 2, z: 0 }] },
@@ -166,6 +172,73 @@ describe('P1-4 Phase 1 — enemy 视觉升级 humanoid + PBR + shadow', () => {
       expect(armLs[i]).toBe(armLs[0]);
       expect(armRs[i]).toBe(armRs[0]);
     }
+  });
+
+  // P1-7: per-enemy body + arms material instances (not shared).
+  // The head material is still shared (constant color across
+  // states). Without per-enemy material, the Game tick would
+  // mutate the same bodyMat for every enemy in lockstep — no
+  // per-enemy chase flash possible.
+  it('P1-7: per-enemy body + arms materials are NOT shared (chase flash needs per-instance mutation)', () => {
+    const maze = makeMaze({
+      enemies: [
+        { id: 'e1', x: 0, z: 0, path: [{ x: 0, z: 0 }, { x: 2, z: 0 }] },
+        { id: 'e2', x: 2, z: 0, path: [{ x: 2, z: 0 }, { x: 0, z: 0 }] },
+      ],
+    });
+    const { enemies } = buildScene(maze);
+    const bodyMats = enemies.map(
+      (g) => (g.children[0] as THREE.Mesh).material as THREE.MeshStandardMaterial,
+    );
+    const armMats = enemies.map(
+      (g) => (g.children[2] as THREE.Mesh).material as THREE.MeshStandardMaterial,
+    );
+    // Per-enemy: each enemy has its own material instance. We
+    // verify via `not.toBe` (different references), not just
+    // `not.toEqual` — different instances with the same color
+    // would still pass the equality check, but they're the
+    // wrong shape for per-instance color mutation.
+    for (let i = 1; i < bodyMats.length; i++) {
+      expect(bodyMats[i]).not.toBe(bodyMats[0]);
+      expect(armMats[i]).not.toBe(armMats[0]);
+    }
+    // Mutating one enemy's body color must NOT affect the
+    // other — this is the actual behavioral contract for
+    // per-enemy chase flash.
+    bodyMats[0]!.color.setHex(0xff0000);
+    expect(bodyMats[1]!.color.getHex()).not.toBe(0xff0000);
+  });
+
+  it('P1-7: head material IS shared (constant color, no per-instance need)', () => {
+    const maze = makeMaze({
+      enemies: [
+        { id: 'e1', x: 0, z: 0, path: [{ x: 0, z: 0 }, { x: 2, z: 0 }] },
+        { id: 'e2', x: 2, z: 0, path: [{ x: 2, z: 0 }, { x: 0, z: 0 }] },
+      ],
+    });
+    const { enemies } = buildScene(maze);
+    const headMats = enemies.map(
+      (g) => (g.children[1] as THREE.Mesh).material as THREE.MeshStandardMaterial,
+    );
+    // Heads share the same material instance (P1-4 锁: head
+    // color 0x886666 is constant across states, so per-instance
+    // material would just burn memory).
+    expect(headMats[1]).toBe(headMats[0]);
+  });
+
+  it('P1-7: per-enemy bodyMat ref is cached on group.userData for fast tick access', () => {
+    // The Game tick reads group.userData.bodyMat + armMat every
+    // frame. If the refs are missing, the chase-flash lerp is
+    // a no-op (graceful fallback) — this test pins the contract.
+    const maze = makeMaze({
+      enemies: [
+        { id: 'e1', x: 0, z: 0, path: [{ x: 0, z: 0 }, { x: 2, z: 0 }] },
+      ],
+    });
+    const { enemies } = buildScene(maze);
+    const group = enemies[0];
+    expect(group.userData.bodyMat).toBeInstanceOf(THREE.MeshStandardMaterial);
+    expect(group.userData.armMat).toBeInstanceOf(THREE.MeshStandardMaterial);
   });
 
   it('multi-layer enemy spawns at the correct y offset (eLevel * FLOOR_HEIGHT)', () => {
