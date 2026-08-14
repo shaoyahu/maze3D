@@ -502,25 +502,41 @@ export function buildScene(maze: MazeData, darkMode =false): SceneRefs {
   // PBR-ish material (Standard) so dark mode + key light actually
   // shade the body. Lambert is too flat for fp3d; the body becomes
   // a uniform dark blob.
-  const bodyMat = new THREE.MeshStandardMaterial({
-    color: 0x553333,
-    roughness: 0.7,
-    metalness: 0.1,
-  });
+  //
+  // P1-7: body + arms are now per-enemy material instances (cloned
+  // inside the enemy loop below) so the Game tick can lerp each
+  // enemy's body color independently during a chase flash. The
+  // head material stays shared (P1-4 锁) — head color is constant
+  // 0x886666 regardless of state, so per-instance material would
+  // just burn memory. disposeScene walks the scene graph and
+  // releases every per-enemy material via seenMats dedup; no new
+  // dispose code required.
   const headMat = new THREE.MeshStandardMaterial({
     color: 0x886666,
     roughness: 0.6,
     metalness: 0.05,
   });
-  const armMat = new THREE.MeshStandardMaterial({
-    color: 0x553333,
-    roughness: 0.7,
-    metalness: 0.1,
-  });
   for (const e of maze.enemies) {
     const eLevel = e.level ?? 0;
     const group = new THREE.Group();
     group.userData = { enemy: e };
+    // P1-7: per-enemy body + arms material (cloned fresh). The
+    // template materials live only inside this loop; the
+    // previous (P1-4) shared bodyMat / armMat hoisting is gone.
+    // Trade-off: 50 enemies × 2 materials = 100 materials
+    // (vs. 3 shared); acceptable for the fp3d chase-flash
+    // visual on commodity hardware (still well under the
+    // P4a 1k draw call / 1k material budget).
+    const bodyMat = new THREE.MeshStandardMaterial({
+      color: 0x553333,
+      roughness: 0.7,
+      metalness: 0.1,
+    });
+    const armMat = new THREE.MeshStandardMaterial({
+      color: 0x553333,
+      roughness: 0.7,
+      metalness: 0.1,
+    });
     // Body: capsule, anchored so its bottom sits at floor level.
     const body = new THREE.Mesh(bodyGeom, bodyMat);
     body.position.y = bodyHeight / 2;
@@ -583,7 +599,12 @@ export function buildScene(maze: MazeData, darkMode =false): SceneRefs {
     group.add(fovCone);
     // userData hook so Game.update can find the fovCone child
     // without indexing children[4] (future-proof against re-ordering).
-    group.userData = { enemy: e, fovCone, bodyHeight };
+    // P1-7: also store the per-enemy body / arm material refs so
+    // the chase-flash lerp can mutate bodyMat.color + armMat.color
+    // every frame (P1-4 shared these materials across all
+    // enemies; P1-7 un-shares body + arms so the flash is
+    // per-enemy). The head material stays shared.
+    group.userData = { enemy: e, fovCone, bodyHeight, bodyMat, armMat };
     // Spawn position: cell center, y = 0 (group's local origin is
     // the floor; body sits at y = bodyHeight/2 above it).
     group.position.set(
