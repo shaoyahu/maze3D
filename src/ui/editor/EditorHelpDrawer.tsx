@@ -219,6 +219,28 @@ export function EditorHelpDrawer({
               <li>{t('editor.help.checklist.trapsAndDoors')}</li>
             </ul>
           </section>
+
+          {/* ----- Section 5: 多层迷宫 (P5-editor-multilayer Task 8) -----
+              Pure addendum to the four historical sections. Each
+              sub-block (add / remove / connect / JSON) maps to a
+              concrete editor action so the user can scan the cheat
+              sheet and immediately know where to click. */}
+          <section className="editor-help__section" data-testid="editor-help-section-multi-layer">
+            <h3 className="editor-help__section-title">{t('editor.help.section.multiLayer')}</h3>
+            <p className="editor-help__section-intro">{t('editor.help.multiLayerIntro')}</p>
+
+            <h4 className="editor-help__subsection-title">{t('editor.help.multiLayerAdd')}</h4>
+            <p className="editor-help__section-intro">{t('editor.help.multiLayerAddBody')}</p>
+
+            <h4 className="editor-help__subsection-title">{t('editor.help.multiLayerRemove')}</h4>
+            <p className="editor-help__section-intro">{t('editor.help.multiLayerRemoveBody')}</p>
+
+            <h4 className="editor-help__subsection-title">{t('editor.help.multiLayerConnect')}</h4>
+            <p className="editor-help__section-intro">{t('editor.help.multiLayerConnectBody')}</p>
+
+            <h4 className="editor-help__subsection-title">{t('editor.help.multiLayerJson')}</h4>
+            <p className="editor-help__section-intro">{t('editor.help.multiLayerJsonBody')}</p>
+          </section>
         </div>
       </div>
     </div>,

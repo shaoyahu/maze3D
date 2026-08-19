@@ -78,7 +78,7 @@ describe('EditorViewport (P2-4b #11)', () => {
     // (1,1) is a wall in the default fixture.
     fireEvent.click(screen.getByTestId('cell-1-1'));
     const lvl = useEditorStore.getState().level;
-    expect(lvl.walls[1]![1]).toBe(1);
+    expect(lvl.walls![1]![1]).toBe(1);
     expect(useEditorStore.getState().past).toHaveLength(0);
   });
 
@@ -89,7 +89,7 @@ describe('EditorViewport (P2-4b #11)', () => {
     // (4,3) — placeWall silently rejects start/exit cells.
     fireEvent.click(screen.getByTestId('cell-1-0'));
     const lvl = useEditorStore.getState().level;
-    expect(lvl.walls[0]![1]).toBe(1);
+    expect(lvl.walls![0]![1]).toBe(1);
     expect(useEditorStore.getState().past).toHaveLength(1);
   });
 
@@ -105,7 +105,7 @@ describe('EditorViewport (P2-4b #11)', () => {
     fireEvent.click(screen.getByTestId('cell-0-0'));
     // Assert — the start cell (0,0) is still a floor.
     const lvl = useEditorStore.getState().level;
-    expect(lvl.walls[0]![0]).toBe(0);
+    expect(lvl.walls![0]![0]).toBe(0);
     // And no history entry was created.
     expect(useEditorStore.getState().past).toHaveLength(0);
     expect(useEditorStore.getState().dirty).toBe(false);
@@ -117,7 +117,7 @@ describe('EditorViewport (P2-4b #11)', () => {
     render(<EditorViewport />);
     fireEvent.click(screen.getByTestId('cell-1-1'));
     const lvl = useEditorStore.getState().level;
-    expect(lvl.walls[1]![1]).toBe(0);
+    expect(lvl.walls![1]![1]).toBe(0);
     expect(useEditorStore.getState().past).toHaveLength(1);
   });
 
@@ -126,7 +126,7 @@ describe('EditorViewport (P2-4b #11)', () => {
     render(<EditorViewport />);
     fireEvent.click(screen.getByTestId('cell-1-0'));
     const lvl = useEditorStore.getState().level;
-    expect(lvl.walls[0]![1]).toBe(0);
+    expect(lvl.walls![0]![1]).toBe(0);
     expect(useEditorStore.getState().past).toHaveLength(0);
   });
 
@@ -164,7 +164,7 @@ describe('EditorViewport (P2-4b #11)', () => {
     const lvl = useEditorStore.getState().level;
     // P3-1: editor store writes start.level = 0 alongside x/z.
     expect(lvl.start).toEqual({ x: 1, z: 1, level: 0 });
-    expect(lvl.walls[1]![1]).toBe(0);
+    expect(lvl.walls![1]![1]).toBe(0);
   });
 
   it('clicking a cell with the exit tool moves exit to that cell', () => {
@@ -339,12 +339,12 @@ describe('EditorViewport (P2-4b #11)', () => {
         selection: { kind: 'wall', x: 1, z: 1 },
       });
       render(<EditorViewport />);
-      const before = useEditorStore.getState().level.walls.map((r) => r.slice());
+      const before = useEditorStore.getState().level.walls!.map((r) => r.slice());
       const vp = screen.getByTestId('editor-viewport');
       fireEvent.mouseDown(vp, { button: 0, clientX: 5, clientY: 5 });
       fireEvent.mouseUp(vp, { button: 0, clientX: 5, clientY: 5 });
       expect(useEditorStore.getState().selection).toBeNull();
-      const after = useEditorStore.getState().level.walls;
+      const after = useEditorStore.getState().level.walls!;
       expect(after).toEqual(before);
     });
 

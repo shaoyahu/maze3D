@@ -340,14 +340,14 @@ function GamePage() {
       // P2-3: ids starting with 'algo-v1-' are procedural seeds — we generate
       // the MazeData on demand via AlgorithmMazeProvider instead of looking
       // it up in the hand-crafted `levels` list. P3-1 added `algo-v2-…`
-      // (multi-level), P4 added `algo-v3-…` (3D voxel) — both go through
-      // the same `AlgorithmMazeProvider.load(id)` dispatch (the provider
-      // routes v3 ids to `load3D` internally). Anything else goes
-      // through the EditorMazeProvider (custom + built-in).
+      // (multi-level). Anything else goes through the EditorMazeProvider
+      // (custom + built-in). The legacy v3 (3D voxel) prefix was retired
+      // in P4-refactor-fp2d; `algo-v3-…` URLs now fall through to the
+      // hand-crafted provider path and surface a `bad-seed` error in the
+      // UI (P4-refactor-fp2d console.warn + redirect policy).
       const isProcedural =
         id.startsWith('algo-v1-') ||
-        id.startsWith('algo-v2-') ||
-        id.startsWith('algo-v3-');
+        id.startsWith('algo-v2-');
       const handleLoaded = (maze: MazeData) => {
         if (loadTokenRef.current !== myToken) return;
         useGameStore.getState().startLevel(maze, options);

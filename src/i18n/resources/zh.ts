@@ -422,6 +422,10 @@ export const zh: Translations = {
   // 一对"+" / "−"按钮的 label 和 aria。
   'editor.leftPanel.levelTab': 'L{level}',
   'editor.leftPanel.levelTabAria': '第 {level} 层',
+  // P5-editor-multilayer (Task 5): 每层 entity count tooltip + 多层 mode badge
+  'editor.leftPanel.levelTabTooltip': '第 {level} 层 · {count} 个实体',
+  'editor.leftPanel.levelTabEntityBreakdown': '{pickups} 拾取 · {enemies} 敌人 · {traps} 陷阱 · {doors} 门 · {transitions} 垂直连接',
+  'editor.leftPanel.multiLayerBadge': '多层模式',
   'editor.leftPanel.addLevel': '加层',
   'editor.leftPanel.removeLevel': '删层',
   'editor.leftPanel.addLevelAria': '增加一层（当前 {count} 层）',
@@ -448,6 +452,9 @@ export const zh: Translations = {
   // match the toolbar tool label and the properties-panel card label.
   'editor.status.pickups': '道具',
   'editor.status.enemies': '敌人',
+  // P5-editor-multilayer (Task 9): 多层时显示 "第 1/3 层"，单层时 "1 层"
+  'editor.status.layerIndicator.single': '1 层',
+  'editor.status.layerIndicator.multi': '第 {current} / {total} 层',
   'editor.status.storageHintCloseAria': '知道了，关闭存储提示',
 
   // ============================================================
@@ -679,6 +686,17 @@ export const zh: Translations = {
   'editor.help.section.shortcuts': '② 快捷键',
   'editor.help.section.flow': '③ 常用流程',
   'editor.help.section.checklist': '④ 保存前自检',
+  // P5-editor-multilayer (Task 8): 新增"⑤ 多层迷宫"段
+  'editor.help.section.multiLayer': '⑤ 多层迷宫',
+  'editor.help.multiLayerIntro': '多层关卡包含 2–6 层叠放的楼层（L1、L2、…）。玩家在 L1 用 WASD 行走，通过放置的垂直连接（楼梯 / 坑洞 / 梯子）爬升或下落。',
+  'editor.help.multiLayerAdd': '加层',
+  'editor.help.multiLayerAddBody': '在 tab 栏点 [+] 按钮即可增加新的最顶层。新层默认克隆当前最顶层的墙体——你可以立刻编辑它而不影响其他层。',
+  'editor.help.multiLayerRemove': '删层',
+  'editor.help.multiLayerRemoveBody': '点 [−] 按钮删除最顶层。当只剩 1 层时，编辑器自动塌缩回单层模式（L0 网格写回传统的 `walls` 字段）。',
+  'editor.help.multiLayerConnect': '跨层连接',
+  'editor.help.multiLayerConnectBody': '用 楼梯 / 坑洞 / 梯子 工具在两个层之间放置连接。viewport 里的半透明 ghost overlay 会标出跨层桥接的格子。连接的源和目标格子都必须在各自层的可走格上。',
+  'editor.help.multiLayerJson': 'JSON 输出',
+  'editor.help.multiLayerJsonBody': '多层关卡导出为 `walls2d: [layer0, layer1, …]`（每层一个 2D 网格）。升到多层时传统的 `walls` 字段被丢弃，塌缩回单层时恢复。',
   'editor.help.col.tool': '工具',
   'editor.help.col.shortcut': '快捷键',
   'editor.help.col.action': '作用',
@@ -857,4 +875,10 @@ export const zh: Translations = {
   'tutorial.teaching08.step4': '拾取第二把钥匙 — 注意陷阱扣血',
   'tutorial.teaching08.step5': '走到第二道门旁 — 再开一道门',
   'tutorial.teaching08.step6': '恭喜 — 全部新特性通关！',
+  // P5-1: 多层教学关卡 — 教玩家跨层移动的核心 mechanic
+  'tutorial.teachingMultilayer01.step1': '欢迎来到层级试炼 — 这个迷宫有 2 层',
+  'tutorial.teachingMultilayer01.step2': '按 WASD 移动,找到地上的楼梯（↑ 符号）走上去',
+  'tutorial.teachingMultilayer01.step3': '你已经到第 2 层!HUD 上的 L 标记会跟着切换',
+  'tutorial.teachingMultilayer01.step4': '在第 2 层找到出口 (绿色方块)',
+  'tutorial.teachingMultilayer01.step5': '成功!你刚刚跨越了不同层级',
 };

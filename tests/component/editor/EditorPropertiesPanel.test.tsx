@@ -471,7 +471,7 @@ describe('EditorPropertiesPanel (P2-4b #12)', () => {
     // from 1 (wall) to 0 (floor). The previous assertion expected 1,
     // which made the panel's "删除墙体" button a silent no-op for any
     // selected wall.
-    expect(useEditorStore.getState().level.walls[2]![1]).toBe(0);
+    expect(useEditorStore.getState().level.walls![2]![1]).toBe(0);
   });
 
   // F-editor-back-to-level: when an object is selected, the user can

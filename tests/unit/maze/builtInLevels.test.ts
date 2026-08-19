@@ -16,6 +16,9 @@ const EXPECTED_BUILT_IN_IDS = [
   'teaching-06',
   'teaching-07',
   'teaching-08',
+  // P5-1: new multi-layer teaching level (2 layers + stair-up
+  // transition). Auto-discovered by the /public/levels glob.
+  'teaching-multilayer-01',
   // F-2026-07-01-FCR-C-2: restore the 4 legacy fixtures referenced by
   // pickup-types.spec / enemies.spec / play-through.spec /
   // persistence.spec. Their id-based `sublevel-select` selections are
@@ -62,8 +65,13 @@ describe('BUILT_IN_JSON_PROVIDER (F-project-review-2026-06-13-A-HIGH-4)', () => 
     for (const id of ids) {
       const data = await BUILT_IN_JSON_PROVIDER.load(id);
       expect(data.id).toBe(id);
-      expect(data.walls.length).toBe(data.size.depth);
-      expect(data.walls[0].length).toBe(data.size.width);
+      // P5-editor-multilayer: built-in teaching-multilayer-01 carries
+      // `walls2d` (strict mutex), every other built-in carries
+      // `walls`. Whichever shape the level uses, the per-layer
+      // grid dimensions must match `size.depth` × `size.width`.
+      const layerWalls = data.walls ?? data.walls2d![0]!;
+      expect(layerWalls.length).toBe(data.size.depth);
+      expect(layerWalls[0].length).toBe(data.size.width);
       // The validator rejects non-integer start/exit and walls off the
       // grid; the fixtures all pass, so we don't have to re-validate
       // every field here — but pinning the shape catches a

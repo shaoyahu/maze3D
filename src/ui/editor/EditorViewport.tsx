@@ -5,6 +5,7 @@ import { isTransitionTool } from '../../maze/types';
 import type { EditorSelection } from '../../store/editorStore';
 import { EditorHelpDrawer } from './EditorHelpDrawer';
 import { useT } from '../../i18n';
+import { getCurrentLayerWalls } from '../../utils/perLayerWalls';
 
 // CSS-side counterpart of src/entities/Pickup.ts PICKUP_COLORS, so the
 // editor matches the 3D view's per-type palette without importing three.
@@ -330,7 +331,11 @@ export function EditorViewport({ anyOverlayOpen = false }: EditorViewportProps):
         select({ kind: 'transition', id: transition.id });
         return;
       }
-      if (level.walls[z]?.[x] === 1) {
+      // P5-editor-multilayer: click on a wall cell selects it on
+      // the current layer. Multi-layer levels read `walls2d[currentLevel]`
+      // via the helper; the strict mutex keeps the lookups safe.
+      const layerWalls = getCurrentLayerWalls(level, currentLevel);
+      if (layerWalls[z]?.[x] === 1) {
         select({ kind: 'wall', x, z });
         return;
       }
@@ -541,7 +546,12 @@ export function EditorViewport({ anyOverlayOpen = false }: EditorViewportProps):
   const { width, depth } = level.size;
 
   const isEmpty =
-    level.walls.every((row) => row.every((c) => c === 0)) &&
+    // P5-editor-multilayer: empty-state check operates on the
+    // current layer's grid. A level can be empty on L0 and
+    // non-empty on L1 (or vice versa) — the empty hint should
+    // track the layer the user is currently looking at, not the
+    // whole level.
+    getCurrentLayerWalls(level, currentLevel).every((row) => row.every((c) => c === 0)) &&
     level.pickups.length === 0 &&
     level.enemies.length === 0 &&
     level.traps.length === 0 &&
@@ -663,7 +673,11 @@ export function EditorViewport({ anyOverlayOpen = false }: EditorViewportProps):
         <div className="editor-viewport-minimap__grid">
           {Array.from({ length: depth }, (_, z) =>
             Array.from({ length: width }, (_, x) => {
-              const isWall = level.walls[z]?.[x] === 1;
+              // P5-editor-multilayer: minimap renders the current
+              // layer's grid. The 2D minimap inherits the per-
+              // layer rendering from the main grid below.
+              const layerWalls = getCurrentLayerWalls(level, currentLevel);
+              const isWall = layerWalls[z]?.[x] === 1;
               const isStart = level.start.x === x && level.start.z === z;
               const isExit = level.exit.x === x && level.exit.z === z;
               // P2-18: trap and door minimap pixels.
@@ -819,7 +833,12 @@ const GridBody = memo(function GridBody({
     >
       {Array.from({ length: depth }, (_, z) =>
         Array.from({ length: width }, (_, x) => {
-          const isWall = level.walls[z]?.[x] === 1;
+          // P5-editor-multilayer: the main grid paints the current
+          // layer's walls. The `currentLevel` selector above
+          // (line 173) drives both this re-render and the layer
+          // tab highlight, so a tab click re-paints immediately.
+          const layerWalls = getCurrentLayerWalls(level, currentLevel);
+          const isWall = layerWalls[z]?.[x] === 1;
           const isStart = level.start.x === x && level.start.z === z;
           const isExit = level.exit.x === x && level.exit.z === z;
           const selected = isCellSelected(x, z);

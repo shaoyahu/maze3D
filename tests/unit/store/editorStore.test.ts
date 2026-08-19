@@ -88,16 +88,16 @@ describe('useEditorStore', () => {
       expect(lvl.size).toEqual({ width: 5, depth: 4 });
       expect(lvl.start).toEqual({ x: 0, z: 0, level: 0 });
       expect(lvl.exit).toEqual({ x: 4, z: 3, level: 0 });
-      expect(lvl.walls).toHaveLength(4);
+      expect(lvl.walls!).toHaveLength(4);
       // F-2026-06-17: a fresh level is now a fully open floor (all 0s) —
       // matching the user's mental model of a "blank canvas". The W
       // tool places walls down; the previous "all-walls + carve start/exit"
       // shape was demoted to a footgun. The start/exit carve calls in
       // buildEmptyLevel remain (defensive) but no longer affect the
       // visible grid.
-      for (let z = 0; z < lvl.walls.length; z += 1) {
-        for (let x = 0; x < lvl.walls[z]!.length; x += 1) {
-          expect(lvl.walls[z]![x]).toBe(0);
+      for (let z = 0; z < lvl.walls!.length; z += 1) {
+        for (let x = 0; x < lvl.walls![z]!.length; x += 1) {
+          expect(lvl.walls![z]![x]).toBe(0);
         }
       }
       expect(lvl.pickups).toEqual([]);
@@ -414,7 +414,7 @@ describe('useEditorStore', () => {
       // Act — (2,1) is a floor cell, not start (0,0) nor exit (4,3).
       useEditorStore.getState().placeWall(2, 1);
       // Assert
-      expect(useEditorStore.getState().level.walls[1]![2]).toBe(1);
+      expect(useEditorStore.getState().level!.walls![1]![2]).toBe(1);
       expect(useEditorStore.getState().dirty).toBe(true);
       expect(useEditorStore.getState().past.length).toBe(1);
     });
@@ -433,7 +433,7 @@ describe('useEditorStore', () => {
       // Act — (2,1) is already a wall in makeMaze.
       useEditorStore.getState().placeWall(2, 1);
       // Assert
-      expect(useEditorStore.getState().level.walls[1]![2]).toBe(1);
+      expect(useEditorStore.getState().level!.walls![1]![2]).toBe(1);
       expect(useEditorStore.getState().dirty).toBe(false);
       expect(useEditorStore.getState().past.length).toBe(0);
     });
@@ -448,11 +448,11 @@ describe('useEditorStore', () => {
       // Arrange — start (0,0) in makeMaze. Confirm it's currently a wall
       // in the default all-1 grid.
       useEditorStore.setState({ past: [], dirty: false });
-      expect(useEditorStore.getState().level.walls[0]![0]).toBe(1);
+      expect(useEditorStore.getState().level!.walls![0]![0]).toBe(1);
       // Act
       useEditorStore.getState().placeWall(0, 0);
       // Assert — wall stays a wall, no history, no dirty.
-      expect(useEditorStore.getState().level.walls[0]![0]).toBe(1);
+      expect(useEditorStore.getState().level!.walls![0]![0]).toBe(1);
       expect(useEditorStore.getState().dirty).toBe(false);
       expect(useEditorStore.getState().past.length).toBe(0);
     });
@@ -460,11 +460,11 @@ describe('useEditorStore', () => {
     it('placeWall on the exit cell is a no-op (no toggle, no history, no dirty flip)', () => {
       // Arrange — exit (4,3) in makeMaze. Confirm it's currently a wall.
       useEditorStore.setState({ past: [], dirty: false });
-      expect(useEditorStore.getState().level.walls[3]![4]).toBe(1);
+      expect(useEditorStore.getState().level!.walls![3]![4]).toBe(1);
       // Act
       useEditorStore.getState().placeWall(4, 3);
       // Assert
-      expect(useEditorStore.getState().level.walls[3]![4]).toBe(1);
+      expect(useEditorStore.getState().level!.walls![3]![4]).toBe(1);
       expect(useEditorStore.getState().dirty).toBe(false);
       expect(useEditorStore.getState().past.length).toBe(0);
     });
@@ -551,7 +551,7 @@ describe('useEditorStore', () => {
       // Act
       useEditorStore.getState().placeErase(2, 1);
       // Assert
-      expect(useEditorStore.getState().level.walls[1]![2]).toBe(0);
+      expect(useEditorStore.getState().level!.walls![1]![2]).toBe(0);
       expect(useEditorStore.getState().dirty).toBe(true);
       expect(useEditorStore.getState().past.length).toBe(1);
     });
@@ -573,7 +573,7 @@ describe('useEditorStore', () => {
       // Act
       useEditorStore.getState().placeErase(2, 1);
       // Assert
-      expect(useEditorStore.getState().level.walls[1]![2]).toBe(0);
+      expect(useEditorStore.getState().level!.walls![1]![2]).toBe(0);
       expect(useEditorStore.getState().dirty).toBe(false);
       expect(useEditorStore.getState().past.length).toBe(0);
     });
@@ -590,7 +590,7 @@ describe('useEditorStore', () => {
         lastErrorKey: null,
       });
       useEditorStore.getState().placeErase(0, 0);
-      expect(useEditorStore.getState().level.walls[0]![0]).toBe(1); // start cell stays wall
+      expect(useEditorStore.getState().level!.walls![0]![0]).toBe(1); // start cell stays wall
       expect(useEditorStore.getState().lastErrorKey).toBe('editor.lastError.eraseOnStart');
       expect(useEditorStore.getState().past.length).toBe(0);
     });
@@ -604,7 +604,7 @@ describe('useEditorStore', () => {
         lastErrorKey: null,
       });
       useEditorStore.getState().placeErase(4, 3);
-      expect(useEditorStore.getState().level.walls[3]![4]).toBe(1); // exit cell stays wall
+      expect(useEditorStore.getState().level!.walls![3]![4]).toBe(1); // exit cell stays wall
       expect(useEditorStore.getState().lastErrorKey).toBe('editor.lastError.eraseOnExit');
       expect(useEditorStore.getState().past.length).toBe(0);
     });
@@ -654,7 +654,7 @@ describe('useEditorStore', () => {
       // UX win over the legacy silent-reject so the user isn't stuck
       // with "I clicked but nothing happened".
       expect(useEditorStore.getState().level.start).toEqual({ x: 3, z: 1, level: 0 });
-      expect(useEditorStore.getState().level.walls[1]![3]).toBe(0);
+      expect(useEditorStore.getState().level!.walls![1]![3]).toBe(0);
       expect(useEditorStore.getState().dirty).toBe(true);
       expect(useEditorStore.getState().past.length).toBe(1);
     });
@@ -874,7 +874,7 @@ describe('useEditorStore', () => {
       const enemyId = useEditorStore.getState().level.enemies[0]!.id;
       // Force (3, 1) to be a wall so we can confirm carve-on-append.
       const lvl = useEditorStore.getState().level;
-      const walls = lvl.walls.map((r) => r.slice());
+      const walls = lvl.walls!.map((r) => r.slice());
       walls[1]![3] = 1;
       useEditorStore.setState({ level: { ...lvl, walls } });
       // Act
@@ -886,7 +886,7 @@ describe('useEditorStore', () => {
         { x: 2, z: 1 },
         { x: 3, z: 1 },
       ]);
-      expect(next.walls[1]![3]).toBe(0);
+      expect(next!.walls![1]![3]).toBe(0);
       expect(useEditorStore.getState().lastError).toBeNull();
     });
 
@@ -1026,7 +1026,7 @@ it('refuses to commit and surfaces pathNotAdjacent when any segment is diagonal'
       // Act — try to drop a wall on the same cell.
       useEditorStore.getState().placeWall(2, 1);
       // Assert — wall not placed, error key set to collideWithPickup.
-      expect(useEditorStore.getState().level.walls[1]![2]).toBe(0);
+      expect(useEditorStore.getState().level!.walls![1]![2]).toBe(0);
       expect(useEditorStore.getState().lastErrorKey).toBe('editor.lastError.collideWithPickup');
     });
 
@@ -1156,14 +1156,14 @@ it('refuses to commit and surfaces pathNotAdjacent when any segment is diagonal'
       // Assert
       const lvl = useEditorStore.getState().level;
       expect(lvl.size).toEqual({ width: 3, depth: 3 });
-      expect(lvl.walls).toHaveLength(3);
+      expect(lvl.walls!).toHaveLength(3);
       // F-2026-06-17: a resize rebuilds the grid as an empty open floor
       // (all 0s), matching the new buildEmptyLevel behavior. Anything the
       // user had placed before is dropped — OOB walls from the previous
       // size never silently re-appear.
-      for (let z = 0; z < lvl.walls.length; z += 1) {
-        for (let x = 0; x < lvl.walls[z]!.length; x += 1) {
-          expect(lvl.walls[z]![x]).toBe(0);
+      for (let z = 0; z < lvl.walls!.length; z += 1) {
+        for (let x = 0; x < lvl.walls![z]!.length; x += 1) {
+          expect(lvl.walls![z]![x]).toBe(0);
         }
       }
       // Exit (4,3) → (2,2) after clamp.
@@ -1201,7 +1201,7 @@ it('refuses to commit and surfaces pathNotAdjacent when any segment is diagonal'
       // Assert
       const lvl = useEditorStore.getState().level;
       expect(lvl.size).toEqual({ width: 1, depth: 1 });
-      expect(lvl.walls).toEqual([[0]]);
+      expect(lvl.walls!).toEqual([[0]]);
       expect(lvl.start).toEqual({ x: 0, z: 0, level: 0 });
       expect(lvl.exit).toEqual({ x: 0, z: 0, level: 0 });
     });
@@ -1354,8 +1354,8 @@ it('refuses to commit and surfaces pathNotAdjacent when any segment is diagonal'
       // Act
       useEditorStore.getState().deleteSelected();
       // Assert — that one cell is carved; every other cell is untouched.
-      expect(useEditorStore.getState().level.walls[1]![2]).toBe(0);
-      expect(useEditorStore.getState().level.walls[0]![1]).toBe(1);
+      expect(useEditorStore.getState().level!.walls![1]![2]).toBe(0);
+      expect(useEditorStore.getState().level!.walls![0]![1]).toBe(1);
       expect(useEditorStore.getState().past.length).toBe(1);
     });
 
@@ -1377,7 +1377,7 @@ it('refuses to commit and surfaces pathNotAdjacent when any segment is diagonal'
       // Act
       useEditorStore.getState().deleteSelected();
       // Assert
-      expect(useEditorStore.getState().level.walls[0]![0]).toBe(0);
+      expect(useEditorStore.getState().level!.walls![0]![0]).toBe(0);
       expect(useEditorStore.getState().past).toEqual([]);
       expect(useEditorStore.getState().dirty).toBe(false);
     });
@@ -1408,11 +1408,11 @@ it('refuses to commit and surfaces pathNotAdjacent when any segment is diagonal'
         past: [],
       });
       useEditorStore.getState().placeWall(1, 0);
-      expect(useEditorStore.getState().level.walls[0]![1]).toBe(1);
+      expect(useEditorStore.getState().level!.walls![0]![1]).toBe(1);
       // Act
       useEditorStore.getState().undo();
       // Assert
-      expect(useEditorStore.getState().level.walls[0]![1]).toBe(0);
+      expect(useEditorStore.getState().level!.walls![0]![1]).toBe(0);
     });
 
     it('redo replays the undone action', () => {
@@ -1425,7 +1425,7 @@ it('refuses to commit and surfaces pathNotAdjacent when any segment is diagonal'
       // Act
       useEditorStore.getState().redo();
       // Assert
-      expect(useEditorStore.getState().level.walls[0]![1]).toBe(1);
+      expect(useEditorStore.getState().level!.walls![0]![1]).toBe(1);
     });
 
     // F-2026-06-12-B2: dirty is no longer a monotonic boolean — it is
@@ -2040,6 +2040,42 @@ it('refuses to commit and surfaces pathNotAdjacent when any segment is diagonal'
         expect(useEditorStore.getState().level.levelCount).toBe(2);
         expect(useEditorStore.getState().past.length).toBe(before - 1);
       });
+
+      // P5-editor-multilayer: addLevel must produce a `walls2d`
+      // array of `levelCount` layers (strict `walls xor walls2d`
+      // mutex). The first addLevel promotes a single-layer level
+      // to multi-layer; the second addLevel appends a clone of
+      // the current top.
+      it('promotes a single-layer level to multi-layer on first addLevel (walls → walls2d)', () => {
+        const base = makeMaze({ levelCount: 1 });
+        expect(base.walls).toBeDefined();
+        useEditorStore.setState({ level: base, currentLevel: 0, dirty: false });
+        useEditorStore.getState().addLevel();
+        const after = useEditorStore.getState().level;
+        // Strict mutex: `walls` is gone, `walls2d` is populated.
+        expect(after.walls).toBeUndefined();
+        expect(after.walls2d).toHaveLength(2);
+        // The new L1 is a deep clone of L0 — equal value, not the
+        // same array reference (so editing L1 won't touch L0).
+        expect(after.walls2d![0]).toEqual(base.walls!);
+        expect(after.walls2d![1]).toEqual(base.walls!);
+        expect(after.walls2d![1]).not.toBe(after.walls2d![0]);
+      });
+
+      it('appends a cloned top layer on subsequent addLevel (no-op for already-multi-layer shape)', () => {
+        const base = makeMaze({ levelCount: 2 });
+        // Manually attach walls2d to simulate a level that's already
+        // multi-layer (the test fixture builder doesn't have a
+        // multi-layer shape).
+        const multi: MazeData = { ...base, walls: undefined, walls2d: [base.walls!.map((r) => r.slice()), base.walls!.map((r) => r.slice())] };
+        useEditorStore.setState({ level: multi, currentLevel: 1, dirty: false });
+        useEditorStore.getState().addLevel();
+        const after = useEditorStore.getState().level;
+        expect(after.walls2d).toHaveLength(3);
+        // Top layer = clone of the previous top.
+        expect(after.walls2d![2]).toEqual(after.walls2d![1]);
+        expect(after.walls2d![2]).not.toBe(after.walls2d![1]);
+      });
     });
 
     describe('removeLevel', () => {
@@ -2136,6 +2172,45 @@ it('refuses to commit and surfaces pathNotAdjacent when any segment is diagonal'
         expect(useEditorStore.getState().level.levelCount).toBe(2);
         // L0 entity survived both ops.
         expect(useEditorStore.getState().level.pickups.map((p) => p.id)).toEqual(['p0']);
+      });
+
+      // P5-editor-multilayer: removeLevel shrinks `walls2d` in
+      // lockstep with `levelCount`. When only one layer remains
+      // we must collapse back to single-layer (`walls2d` gone,
+      // `walls` set) so the strict mutex stays true.
+      it('drops walls2d length to match levelCount', () => {
+        const base = makeMaze({ levelCount: 3 });
+        const multi: MazeData = {
+          ...base,
+          walls: undefined,
+          walls2d: [
+            base.walls!.map((r) => r.slice()),
+            base.walls!.map((r) => r.slice()),
+            base.walls!.map((r) => r.slice()),
+          ],
+        };
+        useEditorStore.setState({ level: multi, currentLevel: 2 });
+        useEditorStore.getState().removeLevel();
+        const after = useEditorStore.getState().level;
+        expect(after.levelCount).toBe(2);
+        expect(after.walls2d).toHaveLength(2);
+      });
+
+      it('collapses to single-layer when removing down to 1 (walls2d gone, walls set)', () => {
+        const base = makeMaze({ levelCount: 2 });
+        const multi: MazeData = {
+          ...base,
+          walls: undefined,
+          walls2d: [base.walls!.map((r) => r.slice()), base.walls!.map((r) => r.slice())],
+        };
+        useEditorStore.setState({ level: multi, currentLevel: 1 });
+        useEditorStore.getState().removeLevel();
+        const after = useEditorStore.getState().level;
+        expect(after.levelCount).toBe(1);
+        // Strict mutex: only one of the two is set.
+        expect(after.walls2d).toBeUndefined();
+        expect(after.walls).toBeDefined();
+        expect(after.walls).toEqual(base.walls!);
       });
     });
 

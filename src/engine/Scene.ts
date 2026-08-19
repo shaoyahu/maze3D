@@ -188,8 +188,22 @@ const WALL_CENTER_Y = WALL_HEIGHT / 2; // 1.2m — wall mesh center y above the 
 // multi-layer data side-channel; the rest of `buildScene` treats
 // `perLayerWalls` as an opaque `CellType[][][]` of length
 // `levelCount`.
+//
+// P5-1: hand-crafted multi-layer JSON (teaching levels, editor
+// exports) now carry `maze.walls2d` directly. We check that
+// first so the engine reads the canonical per-layer grid from
+// MazeData instead of from the procedural provider's side cache.
+// Cache miss / single-layer still falls back to `[maze.walls]`
+// (the historical back-compat path).
 function resolvePerLayerWalls(maze: MazeData): CellType[][][] {
   const levelCount = maze.levelCount ?? 1;
+  // P5-1: hand-authored multi-layer levels (e.g.
+  // teaching-multilayer-01) carry walls2d in the MazeData itself.
+  // Read it directly so the engine doesn't have to re-route through
+  // the procedural provider's per-layer cache side-channel.
+  if (maze.walls2d && maze.walls2d.length === levelCount) {
+    return maze.walls2d;
+  }
   const cached = getPerLayerWallsByLevelId(maze.id);
   if (cached && cached.length === levelCount) {
     return cached;
@@ -198,22 +212,13 @@ function resolvePerLayerWalls(maze: MazeData): CellType[][][] {
   // is the back-compat path for hand-crafted levels (which never
   // hit the provider's cache) and for any caller that builds a
   // SceneRefs without going through `AlgorithmMazeProvider.load`.
-  return [maze.walls];
+  // The `walls xor walls2d` mutex (P5-2 decision A5) guarantees
+  // exactly one of the two is set; we mirror the same fallback
+  // pattern P5-2 review H-1 fixed in Minimap / ParchmentMap.
+  return [maze.walls ?? maze.walls2d![0]!];
 }
 
 export function buildScene(maze: MazeData, darkMode =false): SceneRefs {
-  // P4: dispatch to the 3D voxel renderer when the maze carries a
-  // `walls3D` grid. The 2D path below assumes a stack-of-layers shape
-  // (per-layer walls / floor / ceiling / per-cell pickup placement),
-  // which doesn't apply to a 3D cube — there's no notion of "layer 0
-  // floor" because every (x, y, z) cell is its own cube. The 3D
-  // builder is a sibling function (buildScene3D) that fills the same
-  // SceneRefs shape with cuboid-per-wall-cell rendering and no floor
-  // / ceiling. Both branches return identical SceneRefs types so the
-  // engine can treat the result uniformly.
-  if (maze.walls3D !== undefined) {
-    return buildScene3D(maze, darkMode);
-  }
   const scene = new THREE.Scene();
 
   const hemi = new THREE.HemisphereLight();
@@ -906,236 +911,4 @@ export function disposeScene(
   // ever created) and JS heap ballooned by 1.5-6 MB per 100 levels.
   disposedTexs.clear();
   doubleDisposeWarned.clear();
-}
-
-// ---------------------------------------------------------------------------
-// P4: 3D voxel maze scene builder.
-// ---------------------------------------------------------------------------
-//
-// Sibling of `buildScene` for 3D cube mazes. The shape is the same
-// (SceneRefs) so the engine treats the result uniformly, but the
-// contents are very different:
-//
-//   - `walls` is a sparse array of `BoxGeometry(cs, cs, cs)` per
-//     wall cell in the cube. We do NOT draw a floor / ceiling —
-//     spec §6 says the player flies through the cube in 6
-//     directions, so a flat floor would clip the down view and a
-//     ceiling would be inside walls half the time anyway.
-//   - `exit` is a small green emissive box at the exit cell
-//     (centered on the cell, hovering 0.5m above the cell center
-//     to be visible from any direction in the cube).
-//   - `playerMarker` is a flat ring on the y=startY plane at the
-//     start cell's (x, z) — the player sees a green halo on
-//     whatever level they spawn on. The y level shifts as the
-//     player moves up / down so the marker always shows their
-//     current (x, z) at their current y.
-//   - `pickups`, `enemies`, `traps`, `doors`, `transitions`,
-//     `warningRings` are all `[]` for P4a. The 3D MVP doesn't
-//     place any entities; the engine's update path branches on
-//     `maze.walls3D !== undefined` and skips every per-entity
-//     check accordingly.
-//   - `setWarningFlashState` is a no-op closure — the 3D path
-//     doesn't have a hole-down warning (P3-2 is 2D-only).
-//   - `setDarkMode` is shared with the 2D palette.
-//
-// `disposeScene` is the SAME function as the 2D path — it walks
-// the scene graph and disposes every mesh's geometry + material,
-// so the per-call reference arrays (walls[] / transitions[] / etc.)
-// being empty is fine: the for-loop just doesn't iterate.
-//
-// Performance: visualSize=9 → 729 cells, half walls → ~365 cuboid
-// meshes. Each mesh is a separate THREE.Mesh but they all share
-// one geometry + one material (hoisted outside the loop), so the
-// GPU sees 365 instances of the same BoxGeometry. The draw call
-// cost is ~365 per frame, which is well under the 1000-call
-// budget for first-person rendering on commodity hardware.
-function buildScene3D(maze: MazeData, darkMode: boolean): SceneRefs {
-  // F-P4-3D-INVARIANT: the engine routes here ONLY when
-  // `maze.walls3D` is defined. A defensive re-check keeps the
-  // function from rendering an undefined wall grid if a caller
-  // passes a 2D maze by accident.
-  const walls3D = maze.walls3D;
-  if (walls3D === undefined) {
-    throw new Error('buildScene3D: maze.walls3D is undefined (caller routed 2D maze to 3D path)');
-  }
-  const scene = new THREE.Scene();
-  const cs = maze.cellSize;
-  const visualSize = walls3D.length;
-  // F-P4-3D-CUBOID: cube is `[0, visualSize*cs]` on each axis.
-  // BoxGeometry is centered on its position, so wall mesh at
-  // `(x+0.5)*cs` occupies exactly `[x*cs, (x+1)*cs]` in its axis —
-  // the same cell-center invariant as the 2D renderer.
-  const cubeSize = visualSize * cs;
-
-  // Same lighting as 2D. Dark mode is a no-op for P4a (the
-  // 3D path doesn't ship the 2D dark palette), but the setter
-  // shape is preserved for API consistency.
-  const hemi = new THREE.HemisphereLight();
-  scene.add(hemi);
-  const dir = new THREE.DirectionalLight();
-  dir.position.set(cubeSize * 0.6, cubeSize * 0.8, cubeSize * 0.6);
-  scene.add(dir);
-
-  // Walls: P4a shipped one `THREE.Mesh` per wall cell —
-  // 1687 draw calls at visualSize=15, near the 1000-draw-call
-  // budget from P4a spec §15. P4b-Instanced collapses them
-  // into a single `THREE.InstancedMesh` (1 draw call total)
-  // by encoding each wall's cell-center position as an instance
-  // matrix. The shared `wallGeom` / `wallMat` are unchanged
-  // — Three.js draws the same buffers for every instance,
-  // just with per-instance matrix transforms applied in the
-  // vertex shader. The `walls` array is now a single-element
-  // reference (`[instancedMesh]`) instead of an N-mesh array;
-  // `disposeScene`'s `seenGeoms` / `seenMats` dedup still
-  // handles the shared buffers correctly because
-  // `InstancedMesh.dispose()` only releases the instance buffer
-  // (instanceMatrix) and its own reference — the shared geom
-  // + mat stay referenced by `seenGeoms` / `seenMats` until
-  // the rest of the scene is also disposed.
-  const wallTex = createWallTexture();
-  const wallMat = new THREE.MeshLambertMaterial({ map: wallTex });
-  const wallGeom = new THREE.BoxGeometry(cs, cs, cs);
-  // F-P4b-INSTANCED-COUNT: count walls in 1 pass O(N) so we
-  // can set `InstancedMesh.count` to the actual number (not
-  // the upper-bound `visualSize³`). visualSize=15 → 3375 max
-  // but actual walls ≈ 1687 (the maze has passages, not
-  // solid). A second pass sets the matrices for the actual
-  // count; the rest of the allocation is unused (Three.js
-  // skips instances beyond `count`). Allocating max saves us
-  // a re-alloc if the maze is bigger, at the cost of ~half the
-  // instance buffer going unused — for visualSize=15 the
-  // unused 1688 slots cost ~108KB of typed-array memory
-  // (16 floats × 4 bytes × 1688), which is negligible.
-  const cubeSize3 = visualSize * visualSize * visualSize;
-  const instancedMesh = new THREE.InstancedMesh(wallGeom, wallMat, cubeSize3);
-  instancedMesh.count = 0; // start with 0 visible; real count set after the matrix pass
-  // F-P4b-INSTANCED-MATRIX: a module-level scratch matrix keeps
-  // the per-frame allocation cost at 0 (the existing 2D
-  // `__SCRATCH_*` pattern in Game.ts is the same idea). The
-  // matrix is reused for every cell — `makeTranslation` resets
-  // its elements, no `new THREE.Matrix4()` inside the loop.
-  const matrix = new THREE.Matrix4();
-  let wallCount = 0;
-  for (let z = 0; z < visualSize; z++) {
-    for (let y = 0; y < visualSize; y++) {
-      for (let x = 0; x < visualSize; x++) {
-        if (walls3D[z][y][x] !== 1) continue;
-        // F-P4-3D-CELL-CENTER: place the cuboid at the cell
-        // center `(x+0.5)*cs` so the box occupies
-        // `[x*cs, (x+1)*cs]` on its axis. Matches the 2D
-        // cell-center invariant. With InstancedMesh, the
-        // transform goes into the instance matrix instead of
-        // `mesh.position.set(...)` — the visible position is
-        // identical.
-        matrix.makeTranslation((x + 0.5) * cs, (y + 0.5) * cs, (z + 0.5) * cs);
-        instancedMesh.setMatrixAt(wallCount, matrix);
-        wallCount++;
-      }
-    }
-  }
-  instancedMesh.count = wallCount;
-  instancedMesh.instanceMatrix.needsUpdate = true;
-  scene.add(instancedMesh);
-  // F-P4b-INSTANCED-REF: `walls` is the dispose-side reference
-  // handle. Previously an N-mesh array; now a single-element
-  // array containing the InstancedMesh. Consumers that iterate
-  // over `walls` (e.g. `disposeScene`) see the same single
-  // reference and dispose it via `mesh.dispose()` — the
-  // shared `wallGeom` / `wallMat` are dedup'd via the
-  // `seenGeoms` / `seenMats` Sets in `disposeScene`.
-  const walls: THREE.InstancedMesh[] = [instancedMesh];
-
-  // F-P4-3D-EXIT: the exit pad is a small emissive green box
-  // anchored at the exit cell's center. We default to
-  // `exit3D` (the 3D cell coords); if a hand-crafted level
-  // provides only the 2D `exit` field, fall back to its
-  // (x, z) projection at y=0 (so 3D levels without
-  // `exit3D` still display the exit at the ground layer).
-  // The pad hovers `cs * 0.3` above the cell center so it's
-  // visible from any direction in the cube — a flat pad on
-  // the cell floor would be hidden by the cell's walls.
-  const exit3D = maze.exit3D ?? { x: maze.exit.x, y: 0, z: maze.exit.z };
-  const exitMat = new THREE.MeshLambertMaterial({
-    color: 0x5cff5c,
-    emissive: 0x115511,
-  });
-  const exitGeom = new THREE.BoxGeometry(cs * 0.4, cs * 0.4, cs * 0.4);
-  const exit = new THREE.Mesh(exitGeom, exitMat);
-  exit.position.set(
-    (exit3D.x + 0.5) * cs,
-    (exit3D.y + 0.5) * cs + cs * 0.3,
-    (exit3D.z + 0.5) * cs,
-  );
-  scene.add(exit);
-
-  // F-P4-3D-MARKER: a flat ring on the horizontal plane at
-  // the player's current y. The ring is created at the
-  // START cell; the engine updates its x / z each frame
-  // (same as the 2D path) but the engine's 3D tick also
-  // updates its y when the player moves up / down so the
-  // marker always glues to the player's current cell.
-  const start3D = maze.start3D ?? { x: maze.start.x, y: 0, z: maze.start.z };
-  const playerMarkerGeom = new THREE.RingGeometry(cs * 0.3, cs * 0.4, 24);
-  const playerMarkerMat = new THREE.MeshBasicMaterial({
-    color: 0x4dff88,
-    side: THREE.DoubleSide,
-  });
-  const playerMarker = new THREE.Mesh(playerMarkerGeom, playerMarkerMat);
-  playerMarker.rotation.x = -Math.PI / 2;
-  playerMarker.position.set(
-    (start3D.x + 0.5) * cs,
-    (start3D.y + 0.5) * cs,
-    (start3D.z + 0.5) * cs,
-  );
-  scene.add(playerMarker);
-
-  // F-P4-3D-NO-ENTITIES: P4a is the data + 6-direction
-  // movement MVP. Pickups / enemies / traps / doors /
-  // transitions are all 2D concepts; the 3D path doesn't
-  // carry them. The empty arrays match the SceneRefs
-  // contract so the engine's per-entity update branches
-  // (which skip on `maze.walls3D !== undefined`) never
-  // touch these.
-  const pickups: THREE.Mesh[] = [];
-  const enemies: THREE.Mesh[] = [];
-  const traps: THREE.Mesh[] = [];
-  const doors = new Map<string, THREE.Mesh>();
-  const transitions: THREE.Mesh[] = [];
-  const warningRings: THREE.Mesh[] = [];
-
-  // P3-2: warning flash is 2D-only. The 3D builder returns
-  // a no-op closure so the engine's `setWarningFlashState(t)`
-  // call (P3-2 contract) doesn't throw on a 3D maze. The
-  // `null` clear on level reset is also a no-op.
-  const setWarningFlashState = (_t: VerticalTransition | null): void => {
-    // intentional no-op
-  };
-
-  // Same dark-mode setter as the 2D path. P4a doesn't ship
-  // a 3D-specific dark palette; the setter is preserved for
-  // API consistency so the engine's `setDarkMode` call site
-  // doesn't need a 3D-specific branch.
-  const setDarkMode = (enabled: boolean): void => {
-    if (enabled) {
-      scene.background = new THREE.Color(0x0a0a14);
-    } else {
-      scene.background = new THREE.Color(0x87ceeb);
-    }
-  };
-  setDarkMode(darkMode);
-
-  return {
-    scene,
-    walls,
-    exit,
-    pickups,
-    enemies,
-    traps,
-    doors,
-    playerMarker,
-    transitions,
-    warningRings,
-    setWarningFlashState,
-    setDarkMode,
-  };
 }

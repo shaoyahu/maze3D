@@ -49,7 +49,7 @@ describe('AlgorithmMazeProvider', () => {
         expect(data.levelCount).toBe(1);
         expect(data.transitions).toEqual([]);
         expect(data.walls).toHaveLength(size);
-        for (const row of data.walls) {
+        for (const row of data.walls!) {
           expect(row).toHaveLength(size);
           for (const cell of row) {
             expect([0, 1]).toContain(cell);
@@ -104,8 +104,8 @@ describe('AlgorithmMazeProvider', () => {
     const provider = new AlgorithmMazeProvider();
     for (const algorithm of ALGOS) {
       const data = await provider.load(seedId(algorithm, 15, '0123456789abcdef'));
-      expect(data.walls[0][0]).toBe(0);
-      expect(data.walls[14][14]).toBe(0);
+      expect(data.walls![0][0]).toBe(0);
+      expect(data.walls![14][14]).toBe(0);
     }
   });
 
@@ -603,162 +603,5 @@ describe('generateMultiLevel (P3-1b comprehensive contract)', () => {
         }
       }
     }
-  });
-});
-
-// ---------------------------------------------------------------------------
-// P4: 3D voxel seed load (v3 codec + load3D). The 3D path doesn't
-// go through the algorithm registry (the registry's `generate`
-// signature is `(visualSize, rng) => CellType[][]` and 3D RB returns
-// `CellType[][][]`). load3D dispatches to `generateRecursiveBacktracker3D`
-// directly and sets `walls3D` on the returned MazeData. The contract
-// we test here is the data shape that the engine's 3D tick consumes:
-//   - `walls3D` is a 3D cube of cells.
-//   - `walls: []` (required by the 2D MazeData type, unused for 3D).
-//   - `start3D` / `exit3D` are passage cells.
-//   - `pickups` / `enemies` / `transitions` are all empty.
-//   - The 3D start is reachable from the 3D exit via isReachable3D.
-// ---------------------------------------------------------------------------
-
-import { encodeSeedV3 } from '../../../src/utils/seed';
-import { isReachable3D } from '../../../src/maze/reachability';
-
-function v3Id(size: number, hex: string): string {
-  return encodeSeedV3({
-    algorithm: '3d-recursive-backtracker',
-    size,
-    mazeSeed: hex,
-  });
-}
-
-describe('AlgorithmMazeProvider P4 — 3D voxel load', () => {
-  it('list() still returns [] for the 3D path (no catalog)', async () => {
-    const provider = new AlgorithmMazeProvider();
-    const ids = await provider.list();
-    expect(ids).toEqual([]);
-  });
-
-  // P4b-CellSize: widened the 3D size whitelist from
-  // {5, 7, 9} to {5, 7, 9, 11, 13, 15}. The load() shape
-  // (MazeData fields, walls3D cube, start3D/exit3D on
-  // passage cells) is unchanged across sizes — only the
-  // cube side length grows. The 3D RB and 3D Prim paths
-  // share this contract.
-  it('load() returns a 3D MazeData for every size in {5, 7, 9, 11, 13, 15} (P4b-CellSize widened)', async () => {
-    const provider = new AlgorithmMazeProvider();
-    for (const size of [5, 7, 9, 11, 13, 15] as const) {
-      const data = await provider.load(v3Id(size, '0123456789abcdef'));
-      expect(data.walls3D).toBeDefined();
-      expect(data.walls3D!).toHaveLength(size);
-      // Every (z, y) layer is a length-`size` array of length-`size` rows.
-      for (const layer of data.walls3D!) {
-        for (const row of layer) {
-          expect(row).toHaveLength(size);
-        }
-      }
-      // P4-PROVIDER-7: `walls` is required on MazeData; 3D cubes
-      // have no 2D walls so we satisfy the type with [].
-      expect(data.walls).toEqual([]);
-      // P4-PROVIDER-6: levelCount is intentionally NOT set for
-      // 3D — a 3D cube has no stack-of-layers concept.
-      expect(data.levelCount).toBeUndefined();
-      expect(data.transitions).toEqual([]);
-      // P4: pickups / enemies / traps / doors are all empty in P4a.
-      expect(data.pickups).toEqual([]);
-      expect(data.enemies).toEqual([]);
-      expect(data.traps).toEqual([]);
-      expect(data.doors).toEqual([]);
-      // P4-PROVIDER-8: 3D start3D / exit3D populated from the
-      // pickStartExit3D contract (both are passage cells).
-      expect(data.start3D).toBeDefined();
-      expect(data.exit3D).toBeDefined();
-      const { start3D, exit3D } = data;
-      expect(data.walls3D![start3D!.z][start3D!.y][start3D!.x]).toBe(0);
-      expect(data.walls3D![exit3D!.z][exit3D!.y][exit3D!.x]).toBe(0);
-      // 2D fallback: 2D start / exit mirror the 3D (x, z) at
-      // level 0, so legacy consumers keep reading the 2D shape.
-      expect(data.start).toMatchObject({ x: start3D!.x, z: start3D!.z, level: 0 });
-      expect(data.exit).toMatchObject({ x: exit3D!.x, z: exit3D!.z, level: 0 });
-      // The 3D start ↔ exit are reachable (3D RB is a spanning tree).
-      expect(isReachable3D(data.walls3D!, start3D!, exit3D!)).toBe(true);
-    }
-  });
-
-  it('load() is deterministic for the same v3 id (URL round-trip contract)', async () => {
-    const provider = new AlgorithmMazeProvider();
-    const a = await provider.load(v3Id(7, '0123456789abcdef'));
-    const b = await provider.load(v3Id(7, '0123456789abcdef'));
-    expect(a.walls3D).toEqual(b.walls3D);
-  });
-
-  it('different hex seeds produce different 3D mazes (entropy flows through)', async () => {
-    const provider = new AlgorithmMazeProvider();
-    const a = await provider.load(v3Id(7, '0000000000000001'));
-    const b = await provider.load(v3Id(7, '0000000000000002'));
-    expect(a.walls3D).not.toEqual(b.walls3D);
-  });
-
-  it('throws on a v3 id with an unknown 3D algorithm (regression on the v3 whitelist)', async () => {
-    const provider = new AlgorithmMazeProvider();
-    // Hand-craft a v3 id with a non-3D-prefixed algorithm. The codec's
-    // v3 whitelist rejects it before load3D is even called.
-    await expect(
-      provider.load('algo-v3-recursive-backtracker-7-0123456789abcdef'),
-    ).rejects.toThrow();
-  });
-
-  // P4b-Prim: 3D Prim dispatch. `load3D` now branches on
-  // `algorithm === '3d-prim'` and calls `generatePrim3D`.
-  // The contract is the same shape as the 3D RB test
-  // above — start3D / exit3D on passage cells, walls3D
-  // is a cube of the requested size, walls:[] back-fill.
-  // P4a RB and P4b Prim are siblings, not aliases: the
-  // generated walls differ for the same seed.
-  it('P4b-Prim: load() returns a 3D MazeData for every size in {5, 7, 9} via the 3d-prim algorithm', async () => {
-    const provider = new AlgorithmMazeProvider();
-    for (const size of [5, 7, 9, 11, 13, 15] as const) {
-      const data = await provider.load(
-        encodeSeedV3({ algorithm: '3d-prim', size, mazeSeed: '0123456789abcdef' }),
-      );
-      expect(data.walls3D).toBeDefined();
-      expect(data.walls3D!).toHaveLength(size);
-      // Every (z, y) layer is a length-`size` array of length-`size` rows.
-      for (const layer of data.walls3D!) {
-        for (const row of layer) {
-          expect(row).toHaveLength(size);
-        }
-      }
-      // Same back-compat shape as the 3D RB test.
-      expect(data.walls).toEqual([]);
-      expect(data.levelCount).toBeUndefined();
-      expect(data.transitions).toEqual([]);
-      expect(data.pickups).toEqual([]);
-      expect(data.enemies).toEqual([]);
-      expect(data.traps).toEqual([]);
-      expect(data.doors).toEqual([]);
-      expect(data.start3D).toBeDefined();
-      expect(data.exit3D).toBeDefined();
-      const { start3D, exit3D } = data;
-      expect(data.walls3D![start3D!.z][start3D!.y][start3D!.x]).toBe(0);
-      expect(data.walls3D![exit3D!.z][exit3D!.y][exit3D!.x]).toBe(0);
-      // The 3D start ↔ exit are reachable (3D Prim is a spanning tree).
-      expect(isReachable3D(data.walls3D!, start3D!, exit3D!)).toBe(true);
-    }
-  });
-
-  it('P4b-Prim: 3d-prim and 3d-recursive-backtracker produce DIFFERENT walls for the same seed', async () => {
-    // Sibling-contract guard: 3D Prim and 3D RB share data
-    // layout + thick-wall encoding, but the outer loop
-    // (frontier-based random pick vs. stack-based DFS)
-    // yields different wall patterns for the same PRNG
-    // seed. A future refactor that accidentally collapses
-    // the two generators (e.g. P4b Prim becomes a thin
-    // wrapper around P4a RB) would fail this assertion.
-    const provider = new AlgorithmMazeProvider();
-    const rbData = await provider.load(v3Id(7, '0123456789abcdef'));
-    const primData = await provider.load(
-      encodeSeedV3({ algorithm: '3d-prim', size: 7, mazeSeed: '0123456789abcdef' }),
-    );
-    expect(primData.walls3D).not.toEqual(rbData.walls3D);
   });
 });

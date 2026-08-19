@@ -16,15 +16,46 @@
 //
 // F-P3-1c-H-1: 这块 UI 之前在 P3-1c 数据/逻辑完成后 **从未** 渲染,
 // 导致 editor 多层关卡用户看不到层切换入口。本组件补齐。
+//
+// P5-editor-multilayer (Task 5): multi-layer visual affordances
+//   - per-tab tooltip shows the entity count on that layer
+//   - container gets `data-testid="editor-leveltabs-multi"` and
+//     `editor-leveltabs--multi` class when levelCount > 1 so a
+//     CSS hook can style the multi-layer state
+//   - a small "Multi-layer" badge sits next to the tab bar so the
+//     user always knows whether they're in multi-layer mode
 import { memo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useEditorStore } from '../../store/editorStore';
 import { useT } from '../../i18n';
 import { useConfirm } from '../useConfirm';
 import { isLevelCount, LEVEL_COUNT_VALUES } from '../../maze/types';
-import type { LevelCount } from '../../maze/types';
+import type { LevelCount, MazeData } from '../../maze/types';
 
 const MAX_LEVEL = LEVEL_COUNT_VALUES[LEVEL_COUNT_VALUES.length - 1] ?? 6;
+
+// P5-editor-multilayer: count entities on a specific layer so the
+// tab tooltip can show "Layer 2 · 3 entities" instead of just "L2".
+// The filter reuses the same per-entity `level ?? 0` convention the
+// store's `removeLevel` action uses (legacy single-layer entities
+// without a `level` field default to 0).
+function countEntitiesOnLevel(level: MazeData, targetLevel: number): {
+  pickups: number;
+  enemies: number;
+  traps: number;
+  doors: number;
+  transitions: number;
+  total: number;
+} {
+  const pickups = level.pickups.filter((p) => (p.level ?? 0) === targetLevel).length;
+  const enemies = level.enemies.filter((e) => (e.level ?? 0) === targetLevel).length;
+  const traps = level.traps.filter((t) => (t.level ?? 0) === targetLevel).length;
+  const doors = level.doors.filter((d) => (d.level ?? 0) === targetLevel).length;
+  const transitions = (level.transitions ?? []).filter(
+    (tr) => tr.level === targetLevel || tr.toLevel === targetLevel,
+  ).length;
+  return { pickups, enemies, traps, doors, transitions, total: pickups + enemies + traps + doors + transitions };
+}
 
 // F-P3-1c-verifier-M-1: memo + useShallow pattern, matching the
 // existing EditorLeftPanel convention (RowMenu is wrapped in memo,
@@ -38,12 +69,13 @@ export const EditorLevelTabs = memo(function EditorLevelTabs(): React.ReactEleme
   // hand-edited JSON or a draft-fix that skips validateMaze could
   // land any number here. Run through the runtime whitelist so the
   // UI can never paint 9 tabs from a malformed level.
-  const { levelCount, currentLevel } = useEditorStore(
+  const { levelCount, currentLevel, level } = useEditorStore(
     useShallow((s) => {
       const raw = s.level.levelCount ?? 1;
       return {
         levelCount: (isLevelCount(raw) ? raw : 1) as LevelCount,
         currentLevel: s.currentLevel,
+        level: s.level,
       };
     }),
   );
@@ -53,6 +85,7 @@ export const EditorLevelTabs = memo(function EditorLevelTabs(): React.ReactEleme
 
   const atMax = levelCount >= MAX_LEVEL;
   const atMin = levelCount <= 1;
+  const isMultiLayer = levelCount > 1;
 
   const handleRemove = async (): Promise<void> => {
     const choice = await confirm({
@@ -68,11 +101,20 @@ export const EditorLevelTabs = memo(function EditorLevelTabs(): React.ReactEleme
   };
 
   return (
-    <div className="editor-leveltabs" data-testid="editor-leveltabs">
+    <div
+      className={`editor-leveltabs${isMultiLayer ? ' editor-leveltabs--multi' : ''}`}
+      data-testid={isMultiLayer ? 'editor-leveltabs-multi' : 'editor-leveltabs'}
+    >
       <div className="editor-leveltabs__tabs" role="tablist" aria-label="Level tabs">
         {Array.from({ length: levelCount }, (_, i) => {
           const idx = i;
           const isActive = idx === currentLevel;
+          // P5-editor-multilayer: per-layer entity count feeds the
+          // tab tooltip. The breakdown is the second line so the
+          // user can scan "Layer 2 · 3 entities" then expand
+          // "2 items · 1 enemy · …" on hover.
+          const counts = countEntitiesOnLevel(level, idx);
+          const tooltip = `${t('editor.leftPanel.levelTabTooltip', { level: idx + 1, count: counts.total })} · ${t('editor.leftPanel.levelTabEntityBreakdown', counts)}`;
           return (
             <button
               key={idx}
@@ -80,7 +122,7 @@ export const EditorLevelTabs = memo(function EditorLevelTabs(): React.ReactEleme
               role="tab"
               aria-selected={isActive}
               aria-label={t('editor.leftPanel.levelTabAria', { level: idx + 1 })}
-              title={t('editor.leftPanel.levelTabAria', { level: idx + 1 })}
+              title={tooltip}
               data-testid={`level-tab-${idx}`}
               className={`editor-leveltabs__tab${isActive ? ' editor-leveltabs__tab--active' : ''}`}
               onClick={() => setCurrentLevel(idx)}
@@ -90,6 +132,15 @@ export const EditorLevelTabs = memo(function EditorLevelTabs(): React.ReactEleme
           );
         })}
       </div>
+      {isMultiLayer && (
+        <span
+          className="editor-leveltabs__badge"
+          data-testid="editor-leveltabs-badge"
+          aria-label={t('editor.leftPanel.multiLayerBadge')}
+        >
+          {t('editor.leftPanel.multiLayerBadge')}
+        </span>
+      )}
       <div className="editor-leveltabs__actions">
         <button
           type="button"

@@ -1,0 +1,69 @@
+name: CI
+
+# P0-followup #3: this workflow runs the same audit grep the pre-commit
+# hook runs, so a PR that bypasses the local hook (e.g. via the GitHub
+# web editor) still fails CI on the typecheck 蒙混 vector. The audit
+# also runs `typecheck` + `test` so PRs landing on main haven't
+# regressed the 2D path.
+
+on:
+  pull_request:
+    branches: ['**']
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # P0-followup #3: typecheck 蒙混 vector audit. The pre-commit
+      # hook runs the same grep locally; this CI step runs it again
+      # so PRs that bypass the local hook (GitHub web editor, etc.)
+      # still fail on a `maze.walls!` non-null assert.
+      #
+      # P0-followup #3 hot-fix: the original CI grep only excluded
+      # `??`-fallback lines but the regression test in
+      # `tests/unit/audit/nonNullAssert.test.ts` references the
+      # `maze.walls!` pattern in comments / docstrings as a way to
+      # describe the very thing it audits. The pre-commit hook
+      # already excludes `//`-comment lines via `grep -vE ':\s*//'`;
+      # mirror the same exclusion here so regression tests can keep
+      # referencing the forbidden pattern by name.
+      - name: Audit maze.walls! non-null asserts
+        run: |
+          set -e
+          MATCHES=$(grep -rn 'maze\.walls!' src/ tests/ \
+            --include='*.ts' --include='*.tsx' \
+            | grep -v '??' \
+            | grep -vE ':\s*//' || true)
+          if [ -n "$MATCHES" ]; then
+            echo "::error::P0-followup #3: found non-null assert on maze.walls without fallback."
+            echo "The strict 'walls xor walls2d' mutex (P5-2 decision A5) means"
+            echo "\`maze.walls!\` crashes at runtime on multi-layer levels. Use"
+            echo "\`maze.walls ?? maze.walls2d![...]!\` instead."
+            echo ""
+            echo "$MATCHES"
+            exit 1
+          fi
+          echo "✓ no maze.walls! non-null asserts found"
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test

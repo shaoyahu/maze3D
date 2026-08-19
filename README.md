@@ -208,6 +208,21 @@ P4a 起：3D 关卡是一个 `walls3D: CellType[][][]` 的体素立方体：
 
 `EnemySpawn` 描述敌人出生坐标 + 路径节点（`path: {x,z}[]`，≥ 2 节点），编辑器输出 JSON 与手写关卡共用同一 `MazeData` schema。
 
+#### 5.5.1 创建多层迷宫 (P5-2)
+
+P5-2 起，编辑器原生支持创建 2–6 层的多层迷宫：
+
+- **加层**：左侧面板底部 tab 栏点 [+] 按钮，新层是当前最顶层的 **克隆**，立刻可编辑不影响其他层
+- **删层**：点 [−] 删最顶层；剩 1 层时编辑器自动塌缩回单层布局
+- **跨层连接**：用 楼梯 / 坑洞 / 梯子 工具在两层之间放 transition，viewport 半透明 ghost overlay 显示跨层桥接的格子
+- **per-layer editing**：tab 切换立刻切到对应层 walls，per-layer entity (pickup/enemy/trap/door) 落在 entity 自己的层（用 `level` 字段标记）
+- **status bar 多层 chip**：多层时显示 "Layer 1/3"，单层时显示 "1 layer"
+- **JSON 输出**：`walls xor walls2d` 严格 mutex —— 单层导出 `{ walls: [...] }`，多层导出 `{ walls2d: [[...], [...], ...] }`；升到多层时 `walls` 自动丢弃，塌缩回单层时恢复
+
+**Per-layer walls 数据层** (`MazeData.walls2d?: CellType[][][]`)：在 P5-1 multi-layer teaching 落地，引擎的 `Scene.resolvePerLayerWalls` 直接读 `walls2d` 优先，fallback 到 procedural cache + `[walls]`。编辑器 + runtime + 手写 JSON 全部走同一份 2D 多层数据 + 同一个 `first-person` 渲染层（3D 模式只是同数据的另一视角）。
+
+教学示例：`public/levels/teaching-multilayer-01.json`（5x5 / 2 层 / 1 stair-up / 5 步 tutorial banner）。
+
 ---
 
 ## 6. 拾取物品与库存
@@ -481,14 +496,21 @@ src/
 | P4b-HudLayer | HUD LevelIndicator 2D/3D dispatch | ✅ |
 | P4b-Panorama | 3D 全景 minimap（3 y-layer 堆叠） | ✅ |
 | P4b-Instanced | 3D 墙 InstancedMesh（1687 → 1 draw call） | ✅ |
+| P4-refactor-fp2d | 3D 重新设计为「第一人称视角渲染同一份 2D 多层数据」（view=fp3d URL query + WASD x/z + transition 上下；3D path 不再是独立 dispatch；老 v3 URL 友好 fall back） | ✅ |
+
+### Phase 5 — 多层迷宫深化 ✅
+
+| 阶段 | 标题 | 状态 |
+|---|---|---|
+| P5-1 | 多层迷宫教学关卡（`MazeData.walls2d` 数据层 + 5x5 2 层 + stair-up + 5 步 tutorial） | ✅ |
+| P5-2 | 编辑器多层支持（`walls xor walls2d` 严格 mutex + `perLayerWalls` utils + addLevel/removeLevel 真实操作 walls2d + LevelTabs multi-layer badge + EditorStatusBar "Layer 1/3" chip + EditorHelpDrawer 多层段 + 教学关卡严格 mutex 适配） | ✅ |
 
 ### 候选池（待用户决策）
 
-- 3D 敌人 AI（在 3D 体素上 BFS chase + 3D 球体渲染）
-- 3D 编辑器（多层 raycasting + 工具面板 + undo/redo + JSON 导入导出）
-- 3D 教程（教学 JSON + 高亮渲染）
-- HUD chip total "L5/15"（多层时显示「当前层 / 总层数」）
-- per-instance color（3D InstancedMesh damage flash）
+- 3D 敌人 AI（2D BFS chase + 3D 球体渲染，沿用 fp3d view）
+- 跨层 BFS reachability (P5-2 spec Task 6 留作后续增量)
+- per-instance color (fp3d wall damage flash)
+- HUD chip total "L1/3"（多层时显示「当前层 / 总层数」— P5-2 已 ship，候选池是 chip 形态扩展）
 - 音频管线 / 移动端触摸支持 / 额外 pickup 子类型
 
 详细路线图：`docs/roadmap.md`。

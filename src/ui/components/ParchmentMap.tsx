@@ -376,9 +376,16 @@ function drawWalls(
   toPx: (x: number, z: number) => { x: number; y: number },
 ): void {
   ctx.fillStyle = 'rgba(58, 42, 26, 0.85)';
+  // P5-editor-multilayer: ParchmentMap renders the L0 grid only. The
+  // parchment is a static "you-are-here" overlay (no layer
+  // switcher) and the spec defers multi-layer parchment to P+.
+  // Falls back to `walls2d[0]` for multi-layer levels per the
+  // strict `walls xor walls2d` mutex (decision A5) — a 2D
+  // multi-layer `MazeData` has `walls2d` only, no `walls`.
+  const wallsL0 = maze.walls ?? maze.walls2d![0]!;
   for (let z = 0; z < maze.size.depth; z++) {
     for (let x = 0; x < maze.size.width; x++) {
-      if (maze.walls[z]?.[x] === 1) {
+      if (wallsL0[z]?.[x] === 1) {
         const p = toPx(x, z);
         ctx.fillRect(p.x, p.y, cellSize, cellSize);
       }

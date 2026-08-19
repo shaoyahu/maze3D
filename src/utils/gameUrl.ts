@@ -40,7 +40,7 @@ import {
   type StartLevelOptions,
   type VictoryType,
 } from '../maze/types';
-import { decodeSeed, encodeSeed, encodeSeedV2, encodeSeedV3 } from './seed';
+import { decodeSeed, encodeSeed, encodeSeedV2 } from './seed';
 
 const SEED_QUERY = 'seed';
 const ID_QUERY = 'id';
@@ -198,17 +198,9 @@ export function parseGameSearchParams(
   // `levelCount` (i.e. it was a v1 id to begin with, or a v2 id
   // with the back-compat `levelCount=1` value — which decodes
   // identically so the codec-version swap is invisible).
-  // P4: v3 (3D voxel) is its own wire format. The 3D visualSize
-  // (5/7/9) and the 3d-prefixed algorithm name would both be
-  // rejected by the v1 whitelist, so we MUST re-encode via
-  // `encodeSeedV3` to keep the URL round-trippable. The
-  // `algorithm.startsWith('3d-')` check is the same predicate
-  // `AlgorithmMazeProvider.load` uses to dispatch to `load3D`.
-  const seedId = decoded.algorithm.startsWith('3d-')
-    ? encodeSeedV3(decoded)
-    : decoded.levelCount && decoded.levelCount > 1
-      ? encodeSeedV2(decoded, decoded.levelCount)
-      : encodeSeed(decoded);
+  const seedId = decoded.levelCount && decoded.levelCount > 1
+    ? encodeSeedV2(decoded, decoded.levelCount)
+    : encodeSeed(decoded);
   return { ok: true, parsed: { id: seedId, options } };
 }
 
@@ -225,16 +217,13 @@ export function buildGameSearchParams(
   // count between `size` and the hex mazeSeed). v2 ids are still
   // procedural — they round-trip through `?seed=…` the same way v1
   // ids do — so the isProcedural gate has to accept both prefixes.
-  // P4: v3 (3D voxel mazes) joins the procedural gate. Same
-  // `?seed=…` round-trip contract as v1/v2; a future v4 (or any
-  // other not-yet-defined prefix) intentionally falls through to
-  // the `?id=…` branch, which is the conservative choice: a
-  // hand-crafted level id cannot collide with a future seed
-  // format. `parseGameSearchParams` still rejects unknown seed
-  // prefixes via `decodeSeed`, so a deep-link carrying
-  // `?seed=algo-v3-…` lands in the `bad-seed` error path either way
-  // (see the new gameUrl.test.ts case 'tamper').
-  const isProcedural = id.startsWith('algo-v1-') || id.startsWith('algo-v2-') || id.startsWith('algo-v3-');
+  // P0-followup: the legacy v3 (3D voxel) prefix was retired in
+  // P4-refactor-fp2d; `algo-v3-…` URLs no longer reach this gate
+  // and instead fall through to the `?id=…` branch where
+  // `parseGameSearchParams` rejects the unknown seed prefix via
+  // `decodeSeed` (P4-refactor-fp2d redirect policy handles the
+  // user-facing fallback).
+  const isProcedural = id.startsWith('algo-v1-') || id.startsWith('algo-v2-');
   if (isProcedural) {
     params.set(SEED_QUERY, id);
   } else {
@@ -252,18 +241,9 @@ export function buildGameSearchParams(
   // between the two encoders except for the wire prefix, and v1
   // is the canonical name for it because every historical best
   // record is on the v1 codec).
-  // P4: v3 (3D voxel) gets its own encoder branch. The size is
-  // a 3D visualSize (5/7/9/11/13/15), not the 2D MazeSize
-  // (15/30/50), so we route through `encodeSeedV3(seed)` instead
-  // of `encodeSeed(seed)` (which would emit a wire-invalid v1
-  // id with the 3D `3d-` prefixed algorithm name). v3 has its
-  // own narrow shape because the 3D sizes don't satisfy the
-  // 2D `MazeSize` constraint on the shared `Seed` interface.
   if (isProcedural && options.seed) {
     const seed = options.seed;
-    if (seed.algorithm.startsWith('3d-')) {
-      params.set(SEED_QUERY, encodeSeedV3(seed));
-    } else if (seed.levelCount && seed.levelCount > 1) {
+    if (seed.levelCount && seed.levelCount > 1) {
       params.set(SEED_QUERY, encodeSeedV2(seed, seed.levelCount));
     } else {
       params.set(SEED_QUERY, encodeSeed(seed));
