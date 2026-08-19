@@ -35,12 +35,22 @@ jobs:
       # hook runs the same grep locally; this CI step runs it again
       # so PRs that bypass the local hook (GitHub web editor, etc.)
       # still fail on a `maze.walls!` non-null assert.
+      #
+      # P0-followup #3 hot-fix: the original CI grep only excluded
+      # `??`-fallback lines but the regression test in
+      # `tests/unit/audit/nonNullAssert.test.ts` references the
+      # `maze.walls!` pattern in comments / docstrings as a way to
+      # describe the very thing it audits. The pre-commit hook
+      # already excludes `//`-comment lines via `grep -vE ':\s*//'`;
+      # mirror the same exclusion here so regression tests can keep
+      # referencing the forbidden pattern by name.
       - name: Audit maze.walls! non-null asserts
         run: |
           set -e
           MATCHES=$(grep -rn 'maze\.walls!' src/ tests/ \
             --include='*.ts' --include='*.tsx' \
-            | grep -v '??' || true)
+            | grep -v '??' \
+            | grep -vE ':\s*//' || true)
           if [ -n "$MATCHES" ]; then
             echo "::error::P0-followup #3: found non-null assert on maze.walls without fallback."
             echo "The strict 'walls xor walls2d' mutex (P5-2 decision A5) means"
