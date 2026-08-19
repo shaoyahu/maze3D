@@ -8,14 +8,7 @@ name: CI
 
 on:
   pull_request:
-    branches:
-      - main
-      - p4-refactor-fp2d
-      - p5-editor-multilayer
-      - p0-followups
-      - p1-enemy-fp3d
-      - p1-addlevel-empty
-      - p1-statusbar-enemycolor
+    branches: ['**']
   push:
     branches: [main]
 
