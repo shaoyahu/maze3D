@@ -1,7 +1,15 @@
 import * as THREE from 'three';
 import type { CellType, KeyColor, MazeData, VerticalTransition } from '../maze/types';
 import { createPickupMaterial } from '../entities/Pickup';
-import { ENEMY_HEIGHT, ENEMY_RADIUS } from '../entities/Enemy';
+import { ENEMY_RADIUS } from '../entities/Enemy';
+// P1-4 Phase 1: ENEMY_HEIGHT (1.6m, defined in entities/Enemy.ts) is
+// still the collision dimension (P2-4a 锁), but the visible humanoid
+// is taller — body capsule (1.4m) + head sphere (0.3m) = 1.7m. The
+// collision and visual dimensions are deliberately decoupled so the
+// fp3d-viewer doesn't see a "torso floating above the floor" while
+// the collision still hits at the same cell coordinates. We don't
+// import ENEMY_HEIGHT here because the visual height is composed
+// from `bodyHeight` + head radius below.
 // P3-1: the engine needs the per-layer wall grids to render N
 // stacked floors / ceilings / walls. `MazeData.walls` only holds
 // layer 0 (spec §4.1), so we reach into the provider's cache —
@@ -135,7 +143,14 @@ export interface SceneRefs {
   walls: THREE.Mesh[];
   exit: THREE.Mesh;
   pickups: THREE.Mesh[];
-  enemies: THREE.Mesh[];
+  // P1-4 Phase 1: enemy meshes are now THREE.Group containers so the
+  // humanoid body + head + arms (and the FOV cone added in Phase 2)
+  // can be moved / hidden / colored as a unit. The dispose path
+  // (scene.traverse in disposeScene) still walks every Mesh inside
+  // the group and releases its geometry + material; the per-build
+  // `enemies` array is just the JS-side reference list, and
+  // `enemies.length = 0` after dispose clears it.
+  enemies: THREE.Group[];
   // P2-18: trap meshes indexed by position key "x,z". Used by the engine
   // for rendering only (collision is cell-based, not mesh-based).
   traps: THREE.Mesh[];
@@ -458,29 +473,126 @@ export function buildScene(maze: MazeData, darkMode =false): SceneRefs {
     pickups.push(upper);
   }
 
-  // P2-4a: one capsule mesh per enemy. Total height 1.6m = 2*radius + length.
-  // Shared geometry + material across enemies (saves GPU memory and matches
-  // the wall/pickup pattern) — disposeScene still releases the single
-  // instance exactly once because the disposeMat/seenGeoms set dedupes.
-  // ENEMY_RADIUS/ENEMY_HEIGHT are imported from entities/Enemy so the
-  // hitbox and the visible mesh can't drift (review F11).
-  // P3-1: each enemy sits on its own layer; `e.level ?? 0` is the
-  // historical single-layer default so pre-P3-1 levels keep working.
-  const enemies: THREE.Mesh[] = [];
-  const enemyGeom = new THREE.CapsuleGeometry(ENEMY_RADIUS, ENEMY_HEIGHT - 2 * ENEMY_RADIUS);
-  const enemyMat = new THREE.MeshLambertMaterial({ color: 0x553333 });
+  // P1-4 Phase 1: enemy 视觉升级 humanoid.
+  //   - body (capsule) + head (sphere) + 2 arms (capsule) 合并一个
+  //     THREE.Group, 共 5 子 mesh per enemy. The Phase 2 commit adds
+  //     a 6th child (FOV cone).
+  //   - MeshStandardMaterial (PBR-ish) 替代 MeshLambertMaterial, 让
+  //     enemy 受主光 / 暗模式影响更明显 (fp3d 视角核心沉浸感).
+  //   - castShadow + receiveShadow 都 true — 玩家低头能看到 enemy
+  //     投在地面的影子 (first-person 视觉锚点).
+  //   - ENEMY_HEIGHT 仍是 entities/Enemy.ts 的 1.6m (collision 半径 +
+  //     视觉身高), 视觉 height 改成 1.7m (body 1.4m + head 0.3m) 让
+  //     head sphere 不被 body 顶部遮住. ENEMY_HEIGHT 仍然用于 collision
+  //     范围 (P2-4a 锁), 视觉升级不影响 collision 数值.
+  //   - shared body / head / armL / armR geometry + body/head/arms material
+  //     (跟 wall/pickup pattern 一致: GPU 内存省, disposeScene dedupe
+  //     释放单次). 每个 enemy 自己持有 group + userData, 但 geometry /
+  //     material 共享.
+  // P3-1: 每个 enemy 仍在自己 layer 上, `e.level ?? 0` 是单层 back-compat.
+  const enemies: THREE.Group[] = [];
+  const bodyRadius = ENEMY_RADIUS;
+  const bodyHeight = 1.4;
+  const bodyGeom = new THREE.CapsuleGeometry(bodyRadius, bodyHeight - 2 * bodyRadius);
+  const headRadius = 0.15;
+  const headGeom = new THREE.SphereGeometry(headRadius, 12, 10);
+  const armRadius = 0.08;
+  const armHeight = 0.7;
+  const armGeom = new THREE.CapsuleGeometry(armRadius, armHeight - 2 * armRadius);
+  // PBR-ish material (Standard) so dark mode + key light actually
+  // shade the body. Lambert is too flat for fp3d; the body becomes
+  // a uniform dark blob.
+  const bodyMat = new THREE.MeshStandardMaterial({
+    color: 0x553333,
+    roughness: 0.7,
+    metalness: 0.1,
+  });
+  const headMat = new THREE.MeshStandardMaterial({
+    color: 0x886666,
+    roughness: 0.6,
+    metalness: 0.05,
+  });
+  const armMat = new THREE.MeshStandardMaterial({
+    color: 0x553333,
+    roughness: 0.7,
+    metalness: 0.1,
+  });
   for (const e of maze.enemies) {
-    const mesh = new THREE.Mesh(enemyGeom, enemyMat);
-    // Spawn at cell center, y = ENEMY_HEIGHT/2 above the layer's floor.
     const eLevel = e.level ?? 0;
-    mesh.position.set(
+    const group = new THREE.Group();
+    group.userData = { enemy: e };
+    // Body: capsule, anchored so its bottom sits at floor level.
+    const body = new THREE.Mesh(bodyGeom, bodyMat);
+    body.position.y = bodyHeight / 2;
+    body.castShadow = true;
+    body.receiveShadow = true;
+    group.add(body);
+    // Head: sphere on top of body. Slight forward offset so the
+    // silhouette reads as "looking forward" rather than "stacked".
+    const head = new THREE.Mesh(headGeom, headMat);
+    head.position.set(0, bodyHeight + headRadius * 0.6, 0);
+    head.castShadow = true;
+    head.receiveShadow = true;
+    group.add(head);
+    // Arms: 2 capsules flanking the body, angled slightly forward.
+    // Anchored at shoulder height, extending down.
+    const armL = new THREE.Mesh(armGeom, armMat);
+    armL.position.set(-bodyRadius - armRadius * 0.5, bodyHeight - 0.2, 0);
+    armL.rotation.z = Math.PI / 12; // slight outward angle
+    armL.castShadow = true;
+    armL.receiveShadow = true;
+    group.add(armL);
+    const armR = new THREE.Mesh(armGeom, armMat);
+    armR.position.set(bodyRadius + armRadius * 0.5, bodyHeight - 0.2, 0);
+    armR.rotation.z = -Math.PI / 12;
+    armR.castShadow = true;
+    armR.receiveShadow = true;
+    group.add(armR);
+    // P1-4 Phase 2: FOV cone (5th child). A 60° half-angle cone
+    // pointing forward from the enemy's head, matching the
+    // enemy.fovAngleDeg default. Default state is 'patrol' so
+    // the cone is invisible on spawn (per Phase 2 FR-2.3);
+    // Game.update syncs opacity + color every frame from
+    // enemy.state. The cone is the same length as the enemy's
+    // fovRange default (3 cells = 3*cs) so the visual matches
+    // the AI's actual sight range.
+    const fovConeGeom = new THREE.ConeGeometry(
+      Math.tan((60 * Math.PI) / 360) * 3 * cs,
+      3 * cs,
+      16,
+      1,
+      true,
+    );
+    const fovConeMat = new THREE.MeshBasicMaterial({
+      color: 0xff3030,
+      transparent: true,
+      opacity: 0, // invisible at spawn (patrol default)
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    const fovCone = new THREE.Mesh(fovConeGeom, fovConeMat);
+    // Cone default points +Y; rotate so it points -Z (forward).
+    fovCone.rotation.x = Math.PI / 2;
+    // Position: at the head height, projected forward so the
+    // cone's base sits at the head and the tip extends out to
+    // fovRange. The cone's local origin is its center; offset
+    // by half the cone's length along the forward axis.
+    fovCone.position.set(0, bodyHeight + headRadius * 0.6, -3 * cs / 2);
+    fovCone.renderOrder = 1; // draw on top of walls
+    fovCone.frustumCulled = false; // always render (state changes may move it)
+    group.add(fovCone);
+    // userData hook so Game.update can find the fovCone child
+    // without indexing children[4] (future-proof against re-ordering).
+    group.userData = { enemy: e, fovCone, bodyHeight };
+    // Spawn position: cell center, y = 0 (group's local origin is
+    // the floor; body sits at y = bodyHeight/2 above it).
+    group.position.set(
       (e.x + 0.5) * cs,
-      eLevel * FLOOR_HEIGHT + ENEMY_HEIGHT / 2,
+      eLevel * FLOOR_HEIGHT,
       (e.z + 0.5) * cs,
     );
-    mesh.userData = { enemy: e };
-    scene.add(mesh);
-    enemies.push(mesh);
+    scene.add(group);
+    enemies.push(group);
   }
 
   // P2-18: trap meshes. Fire traps are warm-orange flat planes with a
@@ -815,7 +927,7 @@ export function disposeScene(
   scene: THREE.Scene,
   walls: THREE.Mesh[],
   pickups: THREE.Mesh[],
-  enemies: THREE.Mesh[] = [],
+  enemies: THREE.Group[] = [],
   traps: THREE.Mesh[] = [],
   // F-2026-07-01-FCR-M-2: added doors Map parameter so we can clear stale
   // references after disposal. Without this, the Map still held references

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Game, type GameBridge } from '../engine/Game';
+import { onChaseEnter, onChaseUpdate, onChaseExit } from '../engine/Audio';
 import { useGameStore } from '../store/gameStore';
 import { useLevelStore } from '../store/levelStore';
 import { useSettingsStore } from '../store/settingsStore';
@@ -155,6 +156,32 @@ export function GameCanvas({ maze, options }: { maze: MazeData; options?: StartL
           s.bumpWarningFlashTriggerId();
         } else {
           s.setWarningFlashUntil(0);
+        }
+      },
+      // P1-4 Phase 4: chase audio sync. The Game emits a stream
+      // of chase-state events (enter / update / exit) every
+      // frame; the Audio module owns the WebAudio lifecycle
+      // (lazy AudioContext creation on first user interaction,
+      // heartbeat oscillator, footstep noise burst, 0.5s
+      // fadeout on exit). Settings gating is in the Audio
+      // module: it reads useSettingsStore directly so the
+      // settings can change mid-run without re-binding this
+      // callback.
+      onEnemyChaseState: (event) => {
+        const settings = useSettingsStore.getState();
+        if (event.kind === 'enter') {
+          onChaseEnter({
+            enabled: settings.chaseHeartbeat,
+            distance: event.distance,
+          });
+        } else if (event.kind === 'update') {
+          onChaseUpdate({
+            heartbeatEnabled: settings.chaseHeartbeat,
+            footstepsEnabled: settings.enemyFootsteps,
+            distance: event.distance,
+          });
+        } else {
+          onChaseExit();
         }
       },
     };

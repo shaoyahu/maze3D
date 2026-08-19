@@ -157,6 +157,18 @@ export interface GameBridge {
   // enemy. The store's 0.5s invulnerable window collapses the per-frame
   // burst into one logical hit. Wired to gameStore.damage in GameCanvas.
   onEnemyContact: (damage: number) => void;
+  // P1-4 Phase 4: chase audio sync. Fired by Game.update() when
+  // an enemy's state flips (patrol/dwell → chase) and every
+  // frame during chase with the current distance to the
+  // closest chasing enemy. GameCanvas wires this to the Audio
+  // module (heartbeat + footsteps). The engine only emits the
+  // callback; the Audio module owns WebAudio lifecycle.
+  // Optional — levels without audio (e.g. unit tests) ignore it.
+  onEnemyChaseState?: (event:
+    | { kind: 'enter'; distance: number }
+    | { kind: 'update'; distance: number }
+    | { kind: 'exit' }
+  ) => void;
   // P2-18: fired by Game.update() when the player steps on a trap.
   // fire trap: damage is the trap's damage (default 1).
   // water trap: the numeric arg is the slow duration in seconds.
@@ -1273,10 +1285,72 @@ export class Game {
     // onEnemyContact(1) every frame the player overlaps an enemy.
     for (let i = 0; i < this.enemies.length; i++) {
       const enemy = this.enemies[i];
+      const previousState = enemy.state;
       enemy.update(dt, { position: this.player.position });
       const mesh = this.sceneRefs.enemies[i];
       mesh.position.x = enemy.position.x;
       mesh.position.z = enemy.position.z;
+      // P1-4 Phase 3: cross-layer visibility. Enemies on a layer
+      // other than the player's current layer are hidden from the
+      // 3D scene (group.visible = false). The AI state still ticks
+      // above (so the enemy's patrol/chase/dwell state is preserved
+      // when the player returns to that layer), and the minimap
+      // still shows all enemies across all layers (P3-1 锁 —
+      // minimap reads enemy logic, not mesh).
+      mesh.visible = enemy.level === this.playerLevel;
+      // P1-4 Phase 4: chase audio state transitions. We emit
+      // an event whenever the state flips OR an enemy stays in
+      // chase (so the Audio module can re-evaluate distance).
+      // Cross-layer enemies are skipped here (their audio is
+      // already muted by the visibility check above + the
+      // Phase 3 group.visible cascade).
+      if (enemy.level === this.playerLevel) {
+        if (previousState !== 'chase' && enemy.state === 'chase') {
+          // patrol/dwell → chase: emit enter.
+          const distance = Math.hypot(
+            enemy.position.x - this.player.position.x,
+            enemy.position.z - this.player.position.z,
+          );
+          this.bridge.onEnemyChaseState?.({ kind: 'enter', distance });
+        } else if (previousState === 'chase' && enemy.state !== 'chase') {
+          // chase → patrol/dwell: emit exit.
+          this.bridge.onEnemyChaseState?.({ kind: 'exit' });
+        } else if (enemy.state === 'chase') {
+          // still chasing: emit update with current distance.
+          const distance = Math.hypot(
+            enemy.position.x - this.player.position.x,
+            enemy.position.z - this.player.position.z,
+          );
+          this.bridge.onEnemyChaseState?.({ kind: 'update', distance });
+        }
+      }
+      // P1-4 Phase 2: sync enemy.state → fovCone material.
+      // patrol invisible (玩家看不到 "敌人在看哪里"), dwell
+      // 0.3 opacity 灰 (enemy 在休息), chase 0.8 opacity 红
+      // (紧迫感). The fovCone is the 5th child of each enemy
+      // Group; userData.fovCone holds the cached ref so we
+      // don't re-index per frame. When the enemy group is
+      // hidden by Phase 3, the fovCone state is irrelevant
+      // (parent visibility cascades) but we still update it
+      // so a future layer flip doesn't show a stale state.
+      const fovCone = mesh.userData?.fovCone as THREE.Mesh | undefined;
+      if (fovCone) {
+        const mat = fovCone.material as THREE.MeshBasicMaterial;
+        switch (enemy.state) {
+          case 'patrol':
+            mat.opacity = 0;
+            mat.color.setHex(0xff3030);
+            break;
+          case 'dwell':
+            mat.opacity = 0.3;
+            mat.color.setHex(0x808080);
+            break;
+          case 'chase':
+            mat.opacity = 0.8;
+            mat.color.setHex(0xff3030);
+            break;
+        }
+      }
     }
     // F-H2: inline the contact check to avoid per-frame allocation of
     // an N-element `{x,z}[]` array. `hasEnemyContact` remains exported for

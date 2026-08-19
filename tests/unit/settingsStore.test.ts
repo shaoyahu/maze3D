@@ -117,6 +117,8 @@ describe('settingsStore', () => {
         enemyAggression: 'medium',
         language: 'zh', // P2-8 lenient default for pre-P2-8 records
         tutorialManualAutoOpen: true, // P2-17 lenient default for pre-P2-17 records
+        chaseHeartbeat: true, // P1-4 Phase 4 lenient default
+        enemyFootsteps: true, // P1-4 Phase 4 lenient default
       });
     });
 
@@ -155,6 +157,8 @@ describe('settingsStore', () => {
         enemyAggression: 'medium',
         language: 'zh',
         tutorialManualAutoOpen: true,
+        chaseHeartbeat: true,
+        enemyFootsteps: true,
       });
     });
 

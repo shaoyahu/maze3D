@@ -23,6 +23,15 @@ export interface Settings {
   // the level editor. Defaults to true so new users see it on first
   // visit; unchecking the "don't auto-open" checkbox sets it to false.
   tutorialManualAutoOpen: boolean;
+  // P1-4 Phase 4: chase-state audio cues. Both default true so
+  // new users hear the heartbeat + footsteps. Users with
+  // sound-sensitive setups or in shared spaces can disable
+  // either independently from /settings. Persistence via the
+  // same `maze3d.settings.v1` channel; lenient on load (a
+  // pre-P1-4 record falls back to true, not to a silent
+  // state that surprises the user).
+  chaseHeartbeat: boolean;
+  enemyFootsteps: boolean;
 }
 
 interface SettingsStore extends Settings {
@@ -36,6 +45,11 @@ const DEFAULTS: Settings = {
   enemyAggression: 'medium',
   language: 'zh',
   tutorialManualAutoOpen: true,
+  // P1-4 Phase 4: chase-state audio defaults — both on so the
+  // new player hears the heartbeat + footsteps immediately.
+  // Users can opt out from /settings.
+  chaseHeartbeat: true,
+  enemyFootsteps: true,
 };
 const STORAGE_KEY = 'maze3d.settings.v1';
 
@@ -77,6 +91,14 @@ export function sanitizeSettings(raw: unknown): Settings | null {
   // P2-17: lenient — pre-P2-17 persisted records won't have this field.
   const tutorialManualAutoOpen: boolean =
     typeof s.tutorialManualAutoOpen === 'boolean' ? s.tutorialManualAutoOpen : true;
+  // P1-4 Phase 4: same lenient pattern for the chase audio flags.
+  // A pre-P1-4 record (or a corrupted value) falls back to true
+  // (audible) — surprising the user with silence is worse than
+  // surprising them with a heartbeat on first run.
+  const chaseHeartbeat: boolean =
+    typeof s.chaseHeartbeat === 'boolean' ? s.chaseHeartbeat : true;
+  const enemyFootsteps: boolean =
+    typeof s.enemyFootsteps === 'boolean' ? s.enemyFootsteps : true;
   return {
     pointerSensitivity,
     fov,
@@ -84,6 +106,8 @@ export function sanitizeSettings(raw: unknown): Settings | null {
     enemyAggression: aggression,
     language,
     tutorialManualAutoOpen,
+    chaseHeartbeat,
+    enemyFootsteps,
   };
 }
 
@@ -95,6 +119,8 @@ function pickSettings(s: Settings): Settings {
     enemyAggression: s.enemyAggression,
     language: s.language,
     tutorialManualAutoOpen: s.tutorialManualAutoOpen,
+    chaseHeartbeat: s.chaseHeartbeat,
+    enemyFootsteps: s.enemyFootsteps,
   };
 }
 
@@ -115,6 +141,9 @@ function isValidSetting(k: keyof Settings, v: unknown): v is Settings[keyof Sett
     return isLocale(v);
   }
   if (k === 'tutorialManualAutoOpen') {
+    return typeof v === 'boolean';
+  }
+  if (k === 'chaseHeartbeat' || k === 'enemyFootsteps') {
     return typeof v === 'boolean';
   }
   return false;

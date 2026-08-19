@@ -69,7 +69,10 @@ describe('overlays', () => {
     fireEvent.click(screen.getByRole('button', { name: '设置' }));
     // Settings 页面渲染 (有 <h2>设置</h2>、深色模式 checkbox 等)
     expect(screen.getByRole('heading', { name: '设置' })).toBeInTheDocument();
-    expect(screen.getByRole('checkbox')).toBeInTheDocument();
+    // P1-4 Phase 4: Settings now exposes 3 checkboxes (dark mode,
+    // chase heartbeat, enemy footsteps), so the test asserts at
+    // least 1 is present rather than exactly 1.
+    expect(screen.getAllByRole('checkbox').length).toBeGreaterThanOrEqual(1);
   });
 
   it('PauseOverlay Settings "返回" button returns to the pause menu', () => {
